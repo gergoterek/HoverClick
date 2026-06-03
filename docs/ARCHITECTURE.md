@@ -39,9 +39,22 @@ Diagnostics intentionally remain verbose at this checkpoint. Logs distinguish cl
 
 Delayed verification is asynchronous and capped so rapid clicks do not stack unbounded verification blocks. If the target app exits before delayed verification runs, HoverClick logs a stale target instead of treating it as a crash or false focus failure. If a newer click has occurred, delayed verification logs `newerClick=YES`.
 
-## Phase 3: Stable Menubar Controls
+## Phase 3: Optional Hover Focus
 
-Add reliable controls for enabling, disabling, diagnostics, and future tuning.
+Implemented a minimal optional Hover Focus toggle. Hover Focus is OFF by default, persists with `NSUserDefaults`, and is independent from Click-to-Focus.
+
+Hover Focus uses the same event tap and focus pipeline:
+
+1. The event tap also observes `kCGEventMouseMoved`.
+2. Mouse move events always pass through unchanged.
+3. When Hover Focus is OFF, mouse movement does no AX lookup.
+4. When Hover Focus is ON, the latest pointer location is stored and a 250 ms debounce is scheduled.
+5. If the pointer moves more than 6 px, the pending hover candidate is replaced.
+6. After the delay, HoverClick resolves the AX element under the pointer using the same target resolution helpers as Click-to-Focus.
+7. The same ignore rules, `AXRaise`, focused-window attributes, app activation, and delayed verification are used.
+8. Same-target hover refocus is suppressed for 750 ms to avoid focus spam while the pointer stays in place.
+
+Hover Focus does not synthesize clicks, consume mouse movement, move the cursor, move windows, or resize windows. Event Tap OFF disables both click-to-focus and hover-to-focus globally.
 
 ## Phase 4: DMG
 

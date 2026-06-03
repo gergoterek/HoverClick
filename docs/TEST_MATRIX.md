@@ -17,6 +17,18 @@
 | Duplicate event tap install is skipped | Click Accessibility status refresh while Event Tap is already enabled. | Logs include `event tap already installed; skipping duplicate install` and only one HoverClick process remains. |
 | Event tap timeout disabled path | Manual stress validation only. If macOS disables the tap by timeout, watch logs. | Logs include `event tap disabled by timeout` and `event tap re-enabled after timeout` when user intent is still enabled. |
 | Event tap user-input disabled path | Manual system validation only. If macOS disables the tap by user input, watch logs. | Logs include `event tap disabled by user input` and the menu reflects the actual tap state. |
+| Hover Focus defaults off | Launch HoverClick after a fresh/default configuration. | Menu shows `Hover Focus: Off`; moving over background windows does not focus them. |
+| Hover Focus toggle persists | Toggle `Hover Focus: On`, quit/relaunch, then toggle off again. | The menu title updates immediately and the setting persists through `NSUserDefaults`. |
+| Hover Focus off preserves click focus | With `Hover Focus: Off`, click a background Finder/Chrome/iTerm window. | Click-to-focus still works, and mouse movement alone does not focus windows. |
+| Hover Finder focus | Toggle `Hover Focus: On`, then hover over a background Finder window for about 250 ms. | Logs show a hover candidate, target Finder/window, hover-to-focus action, and delayed verification. |
+| Hover Chrome focus | Toggle `Hover Focus: On`, then hover over a background Chrome window for about 250 ms. | Logs show target Chrome/window and hover delayed verification. |
+| Hover iTerm focus | Toggle `Hover Focus: On`, then hover over a background iTerm window for about 250 ms. | Logs show target iTerm/window and hover delayed verification. |
+| Hover Codex focus | Toggle `Hover Focus: On`, then hover over a background Codex window for about 250 ms. | Logs show target Codex/window and hover delayed verification. |
+| Hover already-frontmost app | Hover over the current frontmost app. | Logs show `ignored reason=already-frontmost`; no repeated focus spam. |
+| Hover same-target repeat | Keep the pointer still over the same target or make tiny movements. | Same-target hover refocus is suppressed for at least 750 ms, and tiny jitter under 6 px does not constantly reschedule. |
+| Rapid mouse movement | Move quickly between apps while Hover Focus is on. | Debounce prevents focus flicker and avoids logging every raw mouse movement. |
+| Event Tap off disables hover | Turn Event Tap off while Hover Focus is on. | Click-to-focus and hover-to-focus stop. |
+| Event Tap on resumes hover conditionally | Turn Event Tap on while Hover Focus is on, then while it is off. | Hover resumes only when `Hover Focus: On`; click-to-focus resumes either way. |
 | Background Finder window focuses | Manual Finder UI validation — not run automatically. Click a visible background Finder window. | Logs show target app Finder, target window, `AXRaise`, app activation, verification, and Finder becomes frontmost. |
 | Background Chrome window focuses | Manual Finder UI validation — not run automatically. Click a visible background Chrome window. | Logs show target app Chrome, target window, action attempts, verification, and Chrome becomes frontmost. |
 | Background iTerm window focuses | Manual Finder UI validation — not run automatically. Click a visible background iTerm window. | Logs show target app iTerm, target window, `AXRaise`, activation, delayed verification, and iTerm becomes frontmost. |

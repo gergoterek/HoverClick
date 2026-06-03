@@ -20,6 +20,8 @@ No Screen Recording permission is currently required. HoverClick does not captur
 
 This hardening pass does not add any permissions. It only improves nil checks, event tap lifecycle handling, transient UI ignores, and delayed verification diagnostics inside the existing Accessibility-based workflow.
 
+Phase 3 Hover Focus does not add any permissions. It observes mouse movement through the existing Accessibility-trusted event tap and reuses the same AX target resolution and focus pipeline. No Screen Recording, Input Monitoring, or additional system permission is requested.
+
 Coordinates are passed from `CGEventGetLocation` to `AXUIElementCopyElementAtPosition` unchanged. These APIs use the same global display point space for mouse events; Retina scaling does not require pixel conversion, and secondary displays may legitimately produce negative coordinates.
 
 To grant permission:
