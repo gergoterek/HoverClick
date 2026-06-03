@@ -10,6 +10,8 @@ This version does not synthesize mouse events, move or resize windows, move the 
 
 Manual Phase 2 logs have confirmed click-to-focus for background Finder, Chrome, and iTerm windows. HoverClick status/menu clicks are ignored safely, and useful logs distinguish click receipt, target resolution, action attempts, verification, and pass-through.
 
+The current stability-hardened checkpoint adds click sequence ids to diagnostics, duplicate event-tap install guards, clearer event-tap disabled/re-enabled logs, bounded AX parent climbing, stale-target delayed verification handling, and a cap on pending delayed verifications. User-visible click-to-focus behavior is unchanged.
+
 ## Build And Run
 
 Build and launch the app bundle:

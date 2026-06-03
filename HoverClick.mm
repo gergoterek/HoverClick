@@ -50,7 +50,7 @@ static const char *HoverClickAXErrorName(AXError error) {
 @property(nonatomic, strong) NSMenuItem *clickToFocusItem;
 @property(nonatomic, strong) NSMenuItem *verboseItem;
 @property(nonatomic, strong) NSMenuItem *lastClickItem;
-- (void)recreateEventTapIfUserWantsIt;
+- (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 @end
 
@@ -62,6 +62,9 @@ static const char *HoverClickAXErrorName(AXError error) {
     CFMachPortRef _eventTap;
     CFRunLoopSourceRef _eventTapSource;
     CFAbsoluteTime _lastMouseDownLogTime;
+    uint64_t _clickSequence;
+    uint64_t _latestVerificationSequence;
+    NSUInteger _pendingDelayedVerifications;
     NSString *_lastClickResult;
 }
 
@@ -74,13 +77,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickAppDelegate *controller = (__bridge HoverClickAppDelegate *)refcon;
     if (type == kCGEventTapDisabledByTimeout) {
         HoverClickLog("HoverClick: event tap disabled by timeout");
-        [controller recreateEventTapIfUserWantsIt];
+        [controller handleEventTapDisabledWithReason:@"timeout" shouldReenable:YES];
         return NULL;
     }
 
     if (type == kCGEventTapDisabledByUserInput) {
         HoverClickLog("HoverClick: event tap disabled by user input");
-        [controller recreateEventTapIfUserWantsIt];
+        [controller handleEventTapDisabledWithReason:@"user input" shouldReenable:YES];
         return NULL;
     }
 
@@ -105,6 +108,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _eventTap = NULL;
     _eventTapSource = NULL;
     _lastMouseDownLogTime = 0;
+    _clickSequence = 0;
+    _latestVerificationSequence = 0;
+    _pendingDelayedVerifications = 0;
     _lastClickResult = @"None";
 
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
@@ -232,6 +238,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     if (_eventTapInstalled && _eventTap != NULL && _eventTapSource != NULL) {
+        HoverClickLog("HoverClick: event tap already installed; skipping duplicate install");
         [self updateMenuTitles];
         return YES;
     }
@@ -268,14 +275,20 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     CFRunLoopAddSource(CFRunLoopGetCurrent(), _eventTapSource, kCFRunLoopCommonModes);
     CGEventTapEnable(_eventTap, true);
-    _eventTapInstalled = YES;
+    _eventTapInstalled = CGEventTapIsEnabled(_eventTap);
 
     HoverClickLog("HoverClick: event tap installed mode=pass-through-default");
     [self updateMenuTitles];
-    return YES;
+    return _eventTapInstalled;
 }
 
 - (void)removeEventTap {
+    if (_eventTap == NULL && _eventTapSource == NULL && !_eventTapInstalled) {
+        HoverClickLog("HoverClick: event tap remove requested but no active tap");
+        [self updateMenuTitles];
+        return;
+    }
+
     if (_eventTap != NULL) {
         CGEventTapEnable(_eventTap, false);
     }
@@ -299,8 +312,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateMenuTitles];
 }
 
-- (void)recreateEventTapIfUserWantsIt {
+- (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable {
+    _eventTapInstalled = NO;
+    [self updateMenuTitles];
+
     if (!_userWantsEventTap) {
+        HoverClickLog("HoverClick: event tap disabled by %s; user disabled tap, not re-enabling", reason.UTF8String);
         return;
     }
 
@@ -309,9 +326,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
-    if (_eventTapInstalled && _eventTap != NULL) {
+    if (!shouldReenable) {
+        HoverClickLog("HoverClick: event tap disabled by %s; not re-enabling", reason.UTF8String);
+        return;
+    }
+
+    if (_eventTap != NULL) {
         CGEventTapEnable(_eventTap, true);
-        HoverClickLog("HoverClick: event tap re-enabled");
+        _eventTapInstalled = CGEventTapIsEnabled(_eventTap);
+        HoverClickLog("HoverClick: event tap re-enabled after %s", reason.UTF8String);
         [self updateMenuTitles];
         return;
     }
@@ -361,7 +384,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (!trusted && _userWantsEventTap) {
         self.eventTapItem.title = @"Event Tap: Permission Missing";
-    } else if (_eventTapInstalled) {
+    } else if (_eventTapInstalled && _eventTap != NULL) {
         self.eventTapItem.title = @"Event Tap: Enabled";
     } else {
         self.eventTapItem.title = @"Event Tap: Disabled";
@@ -402,29 +425,32 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
     _lastMouseDownLogTime = now;
+    _clickSequence++;
+    uint64_t clickID = _clickSequence;
 
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
-    [self diagnosticLog:"HoverClick: click received raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
+    [self diagnosticLog:"HoverClick: click #%llu received raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
+                        clickID,
                         rawPoint.x,
                         rawPoint.y,
                         axPoint.x,
                         axPoint.y];
 
     if (!_clickToFocusEnabled) {
-        HoverClickLog("HoverClick: click-to-focus disabled; event passed through");
+        HoverClickLog("HoverClick: click #%llu click-to-focus disabled; event passed through", clickID);
         [self setLastClickResult:@"Disabled"];
         return;
     }
 
     AXUIElementRef element = [self copyElementAtAccessibilityPoint:axPoint];
     if (element == NULL) {
-        HoverClickLog("HoverClick: AX element not found at x=%.1f, y=%.1f; event passed through", axPoint.x, axPoint.y);
+        HoverClickLog("HoverClick: click #%llu AX element not found at x=%.1f, y=%.1f; event passed through", clickID, axPoint.x, axPoint.y);
         [self setLastClickResult:@"No AX Element"];
         return;
     }
 
-    [self handleResolvedElement:element rawPoint:rawPoint axPoint:axPoint];
+    [self handleResolvedElement:element rawPoint:rawPoint axPoint:axPoint clickID:clickID];
     CFRelease(element);
 }
 
@@ -454,69 +480,98 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return element;
 }
 
-- (void)handleResolvedElement:(AXUIElementRef)element rawPoint:(CGPoint)rawPoint axPoint:(CGPoint)axPoint {
+- (void)handleResolvedElement:(AXUIElementRef)element rawPoint:(CGPoint)rawPoint axPoint:(CGPoint)axPoint clickID:(uint64_t)clickID {
     NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:element] ?: @"unknown";
     NSString *elementTitle = [self stringAttribute:kAXTitleAttribute fromElement:element] ?: @"";
-    [self diagnosticLog:"HoverClick: AX element found role=%s title=%s",
+    [self diagnosticLog:"HoverClick: click #%llu AX element found role=%s title=%s",
+                        clickID,
                         role.UTF8String,
                         elementTitle.UTF8String];
 
     pid_t targetPid = 0;
     AXError pidError = AXUIElementGetPid(element, &targetPid);
     if (pidError != kAXErrorSuccess || targetPid <= 0) {
-        HoverClickLog("HoverClick: target pid unresolved error=%s; event passed through", HoverClickAXErrorName(pidError));
+        HoverClickLog("HoverClick: click #%llu target pid unresolved error=%s; event passed through", clickID, HoverClickAXErrorName(pidError));
         [self setLastClickResult:@"No Target PID"];
         return;
     }
 
     NSRunningApplication *targetApp = [NSRunningApplication runningApplicationWithProcessIdentifier:targetPid];
+    if (targetApp == nil) {
+        HoverClickLog("HoverClick: click #%llu target app unresolved pid=%d; event passed through", clickID, targetPid);
+        [self setLastClickResult:@"No Target App"];
+        return;
+    }
+
     NSString *appName = targetApp.localizedName ?: [NSString stringWithFormat:@"pid %d", targetPid];
-    HoverClickLog("HoverClick: target pid=%d app=%s", targetPid, appName.UTF8String);
+    HoverClickLog("HoverClick: click #%llu target pid=%d app=%s", clickID, targetPid, appName.UTF8String);
 
     if (targetPid == getpid()) {
-        HoverClickLog("HoverClick: ignoring own app/status item; event passed through");
+        HoverClickLog("HoverClick: click #%llu ignoring own app/status item; event passed through", clickID);
         [self setLastClickResult:@"Ignored Own App"];
         return;
     }
 
-    if ([self shouldIgnoreRole:role appName:appName point:axPoint]) {
-        HoverClickLog("HoverClick: target ignored role=%s app=%s; event passed through", role.UTF8String, appName.UTF8String);
+    if ([self shouldIgnoreRole:role appName:appName targetPid:targetPid point:axPoint]) {
+        HoverClickLog("HoverClick: click #%llu target ignored role=%s app=%s; event passed through", clickID, role.UTF8String, appName.UTF8String);
         [self setLastClickResult:@"Ignored Menu/UI"];
         return;
     }
 
     AXUIElementRef targetWindow = [self copyWindowForElement:element];
     if (targetWindow == NULL) {
-        HoverClickLog("HoverClick: AX window not found for pid=%d app=%s; event passed through", targetPid, appName.UTF8String);
+        HoverClickLog("HoverClick: click #%llu AX window not found for pid=%d app=%s; event passed through", clickID, targetPid, appName.UTF8String);
         [self setLastClickResult:@"No Target Window"];
         return;
     }
 
     NSString *windowRole = [self stringAttribute:kAXRoleAttribute fromElement:targetWindow] ?: @"unknown";
     NSString *windowTitle = [self stringAttribute:kAXTitleAttribute fromElement:targetWindow] ?: @"";
-    HoverClickLog("HoverClick: target window role=%s title=%s", windowRole.UTF8String, windowTitle.UTF8String);
+    HoverClickLog("HoverClick: click #%llu target window role=%s title=%s", clickID, windowRole.UTF8String, windowTitle.UTF8String);
+
+    if ([self shouldIgnoreWindowRole:windowRole targetPid:targetPid]) {
+        HoverClickLog("HoverClick: click #%llu target window ignored role=%s app=%s; event passed through", clickID, windowRole.UTF8String, appName.UTF8String);
+        [self setLastClickResult:@"Ignored Transient UI"];
+        CFRelease(targetWindow);
+        return;
+    }
 
     [self focusTargetApp:targetApp
                      pid:targetPid
                  appName:appName
                   window:targetWindow
                  rawPoint:rawPoint
-                  axPoint:axPoint];
+                  axPoint:axPoint
+                 clickID:clickID];
     CFRelease(targetWindow);
 }
 
-- (BOOL)shouldIgnoreRole:(NSString *)role appName:(NSString *)appName point:(CGPoint)point {
+- (BOOL)shouldIgnoreRole:(NSString *)role appName:(NSString *)appName targetPid:(pid_t)targetPid point:(CGPoint)point {
     (void)point;
+    (void)targetPid;
 
     if ([role rangeOfString:@"Menu" options:NSCaseInsensitiveSearch].location != NSNotFound) {
         return YES;
     }
 
-    if ([role isEqualToString:@"AXStatusItem"] || [role isEqualToString:@"AXSystemWide"]) {
+    if ([role isEqualToString:@"AXStatusItem"] ||
+        [role isEqualToString:@"AXSystemWide"] ||
+        [role isEqualToString:@"AXPopover"]) {
         return YES;
     }
 
     if ([appName isEqualToString:@"HoverClick"]) {
+        return YES;
+    }
+
+    return NO;
+}
+
+- (BOOL)shouldIgnoreWindowRole:(NSString *)role targetPid:(pid_t)targetPid {
+    NSRunningApplication *frontApp = [NSWorkspace sharedWorkspace].frontmostApplication;
+    BOOL belongsToFrontApp = frontApp != nil && frontApp.processIdentifier == targetPid;
+
+    if (([role isEqualToString:@"AXSheet"] || [role isEqualToString:@"AXDialog"]) && belongsToFrontApp) {
         return YES;
     }
 
@@ -528,7 +583,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                appName:(NSString *)appName
                 window:(AXUIElementRef)targetWindow
                rawPoint:(CGPoint)rawPoint
-                axPoint:(CGPoint)axPoint {
+                axPoint:(CGPoint)axPoint
+               clickID:(uint64_t)clickID {
     (void)rawPoint;
     (void)axPoint;
 
@@ -537,19 +593,20 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSString *frontBeforeName = frontBefore.localizedName ?: @"unknown";
 
     if (frontBeforePid == targetPid) {
-        HoverClickLog("HoverClick: target app already frontmost pid=%d app=%s; event passed through", targetPid, appName.UTF8String);
+        HoverClickLog("HoverClick: click #%llu target app already frontmost pid=%d app=%s; event passed through", clickID, targetPid, appName.UTF8String);
         [self setLastClickResult:@"Already Frontmost"];
         return;
     }
 
-    HoverClickLog("HoverClick: click-to-focus executed target=%s pid=%d frontBefore=%s pid=%d",
+    HoverClickLog("HoverClick: click #%llu click-to-focus executed target=%s pid=%d frontBefore=%s pid=%d",
+                  clickID,
                   appName.UTF8String,
                   targetPid,
                   frontBeforeName.UTF8String,
                   frontBeforePid);
 
     AXError raiseError = AXUIElementPerformAction(targetWindow, kAXRaiseAction);
-    HoverClickLog("HoverClick: AXRaise %s", HoverClickAXErrorName(raiseError));
+    HoverClickLog("HoverClick: click #%llu AXRaise %s", clickID, HoverClickAXErrorName(raiseError));
 
     AXUIElementRef appElement = AXUIElementCreateApplication(targetPid);
     AXError focusedWindowError = kAXErrorIllegalArgument;
@@ -562,35 +619,62 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         CFRelease(appElement);
     }
 
-    HoverClickLog("HoverClick: AX focusedWindow set %s", HoverClickAXErrorName(focusedWindowError));
-    [self diagnosticLog:"HoverClick: AX mainWindow set %s", HoverClickAXErrorName(mainWindowError)];
-    [self diagnosticLog:"HoverClick: AX focused attribute set %s", HoverClickAXErrorName(focusedAttrError)];
+    HoverClickLog("HoverClick: click #%llu AX focusedWindow set %s", clickID, HoverClickAXErrorName(focusedWindowError));
+    [self diagnosticLog:"HoverClick: click #%llu AX mainWindow set %s", clickID, HoverClickAXErrorName(mainWindowError)];
+    [self diagnosticLog:"HoverClick: click #%llu AX focused attribute set %s", clickID, HoverClickAXErrorName(focusedAttrError)];
 
     BOOL activateAttempted = targetApp != nil;
     BOOL activateResult = NO;
     if (targetApp != nil) {
         activateResult = [targetApp activateWithOptions:NSApplicationActivateIgnoringOtherApps];
     }
-    HoverClickLog("HoverClick: app activation attempted=%s result=%s",
+    HoverClickLog("HoverClick: click #%llu app activation attempted=%s result=%s",
+                  clickID,
                   activateAttempted ? "YES" : "NO",
                   activateResult ? "YES" : "NO");
 
     NSRunningApplication *frontAfter = [NSWorkspace sharedWorkspace].frontmostApplication;
     BOOL frontImmediate = frontAfter.processIdentifier == targetPid;
-    HoverClickLog("HoverClick: click-to-focus immediate verify frontApp=%s current=%s pid=%d",
+    HoverClickLog("HoverClick: click #%llu click-to-focus immediate verify frontApp=%s current=%s pid=%d",
+                  clickID,
                   frontImmediate ? "YES" : "NO",
                   (frontAfter.localizedName ?: @"unknown").UTF8String,
                   frontAfter.processIdentifier);
 
     [self setLastClickResult:frontImmediate ? @"Succeeded" : @"Verify Pending"];
-    HoverClickLog("HoverClick: event passed through");
+    HoverClickLog("HoverClick: click #%llu event passed through", clickID);
 
+    if (_pendingDelayedVerifications >= 8) {
+        HoverClickLog("HoverClick: click #%llu delayed verify skipped; pending limit reached", clickID);
+        return;
+    }
+
+    _pendingDelayedVerifications++;
+    _latestVerificationSequence = clickID;
     AXUIElementRef retainedWindow = targetWindow != NULL ? (AXUIElementRef)CFRetain(targetWindow) : NULL;
     pid_t verifyPid = targetPid;
     NSString *verifyAppName = [appName copy];
+    uint64_t verifyClickID = clickID;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (self->_pendingDelayedVerifications > 0) {
+            self->_pendingDelayedVerifications--;
+        }
+
+        NSRunningApplication *targetStillRunning = [NSRunningApplication runningApplicationWithProcessIdentifier:verifyPid];
+        if (targetStillRunning == nil) {
+            HoverClickLog("HoverClick: click #%llu delayed verify stale target=%s pid=%d appExited=YES",
+                          verifyClickID,
+                          verifyAppName.UTF8String,
+                          verifyPid);
+            if (retainedWindow != NULL) {
+                CFRelease(retainedWindow);
+            }
+            return;
+        }
+
         NSRunningApplication *delayedFront = [NSWorkspace sharedWorkspace].frontmostApplication;
         BOOL delayedFrontMatches = delayedFront.processIdentifier == verifyPid;
+        BOOL newerClickOccurred = self->_latestVerificationSequence != verifyClickID;
 
         BOOL focusedWindowMatches = NO;
         if (retainedWindow != NULL) {
@@ -610,11 +694,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             }
         }
 
-        HoverClickLog("HoverClick: click-to-focus delayed verify target=%s pid=%d frontApp=%s focusedWindow=%s",
+        HoverClickLog("HoverClick: click #%llu delayed verify target=%s pid=%d frontApp=%s focusedWindow=%s newerClick=%s",
+                      verifyClickID,
                       verifyAppName.UTF8String,
                       verifyPid,
                       delayedFrontMatches ? "YES" : "NO",
-                      focusedWindowMatches ? "YES" : "NO");
+                      focusedWindowMatches ? "YES" : "NO",
+                      newerClickOccurred ? "YES" : "NO");
 
         if (retainedWindow != NULL) {
             CFRelease(retainedWindow);
@@ -625,7 +711,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 - (AXUIElementRef)copyWindowForElement:(AXUIElementRef)element {
     AXUIElementRef current = (AXUIElementRef)CFRetain(element);
 
-    for (NSInteger depth = 0; depth < 16 && current != NULL; depth++) {
+    for (NSInteger depth = 0; depth < 10 && current != NULL; depth++) {
         NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:current] ?: @"unknown";
         [self diagnosticLog:"HoverClick: window search depth=%ld role=%s", (long)depth, role.UTF8String];
 

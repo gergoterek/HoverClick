@@ -18,6 +18,8 @@ Phase 2 uses Accessibility to inspect the element under the cursor, find its win
 
 No Screen Recording permission is currently required. HoverClick does not capture pixels, enumerate screen contents, or record the display. Future features that inspect pixels or screenshots should document and request that permission separately.
 
+This hardening pass does not add any permissions. It only improves nil checks, event tap lifecycle handling, transient UI ignores, and delayed verification diagnostics inside the existing Accessibility-based workflow.
+
 Coordinates are passed from `CGEventGetLocation` to `AXUIElementCopyElementAtPosition` unchanged. These APIs use the same global display point space for mouse events; Retina scaling does not require pixel conversion, and secondary displays may legitimately produce negative coordinates.
 
 To grant permission:
