@@ -1,17 +1,23 @@
-# Build products
-HoverClick.app/
-dist/
-DerivedData/
-build/
-
-# Logs and local diagnostics
-*.log
-*.trace
-
 # macOS metadata
 .DS_Store
+
+# Build products
+HoverClick.app/
+DerivedData/
+build/
+*.dSYM/
+dist/*.dmg
+
+# Logs and temporary files
+logs/
+*.log
+tmp/
+*.tmp
 
 # Editor state
 .vscode/
 .idea/
+
+# Local diagnostics
+*.trace
 *.swp
