@@ -14,6 +14,7 @@
 
 - Build: `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/build-app.sh`
 - Verify: `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/verify-app.sh`
+- Internal DMG package: `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/package-dmg.sh`
 - Manual run: `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh`
 
 `scripts/run-app.sh` launches the signed `.app` bundle with `/usr/bin/open`. Do not run it during automated validation unless a manual UI test is explicitly requested.
@@ -51,7 +52,7 @@
 - No cursor movement.
 - No window movement or resizing.
 - No Screen Recording permission.
-- No DMG packaging.
+- Internal Apple Development signed DMG packaging is available for test builds only.
 
 HoverClick currently does not add Scroll Focus because macOS already supports background scrolling in many apps. The current event tap observes only left and right mouse-down triggers.
 

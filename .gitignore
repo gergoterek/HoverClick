@@ -6,6 +6,7 @@ HoverClick.app/
 DerivedData/
 build/
 *.dSYM/
+dist/
 dist/*.dmg
 
 # Logs and temporary files

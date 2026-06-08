@@ -25,3 +25,17 @@ The checkpoint workflow:
 The checkpoint script refuses generated artifacts such as `HoverClick.app/`, `DerivedData/`, `build/`, `logs/`, and `dist/*.dmg`.
 
 Do not merge task branches into `main` automatically.
+
+## Internal DMG Packaging
+
+Create an internal test DMG with:
+
+```zsh
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/package-dmg.sh
+```
+
+The packaging script builds HoverClick, verifies codesigning, copies the signed `HoverClick.app` bundle into a temporary staging directory, adds an `Applications` symlink, creates a compressed read-only DMG under `dist/`, and verifies the image with non-GUI command-line checks.
+
+This workflow keeps the existing Apple Development signing identity. It is for internal testing only; Developer ID signing and notarization are separate future distribution tasks.
+
+Generated DMG artifacts are ignored and should not be committed.

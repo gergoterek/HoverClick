@@ -86,7 +86,7 @@ Do not reset macOS privacy databases for normal setup. Permission should be mana
 - `Right Click Focus` is off by default because users may prefer the default macOS context-menu behavior on background windows.
 - `Hover Click Assist` is visible but experimental and currently inert.
 - HoverClick does not add Scroll Focus. macOS already supports background scrolling in many apps, and HoverClick currently observes only left and right mouse-down triggers.
-- No DMG package is included yet.
+- Internal Apple Development signed DMG packaging is available for test builds. It is not Developer ID signed or notarized.
 
 ## Troubleshooting
 
@@ -145,6 +145,14 @@ Verify the built app:
 ```sh
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/verify-app.sh
 ```
+
+Create an internal test DMG:
+
+```sh
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/package-dmg.sh
+```
+
+The DMG workflow builds and verifies the existing signed app bundle, then writes an ignored artifact under `dist/`. It does not notarize the app.
 
 For development workflow details, see `docs/DEVELOPMENT.md`.
 
