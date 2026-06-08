@@ -7,8 +7,8 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick` with `v0.4.2 (21)` on the same row
-- Bundle short version/build version: `0.4.2` / `21`
+- Visible menu header: `HoverClick` with `v0.4.2` on the same row
+- Bundle short version/build version: `0.4.2` / `28`
 
 ## Commands
 
@@ -30,10 +30,13 @@
 ## Implemented Features
 
 - Menubar-only accessory app with status item and menu controls.
-- Non-clickable menu header row with `HoverClick` left-aligned and `v0.4.2 (21)` right-aligned.
+- Menu bar icon uses the native template SF Symbol `cursorarrow.click` at 16 pt semibold/large scale inside a 23 pt status item.
+- Non-clickable compact 24 pt menu header row with grey disabled-style `HoverClick` and right-aligned `v0.4.2` using symmetric 14 pt horizontal padding.
+- Header tooltip: `UI-Menubar: simplified diagnostics, permissions layout, hover submenu, and live version display.`
 - Native checked/unchecked menu state for feature toggles instead of `On` or `Off` in the toggle titles.
 - Specific native `NSMenuItem` tooltip/help text for relevant child/action/status menu items.
 - Parent submenu items do not have tooltips.
+- Non-toggle rows use indentation level 0 and an off state; AppKit may still reserve a shared native checkmark gutter in menus that contain checked toggle rows.
 - `Hover` submenu for hover-related controls; it is enabled only while Left Click Focus is enabled.
 - `Permissions & Startup` submenu for Accessibility, Launch at Login, and the existing Accessibility Settings action at the bottom.
 - `Diagnostics` submenu with `Verbose Diagnostics` and `Copy Diagnostics Summary`.
@@ -69,10 +72,12 @@
 
 ## Version Rule
 
-- The visible menu version reads from `CFBundleShortVersionString` and `CFBundleVersion`.
-- The header displays the version as `v<short-version> (<build>)`.
-- Intentional shipped behavior or UI changes should bump `CFBundleShortVersionString` and `CFBundleVersion`.
-- Git checkpoint-only tasks, read-only audits, and docs-only tasks should not bump the visible app version unless they affect shipped behavior or UI.
+- The visible menu version reads only from `CFBundleShortVersionString`.
+- The header displays the version as `v<short-version>`.
+- `CFBundleVersion` is an internal build number and is not shown in the menu.
+- Header tooltips should be one-sentence specific changelog labels with an area prefix such as `UI-Menubar:`, `Focus:`, `Permissions:`, or `Packaging:`.
+- Intentional shipped behavior or UI changes should bump `CFBundleShortVersionString` and/or `CFBundleVersion` consistently with the change scope.
+- Git checkpoint-only tasks and read-only audits should not change the visible app version or header tooltip. Docs-only tasks should not change them unless documenting a shipped version-label change.
 - The version label exists so the currently running build can be checked directly from the status menu.
 
 ## Permission And Signing Rules
@@ -117,18 +122,23 @@ Manual Finder UI validation -- not run automatically.
 
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
-- Confirm the status menu shows `HoverClick` and `v0.4.2 (21)` on the same header row.
+- Confirm the HoverClick menubar icon is slightly smaller than the previous 17 pt version, still clear, vertically aligned with neighboring menu bar items, and not clipped, blurry, or stretched.
+- Confirm the icon looks correct in the current macOS light/dark appearance.
+- Confirm the status menu shows `HoverClick` and `v0.4.2` on the same header row, without the internal build number.
+- Confirm the header row text uses a grey disabled style, has symmetric left/right horizontal padding, and does not look clickable.
+- Confirm the header tooltip says `UI-Menubar: simplified diagnostics, permissions layout, hover submenu, and live version display.`
 - Confirm `Permissions & Startup` appears as a submenu.
 - Confirm Accessibility, Launch at Login, and Open Accessibility Settings live inside that submenu, with Open Accessibility Settings at the bottom.
 - Confirm `Hover` appears as a submenu between `Right Click Focus` and `Permissions & Startup`.
 - Confirm `Hover` contains `Hover Click Assist`.
 - Confirm parent submenu items such as `Hover`, `Permissions & Startup`, and `Diagnostics` do not show tooltips.
+- Confirm non-toggle rows such as `Permissions & Startup`, `Diagnostics`, `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` do not intentionally use checkmarks; note any remaining shared AppKit checkmark gutter.
 - Turn `Left Click Focus` off and confirm `Hover` is disabled; turn `Left Click Focus` on and confirm `Hover` is enabled and the previous `Hover Click Assist` checkmark is restored.
 - Confirm `Diagnostics` contains only `Verbose Diagnostics` and `Copy Diagnostics Summary`.
 - Confirm click-detection and last-action details are absent as separate menu rows.
 - Confirm feature toggle titles do not include `On` or `Off`; enabled features show the native left-side checkmark and disabled features do not.
 - Hover over relevant menu items and check whether specific native tooltip/help text appears.
-- Confirm Accessibility status shows `Granted` or `Not Granted` clearly, with a checkmark when granted.
+- Confirm Accessibility status shows `Granted` or `Not Granted` clearly as text without using a checkmark.
 - Click `Copy Diagnostics Summary` and confirm the copied text includes click-detection and last-action details.
 - Move the pointer over background Finder, Chrome, and iTerm windows without clicking; no focus change should occur.
 - With `Left Click Focus` checked, click visible background Finder, Chrome, and iTerm windows; target focus should occur before the original click passes through.

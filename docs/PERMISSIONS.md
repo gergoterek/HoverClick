@@ -36,4 +36,4 @@ To grant permission:
 4. Find HoverClick.
 5. Turn HoverClick On.
 
-The app also includes an `Open Accessibility Settings` menu item that opens the Accessibility privacy pane.
+The `Permissions & Startup` submenu includes Accessibility status, Launch at Login, and `Open Accessibility Settings` at the bottom. `Open Accessibility Settings` opens the Accessibility privacy pane only when the user clicks it. The Accessibility status row uses explicit `Granted` / `Not Granted` text and a native checkmark when access is granted.

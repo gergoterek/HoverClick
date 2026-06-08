@@ -11,9 +11,9 @@
 	<key>CFBundleExecutable</key>
 	<string>HoverClick</string>
 	<key>CFBundleVersion</key>
-	<string>0.1.0</string>
+	<string>28</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.4.2</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>
