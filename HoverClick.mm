@@ -855,7 +855,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
-    HoverClickLog("HoverClick: %s #%llu %s-to-focus executed target=%s pid=%d frontBefore=%s pid=%d",
+    HoverClickLog("HoverClick: %s #%llu %s-to-focus started target=%s pid=%d frontBefore=%s pid=%d",
                   trigger,
                   sequenceID,
                   trigger,
@@ -863,24 +863,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   targetPid,
                   frontBeforeName.UTF8String,
                   frontBeforePid);
-
-    AXError raiseError = AXUIElementPerformAction(targetWindow, kAXRaiseAction);
-    HoverClickLog("HoverClick: %s #%llu AXRaise %s", trigger, sequenceID, HoverClickAXErrorName(raiseError));
-
-    AXUIElementRef appElement = AXUIElementCreateApplication(targetPid);
-    AXError focusedWindowError = kAXErrorIllegalArgument;
-    AXError mainWindowError = kAXErrorIllegalArgument;
-    AXError focusedAttrError = kAXErrorIllegalArgument;
-    if (appElement != NULL) {
-        focusedWindowError = AXUIElementSetAttributeValue(appElement, kAXFocusedWindowAttribute, targetWindow);
-        mainWindowError = AXUIElementSetAttributeValue(targetWindow, kAXMainAttribute, kCFBooleanTrue);
-        focusedAttrError = AXUIElementSetAttributeValue(targetWindow, kAXFocusedAttribute, kCFBooleanTrue);
-        CFRelease(appElement);
-    }
-
-    HoverClickLog("HoverClick: %s #%llu AX focusedWindow set %s", trigger, sequenceID, HoverClickAXErrorName(focusedWindowError));
-    [self diagnosticLog:"HoverClick: %s #%llu AX mainWindow set %s", trigger, sequenceID, HoverClickAXErrorName(mainWindowError)];
-    [self diagnosticLog:"HoverClick: %s #%llu AX focused attribute set %s", trigger, sequenceID, HoverClickAXErrorName(focusedAttrError)];
 
     BOOL activateAttempted = targetApp != nil;
     BOOL activateResult = NO;
@@ -892,6 +874,29 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   sequenceID,
                   activateAttempted ? "YES" : "NO",
                   activateResult ? "YES" : "NO");
+
+    AXUIElementRef appElement = AXUIElementCreateApplication(targetPid);
+    AXError frontmostError = kAXErrorIllegalArgument;
+    AXError focusedWindowError = kAXErrorIllegalArgument;
+    AXError mainWindowError = kAXErrorIllegalArgument;
+    AXError focusedAttrError = kAXErrorIllegalArgument;
+    if (appElement != NULL) {
+        frontmostError = AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute, kCFBooleanTrue);
+        focusedWindowError = AXUIElementSetAttributeValue(appElement, kAXFocusedWindowAttribute, targetWindow);
+        CFRelease(appElement);
+    }
+
+    HoverClickLog("HoverClick: %s #%llu AX frontmost set %s", trigger, sequenceID, HoverClickAXErrorName(frontmostError));
+
+    AXError raiseError = AXUIElementPerformAction(targetWindow, kAXRaiseAction);
+    HoverClickLog("HoverClick: %s #%llu AXRaise %s", trigger, sequenceID, HoverClickAXErrorName(raiseError));
+
+    mainWindowError = AXUIElementSetAttributeValue(targetWindow, kAXMainAttribute, kCFBooleanTrue);
+    focusedAttrError = AXUIElementSetAttributeValue(targetWindow, kAXFocusedAttribute, kCFBooleanTrue);
+
+    HoverClickLog("HoverClick: %s #%llu AX focusedWindow set %s", trigger, sequenceID, HoverClickAXErrorName(focusedWindowError));
+    [self diagnosticLog:"HoverClick: %s #%llu AX mainWindow set %s", trigger, sequenceID, HoverClickAXErrorName(mainWindowError)];
+    [self diagnosticLog:"HoverClick: %s #%llu AX focused attribute set %s", trigger, sequenceID, HoverClickAXErrorName(focusedAttrError)];
 
     NSRunningApplication *frontAfter = [NSWorkspace sharedWorkspace].frontmostApplication;
     BOOL frontImmediate = frontAfter.processIdentifier == targetPid;

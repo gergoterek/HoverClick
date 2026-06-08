@@ -29,7 +29,7 @@ For each click, HoverClick:
 3. Reads the target pid and app name.
 4. Ignores HoverClick itself, menu roles, status items, and unresolved targets.
 5. Resolves a target window from `AXWindow` or by bounded `AXParent` climbing.
-6. Attempts `AXRaise`, app activation, and focused-window attributes.
+6. Attempts app activation, AX frontmost, `AXRaise`, and focused-window attributes.
 7. Logs immediate front-app verification.
 8. Returns the original event unchanged.
 
@@ -58,7 +58,7 @@ The old persisted Hover Focus defaults key is intentionally no longer read, so a
 
 Stable Left Click Focus is the normal behavior and defaults ON. It focuses, raises, and activates a background window immediately before the original left-click event is delivered, then returns that original event unchanged.
 
-Right Click Focus is an independent trigger and defaults OFF. It persists under `rightClickFocusEnabled`; when OFF, right-click events are returned unchanged without running the focus path. When ON, right-clicking a valid background window uses the same target-window filters, `AXRaise`, app activation, and immediate verification path as Left Click Focus, then returns the original right-click event unchanged so context menus remain normal.
+Right Click Focus is an independent trigger and defaults OFF. It persists under `rightClickFocusEnabled`; when OFF, right-click events are returned unchanged without running the focus path. When ON, right-clicking a valid background window uses the same target-window filters, app activation, AX frontmost, `AXRaise`, and immediate verification path as Left Click Focus, then returns the original right-click event unchanged so context menus remain normal.
 
 Experimental Hover Click Assist is a separate menu toggle and feature flag. It defaults OFF, persists under `hoverClickAssistEnabled`, and is independent from Left Click Focus and Right Click Focus. In this checkpoint it is an explicit no-op placeholder: ON or OFF, it does not schedule delayed verification, synthesize clicks, move the cursor, post replacement mouse events, or observe mouse movement. While OFF, HoverClick logs that no assist path was scheduled.
 

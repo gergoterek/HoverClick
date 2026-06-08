@@ -55,3 +55,16 @@
 | Menu items stay enabled | Open the status menu before and after toggling permission and event tap state. | Accessibility, Event Tap, Left Click Focus, Right Click Focus, Experimental Hover Click Assist, Verbose Diagnostics, Open Accessibility Settings, and Quit are not accidentally greyed out. |
 | Multi-monitor negative coordinates | Manual Finder UI validation — not run automatically. Click windows on secondary displays that use negative coordinates, if available. | Logs show raw and converted coordinates, target lookup succeeds, and no Retina pixel conversion is needed. |
 | Focus result is not a false positive | Review logs after a background-window click. | Success is based on target resolution plus action and verification logs, not only event observation. |
+
+## Stable Checkpoint Manual Validation
+
+Manual Finder UI validation -- not run automatically.
+
+The current stable checkpoint has been manually validated with:
+
+- Left Click Focus works and returns the original left-click event unchanged.
+- Right Click Focus works, focuses the target background window first, and returns the original right-click event unchanged so the normal context menu works.
+- Launch at Login works.
+- Mouse movement alone does not focus windows.
+- Accessibility permission did not reappear.
+- No synthetic click, cursor movement, `CGEventPost`, `CGDisplayMoveCursorToPoint`, `kCGEventMouseMoved`, or scroll-focus behavior exists.

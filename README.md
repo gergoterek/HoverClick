@@ -10,11 +10,11 @@ HoverClick is not an AutoRaise-style hover-focus app. It does not focus windows 
 
 The menu separates stable `Left Click Focus`, which defaults ON, from independent `Right Click Focus`, which defaults OFF, and `Experimental Hover Click Assist`, which defaults OFF. Experimental Hover Click Assist is currently a no-op feature flag only; it does not schedule delayed verification, synthesize clicks, move the cursor, post replacement events, or focus windows from mouse movement.
 
-The menu also includes `Launch at Login`, which uses the modern ServiceManagement main-app login item API on macOS 13 and newer. The item is independent from Accessibility permission, Left Click Focus, and Experimental Hover Click Assist.
+The menu also includes `Launch at Login`, which uses the modern ServiceManagement main-app login item API on macOS 13 and newer. The item is independent from Accessibility permission, Left Click Focus, Right Click Focus, and Experimental Hover Click Assist.
 
 This version does not synthesize mouse events, move or resize windows, move the cursor, or create a DMG.
 
-Manual Phase 2 logs have confirmed click-to-focus for background Finder, Chrome, and iTerm windows. HoverClick status/menu clicks are ignored safely, and useful logs distinguish click receipt, target resolution, action attempts, verification, and pass-through.
+Manual checkpoint validation has confirmed Left Click Focus, Right Click Focus, Launch at Login, unchanged context-menu behavior, stable Accessibility permission, and no focus from mouse movement alone. HoverClick status/menu clicks are ignored safely, and useful logs distinguish click receipt, target resolution, action attempts, verification, and pass-through.
 
 The current stability-hardened checkpoint adds click sequence ids to diagnostics, duplicate event-tap install guards, clearer event-tap disabled/re-enabled logs, bounded AX parent climbing, and immediate verification. Delayed verification has been removed from runtime so the stable path stays immediate.
 
