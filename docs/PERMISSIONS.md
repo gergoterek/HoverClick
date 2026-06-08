@@ -1,39 +1,62 @@
 # Permissions
 
-macOS Accessibility permission belongs to a signed app identity. For HoverClick, that identity is:
+HoverClick needs macOS Accessibility permission so it can inspect the UI element under a click point, find the owning window, focus that window, and pass the original click through unchanged.
+
+## App Identity
+
+Accessibility permission belongs to the signed app bundle identity:
 
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
 
-Stable signing is required because macOS uses the app identity when deciding whether the Accessibility permission remains valid. If the app is rebuilt with changing or ad-hoc signing, macOS can treat it as a different app and the permission can appear to reset.
+Stable signing matters because macOS uses the app identity when deciding whether Accessibility permission remains valid. Do not use ad-hoc signing for normal HoverClick builds.
 
-Ad-hoc signing is not acceptable for this project. It is useful for quick local experiments, but it does not provide the stable developer identity needed for repeatable Accessibility trust across normal rebuilds.
+Always launch HoverClick as the signed `HoverClick.app` bundle. Do not launch `HoverClick.app/Contents/MacOS/HoverClick` directly, because the raw binary launch path can confuse identity, permission, and diagnostics.
 
-The raw binary must not be launched directly. Launching `HoverClick.app/Contents/MacOS/HoverClick` bypasses the normal bundle launch path and can confuse identity, permission, and diagnostics. Always launch `HoverClick.app`.
+## First-Launch Setup
 
-The event tap and the Phase 2 Accessibility target resolution both require Accessibility permission. If Accessibility is missing, HoverClick should remain open, keep the event tap uninstalled, and show `Event Tap: Permission Missing` in the menu. The app should not repeatedly prompt or show custom permission alerts; use the menu item to open Accessibility settings when needed.
+1. Launch HoverClick.
+2. Open the HoverClick menu from the menu bar.
+3. Open `Permissions & Startup`.
+4. Choose `Open Accessibility Settings`.
+5. In macOS Accessibility privacy settings, enable HoverClick.
+6. Return to HoverClick and confirm the menu shows `Accessibility: Granted`.
+7. If needed, quit and relaunch the normal signed app bundle.
 
-Phase 2 uses Accessibility to inspect the element under the cursor, find its window, raise that window, activate the owning app, and verify the result when macOS allows it. Some apps may reject specific AX attributes such as focused window or main window. Those failures are logged and are not treated as permission resets.
+Do not use privacy database resets for normal setup. Manage the permission from System Settings.
 
-No Screen Recording permission is currently required. HoverClick does not capture pixels, enumerate screen contents, or record the display. Future features that inspect pixels or screenshots should document and request that permission separately.
+## Permission Behavior
 
-This hardening pass does not add any permissions. It only improves nil checks, event tap lifecycle handling, transient UI ignores, and immediate verification diagnostics inside the existing Accessibility-based workflow.
+The click event tap and Accessibility target resolution both require Accessibility permission. If permission is missing, HoverClick should stay open, keep click detection inactive, and show `Accessibility: Not Granted` from `Permissions & Startup`.
 
-Phase 3 Hover Focus removal does not add any permissions. HoverClick observes click-down triggers only; it does not focus, raise, or activate windows from pointer movement. The click event tap and AX focus behavior continue to use the existing Accessibility permission. No Screen Recording, Input Monitoring, or additional system permission is requested.
+HoverClick does not require Screen Recording permission. It does not capture pixels, enumerate screen contents, record the display, send analytics, synthesize clicks, or move the cursor in the stable core.
 
-Right Click Focus does not add any permissions. It observes `kCGEventRightMouseDown` through the same event tap and uses the same Accessibility-based target resolution, raise, activation, and verification path as Left Click Focus when the user enables it.
+## Menu Entries
 
-Launch at Login is handled by ServiceManagement as a main-app login item on macOS 13 and newer. It is separate from Accessibility trust and does not reset or request Accessibility permission. If macOS reports that the login item requires user approval, HoverClick reflects that in the menu/logs and does not open System Settings automatically.
+`Permissions & Startup` contains:
 
-Coordinates are passed from `CGEventGetLocation` to `AXUIElementCopyElementAtPosition` unchanged. These APIs use the same global display point space for mouse events; Retina scaling does not require pixel conversion, and secondary displays may legitimately produce negative coordinates.
+- `Accessibility: Granted` or `Accessibility: Not Granted`
+- `Launch at Login`
+- `Open Accessibility Settings`
 
-To grant permission:
+`Open Accessibility Settings` opens the Accessibility privacy pane only when the user clicks that menu item.
 
-1. Open System Settings.
-2. Go to Privacy & Security.
-3. Go to Accessibility.
-4. Find HoverClick.
-5. Turn HoverClick On.
+`Launch at Login` is separate from Accessibility permission. On macOS 13 and later, it uses the ServiceManagement main-app login item API. If macOS reports that user approval is required, HoverClick reflects that state instead of changing Accessibility permission.
 
-The `Permissions & Startup` submenu includes Accessibility status, Launch at Login, and `Open Accessibility Settings` at the bottom. `Open Accessibility Settings` opens the Accessibility privacy pane only when the user clicks it. The Accessibility status row uses explicit `Granted` / `Not Granted` text and a native checkmark when access is granted.
+## Troubleshooting
+
+If clicks are not focused:
+
+- Confirm `Accessibility: Granted`.
+- Confirm `Left Click Focus` is enabled for left-click behavior.
+- Confirm `Right Click Focus` is enabled if testing right-click behavior.
+- Use `Diagnostics` > `Copy Diagnostics Summary` and check the permission and click detection lines.
+
+If HoverClick does not appear in Accessibility settings:
+
+- Confirm the app was launched as `HoverClick.app`.
+- Keep the app in a stable location, such as Applications.
+- Relaunch the signed app bundle and choose `Open Accessibility Settings` from the HoverClick menu.
+
+If permission appears to be granted but behavior still fails, the target app may reject a specific Accessibility focus or raise operation. HoverClick logs those failures and still passes the original click through unchanged.

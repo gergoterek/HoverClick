@@ -35,7 +35,7 @@ For each click, HoverClick:
 
 `observed leftMouseDown` from Phase 1 was only event observation. Phase 2 success requires target resolution plus a focus/raise action result.
 
-Diagnostics intentionally remain verbose at this checkpoint. Logs distinguish click receipt, AX element lookup, target pid/app/window resolution, ignored targets, `AXRaise`, app activation, immediate verification, event pass-through, tap disabled/re-enabled, and tap removal. Each click now carries a monotonically increasing sequence id such as `click #42`.
+Diagnostics intentionally remain detailed. Logs distinguish click receipt, AX element lookup, target pid/app/window resolution, ignored targets, `AXRaise`, app activation, immediate verification, event pass-through, tap disabled/re-enabled, and tap removal. Each click carries a monotonically increasing sequence id such as `click #42`.
 
 Delayed verification has been removed from runtime. Stable Left Click Focus does not schedule timers, callbacks, synthetic clicks, cursor movement, or hover-assist-like work after the immediate focus attempt.
 
@@ -60,7 +60,7 @@ Stable Left Click Focus is the normal behavior and defaults ON. It focuses, rais
 
 Right Click Focus is an independent trigger and defaults OFF. It persists under `rightClickFocusEnabled`; when OFF, right-click events are returned unchanged without running the focus path. When ON, right-clicking a valid background window uses the same target-window filters, app activation, AX frontmost, `AXRaise`, and immediate verification path as Left Click Focus, then returns the original right-click event unchanged so context menus remain normal.
 
-Experimental Hover Click Assist is a separate feature flag under the `Hover` submenu. It defaults OFF and persists under `hoverClickAssistEnabled`, but the submenu and child toggle are enabled only while Left Click Focus is on. Turning Left Click Focus off does not overwrite the stored Hover Click Assist preference; turning Left Click Focus back on restores the previous checked or unchecked state. The effective assist state is `leftClickFocusEnabled && hoverClickAssistEnabled`. In this checkpoint it is an explicit no-op placeholder: ON or OFF, it does not schedule delayed verification, synthesize clicks, move the cursor, post replacement mouse events, or observe mouse movement. While effectively OFF, HoverClick logs that no assist path was scheduled.
+Experimental Hover Click Assist is a separate feature flag under the `Hover` submenu. It defaults OFF and persists under `hoverClickAssistEnabled`, but the submenu and child toggle are enabled only while Left Click Focus is on. Turning Left Click Focus off does not overwrite the stored Hover Click Assist preference; turning Left Click Focus back on restores the previous checked or unchecked state. The effective assist state is `leftClickFocusEnabled && hoverClickAssistEnabled`. In the current build it is an explicit no-op placeholder: ON or OFF, it does not schedule delayed verification, synthesize clicks, move the cursor, post replacement mouse events, or observe mouse movement. While effectively OFF, HoverClick logs that no assist path was scheduled.
 
 ## OS Integration
 
@@ -74,23 +74,22 @@ Feature toggles use stable titles with native macOS checked/unchecked menu item 
 
 Intentional shipped behavior or UI changes should bump `CFBundleShortVersionString` and/or `CFBundleVersion` consistently with the scope of the change. Git checkpoint-only tasks and read-only audits should not change the visible app version or header tooltip. Docs-only tasks should not change the visible app version or header tooltip unless they intentionally document a shipped version-label change.
 
-## Phase 4: DMG
+## Distribution Packaging
 
 Package the app for normal local installation and distribution after the identity and runtime behavior are stable.
 
-## Future Planned Triggers
+## Trigger Scope
 
-Scroll Focus is a planned future trigger type, but it is not part of this stabilization pass. It should be implemented only after the stable click core has been confirmed.
+HoverClick currently focuses windows only from configured click-down triggers. It does not add Scroll Focus because macOS already supports background scrolling in many apps.
 
-Future menus should expose controls for each trigger/action type:
+Current menu controls expose:
 
 - Left Click Focus
 - Right Click Focus
-- Scroll Focus
 - Hover > Hover Click Assist
 
-Until a scroll phase is deliberately started, the event tap should continue to observe only the current stable click inputs: `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`.
+The event tap should continue to observe only the current stable click inputs: `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`.
 
-## Phase 5: Experimental Hover Click Assist
+## Experimental Hover Click Assist
 
-Explore click-time assistance for hover-dependent UI elements after a window switch. Experimental Hover Click Assist must not focus windows from mouse movement alone, and it uses distinct naming from the removed Hover Focus experiment.
+Hover Click Assist is present as a default-off experimental placeholder for possible future hover-dependent button assistance. It is not part of the stable click-to-focus core, does not focus windows from mouse movement alone, and currently performs no cursor movement, synthetic click, replacement event, delayed verification, or mouse-move behavior.

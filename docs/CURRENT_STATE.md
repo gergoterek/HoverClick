@@ -18,96 +18,64 @@
 
 `scripts/run-app.sh` launches the signed `.app` bundle with `/usr/bin/open`. Do not run it during automated validation unless a manual UI test is explicitly requested.
 
-## Forbidden Commands And Actions
+## Current Product Behavior
 
-- Do not run the raw binary at `HoverClick.app/Contents/MacOS/HoverClick`.
-- Do not run `scripts/run-app.sh` automatically during build or verification tasks.
-- Do not use `sudo`, `tccutil reset`, ad-hoc signing, `codesign -`, or `CODE_SIGN_IDENTITY=""`.
-- Do not change the app name, bundle identifier, signing identity, `Info.plist` identity fields, Makefile signing behavior, Accessibility/TCC flow, or event tap behavior unless fixing a confirmed behavior bug.
-- Do not automate Finder, System Settings, keyboard, mouse, clipboard, Accessibility UI, or macOS app focus during validation.
-- Do not use `open`, `open -R`, `osascript`, AppleScript, JXA, Automator, Shortcuts, Finder reveal/select, or System Events UI scripting during automated work.
+- HoverClick is a menubar-only accessory app with no Dock icon.
+- The menu bar icon uses the native template SF Symbol `cursorarrow.click`.
+- The menu header shows `HoverClick` and the visible app version.
+- `Left Click Focus` defaults on.
+- `Right Click Focus` defaults off and is independent from left-click behavior.
+- `Hover` contains `Hover Click Assist`.
+- `Permissions & Startup` contains Accessibility status, Launch at Login, and `Open Accessibility Settings`.
+- `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
+- Technical click detection and last action details are available in the copied diagnostics summary.
 
-## Implemented Features
+## Stable Features
 
-- Menubar-only accessory app with status item and menu controls.
-- Menu bar icon uses the native template SF Symbol `cursorarrow.click` at 16 pt semibold/large scale inside a 23 pt status item.
-- Non-clickable compact 24 pt menu header row with grey disabled-style `HoverClick` and right-aligned `v0.4.2` using symmetric 14 pt horizontal padding.
-- Header tooltip: `UI-Menubar: simplified diagnostics, permissions layout, hover submenu, and live version display.`
-- Native checked/unchecked menu state for feature toggles instead of `On` or `Off` in the toggle titles.
-- Specific native `NSMenuItem` tooltip/help text for relevant child/action/status menu items.
-- Parent submenu items do not have tooltips.
-- Non-toggle rows use indentation level 0 and an off state; AppKit may still reserve a shared native checkmark gutter in menus that contain checked toggle rows.
-- `Hover` submenu for hover-related controls; it is enabled only while Left Click Focus is enabled.
-- `Permissions & Startup` submenu for Accessibility, Launch at Login, and the existing Accessibility Settings action at the bottom.
-- `Diagnostics` submenu with `Verbose Diagnostics` and `Copy Diagnostics Summary`.
-- Technical click-detection and last-action details are available in the copied diagnostics summary instead of separate persistent menu rows.
-- Accessibility permission status display and refresh.
-- Event tap lifecycle management with duplicate-install guard and disabled/re-enable logging.
-- Left Click Focus, enabled by default and toggleable from the menu.
-- Right Click Focus, disabled by default and toggleable independently from Left Click Focus.
-- Pass-through left mouse down handling: the original click event is returned unchanged for normal clicks.
-- Pass-through right mouse down handling: when Right Click Focus is on, the target background window is focused before the original right-click event continues unchanged.
-- AX target resolution from the click point, bounded parent climbing to find a window, target app/window logging, menu/status/transient UI ignores, app activation, AX frontmost, `AXRaise`, focused-window attribute attempts, and immediate verification.
-- Verbose diagnostics and click sequence ids.
-- Launch at Login via the ServiceManagement main-app login item API on macOS 13 and newer.
-- Experimental Hover Click Assist is present under `Hover` as a default-off no-op feature flag. It is only effective when Left Click Focus is also enabled, and its stored preference is preserved while the `Hover` submenu is disabled.
+- Left-click focus: a left click on a background window can focus the target before the original click is delivered.
+- Right-click focus: when enabled, a right click on a background window can focus the target before the original right-click continues.
+- Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
+- Diagnostics summary: copies version, permission, startup, click detection, feature state, event tap mask, and safety details.
+- Accessibility onboarding: available from `Permissions & Startup` > `Open Accessibility Settings`.
 
-## Removed Features
+## Experimental Or Placeholder Items
 
-- AutoRaise-style Hover Focus has been removed.
-- Mouse movement is not tapped for focus behavior.
-- The old persisted `HoverFocusEnabled` defaults key is not read, so an old setting cannot re-enable hover-to-window-focus.
+`Hover Click Assist` is an experimental placeholder. It defaults off, is disabled while Left Click Focus is off, and currently performs no delayed verification, synthetic click, cursor movement, replacement event, or mouse-move focus behavior.
 
-## Planned Future Features
+## Non-Goals In The Current Build
 
-- Phase 4: DMG packaging after identity and runtime behavior remain stable.
-- Future trigger idea: Scroll Focus.
-- Future trigger work must keep independent controls and should not change the stable left-click or right-click core casually.
+- No AutoRaise-style hover-to-focus behavior.
+- No mouse-move focus event tap.
+- No Scroll Focus.
+- No synthetic clicks.
+- No cursor movement.
+- No window movement or resizing.
+- No Screen Recording permission.
+- No DMG packaging.
+
+HoverClick currently does not add Scroll Focus because macOS already supports background scrolling in many apps. The current event tap observes only left and right mouse-down triggers.
 
 ## Event Tap
 
 - Current event tap mask: `CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventRightMouseDown)`.
 - `kCGEventMouseMoved` and scroll events are not observed.
-- Normal tap callback behavior returns the original event unchanged. `NULL` is returned only for system tap-disabled pseudo-events or a null incoming event.
-
-## Version Rule
-
-- The visible menu version reads only from `CFBundleShortVersionString`.
-- The header displays the version as `v<short-version>`.
-- `CFBundleVersion` is an internal build number and is not shown in the menu.
-- Header tooltips should be one-sentence specific changelog labels with an area prefix such as `UI-Menubar:`, `Focus:`, `Permissions:`, or `Packaging:`.
-- Intentional shipped behavior or UI changes should bump `CFBundleShortVersionString` and/or `CFBundleVersion` consistently with the change scope.
-- Git checkpoint-only tasks and read-only audits should not change the visible app version or header tooltip. Docs-only tasks should not change them unless documenting a shipped version-label change.
-- The version label exists so the currently running build can be checked directly from the status menu.
+- Normal tap callback behavior returns the original event unchanged.
+- `NULL` is returned only for system tap-disabled pseudo-events or a null incoming event.
 
 ## Permission And Signing Rules
 
 - Accessibility permission belongs to the signed app bundle identity.
 - Always launch as the signed `HoverClick.app` bundle, not the raw binary.
-- Stable signing is required; ad-hoc signing is not acceptable for this project.
-- Accessibility is required for the event tap and AX focus behavior.
-- Missing Accessibility should leave the app open, keep the event tap uninstalled, keep Accessibility visibly `Not Granted`, and avoid repeated prompts or custom permission alerts.
+- Stable signing is required.
+- Missing Accessibility should leave the app open and show `Accessibility: Not Granted`.
 - No Screen Recording, Input Monitoring, or additional permission is currently required.
 
-## Stable Behavior
+## Version Rule
 
-- HoverClick does not focus, raise, or activate windows from pointer movement alone.
-- With click detection active and Left Click Focus on, a left click on a background window may focus the target before click delivery.
-- With click detection active and Right Click Focus on, a right click on a background window may focus the target before the original right-click continues and the normal context menu works.
-- Already-frontmost targets, HoverClick itself, menu/status UI, popovers, and front-app sheets/dialogs are ignored safely.
-- Clicks, right-click context menus, drags, and normal macOS interactions should remain unchanged apart from the pre-click focus attempt.
-- HoverClick does not synthesize mouse events, move the cursor, move windows, resize windows, or create a DMG.
-
-## Known Non-Goals
-
-- No scroll focus in the current phase.
-- No hover-to-window-focus in the current phase.
-- No active Hover Click Assist implementation yet; the current toggle is a no-op placeholder.
-- No DMG creation in the current Phase 3 stabilization state.
-
-## Next Safe Step
-
-Keep this stable baseline unchanged. The next safe feature is Scroll Focus in a separate task branch, with its own design and validation pass.
+- The visible menu version reads from `CFBundleShortVersionString`.
+- The header displays the version as `v<short-version>`.
+- `CFBundleVersion` is an internal build number and is not shown in the menu.
+- Documentation-only tasks should not change app version fields.
 
 ## Development Workflow
 
@@ -122,40 +90,15 @@ Manual Finder UI validation -- not run automatically.
 
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
-- Confirm the HoverClick menubar icon is slightly smaller than the previous 17 pt version, still clear, vertically aligned with neighboring menu bar items, and not clipped, blurry, or stretched.
-- Confirm the icon looks correct in the current macOS light/dark appearance.
-- Confirm the status menu shows `HoverClick` and `v0.4.2` on the same header row, without the internal build number.
-- Confirm the header row text uses a grey disabled style, has symmetric left/right horizontal padding, and does not look clickable.
-- Confirm the header tooltip says `UI-Menubar: simplified diagnostics, permissions layout, hover submenu, and live version display.`
-- Confirm `Permissions & Startup` appears as a submenu.
-- Confirm Accessibility, Launch at Login, and Open Accessibility Settings live inside that submenu, with Open Accessibility Settings at the bottom.
-- Confirm `Hover` appears as a submenu between `Right Click Focus` and `Permissions & Startup`.
+- Confirm the status menu shows `HoverClick` and `v0.4.2` on the same header row.
+- Confirm `Left Click Focus` is checked by default.
+- Confirm `Right Click Focus` is unchecked by default.
+- Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.
 - Confirm `Hover` contains `Hover Click Assist`.
-- Confirm parent submenu items such as `Hover`, `Permissions & Startup`, and `Diagnostics` do not show tooltips.
-- Confirm non-toggle rows such as `Permissions & Startup`, `Diagnostics`, `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` do not intentionally use checkmarks; note any remaining shared AppKit checkmark gutter.
-- Turn `Left Click Focus` off and confirm `Hover` is disabled; turn `Left Click Focus` on and confirm `Hover` is enabled and the previous `Hover Click Assist` checkmark is restored.
-- Confirm `Diagnostics` contains only `Verbose Diagnostics` and `Copy Diagnostics Summary`.
-- Confirm click-detection and last-action details are absent as separate menu rows.
-- Confirm feature toggle titles do not include `On` or `Off`; enabled features show the native left-side checkmark and disabled features do not.
-- Hover over relevant menu items and check whether specific native tooltip/help text appears.
-- Confirm Accessibility status shows `Granted` or `Not Granted` clearly as text without using a checkmark.
-- Click `Copy Diagnostics Summary` and confirm the copied text includes click-detection and last-action details.
-- Move the pointer over background Finder, Chrome, and iTerm windows without clicking; no focus change should occur.
-- With `Left Click Focus` checked, click visible background Finder, Chrome, and iTerm windows; target focus should occur before the original click passes through.
-- With `Right Click Focus` checked, right-click visible background Finder, Chrome, and iTerm windows; target focus should occur before the original right-click passes through and the normal context menu works.
+- Confirm `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
+- Move the pointer over background windows without clicking; no focus change should occur.
+- With `Left Click Focus` checked, click visible background windows; target focus should occur before the original click passes through.
+- With `Right Click Focus` checked, right-click visible background windows; target focus should occur before the original right-click passes through and the normal context menu works.
 - Click HoverClick status/menu UI and transient menu/popover UI; they should be ignored safely.
 - Drag windows, select text, and use sliders; drag behavior should remain unchanged.
-- Review unified logs for click receipt, target resolution, action attempts, verification, and `event passed through`.
-
-## Confirmed Manual Stable Checkpoint
-
-Manual Finder UI validation -- not run automatically.
-
-- Left Click Focus works.
-- Right Click Focus works.
-- Right Click Focus focuses the target background window first, then normal right-click/context menu behavior works.
-- Launch at Login works.
-- Mouse movement alone does not focus windows.
-- Accessibility permission did not reappear.
-- Original left-click and right-click events are returned unchanged.
-- No synthetic click behavior, cursor movement, `CGEventPost`, `CGDisplayMoveCursorToPoint`, or `kCGEventMouseMoved` exists.
+- Copy diagnostics and confirm it includes permission, click detection, feature states, and the stable-core safety note.
