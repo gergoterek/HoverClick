@@ -20,14 +20,20 @@
 
 ## Auto-Save Workflow
 
+Every new Codex task must use a dedicated branch. `main` is the stable baseline and must not receive direct task commits.
+
+- Before making feature or stabilization changes, create or use a task branch.
+- Do not merge into `main` automatically.
+- Push the task branch, not `main`.
+
 After a successful Codex task, if files changed intentionally, run:
 
 ```zsh
-/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/save-work.sh "Short task description"
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/save-work.sh --branch "codex/<short-task-name>" "Short commit message"
 ```
 
-The save workflow builds the app, verifies codesigning, stages safe project files, commits, and pushes to `origin/main`.
+The save workflow builds the app, verifies codesigning, stages safe project files, commits, and pushes the task branch to `origin`.
 
 - Do not push if build or verify fails.
 - Do not commit generated artifacts such as `HoverClick.app/`, `DerivedData/`, `build/`, `logs/`, or `dist/*.dmg`.
-- Report the commit hash and push result.
+- Report the branch name, commit hash, and push result.
