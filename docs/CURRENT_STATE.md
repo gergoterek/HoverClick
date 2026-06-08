@@ -14,7 +14,7 @@
 - Verify: `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/verify-app.sh`
 - Manual run: `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh`
 
-`scripts/run-app.sh` launches the signed `.app` bundle with `/usr/bin/open`. Do not run it during automated Codex validation unless the user explicitly asks for a manual UI test.
+`scripts/run-app.sh` launches the signed `.app` bundle with `/usr/bin/open`. Do not run it during automated validation unless a manual UI test is explicitly requested.
 
 ## Forbidden Commands And Actions
 
@@ -84,7 +84,14 @@
 
 ## Next Safe Step
 
-Keep this stable baseline unchanged. The next safe feature is Scroll Focus in a separate Codex chat, with its own design and validation pass.
+Keep this stable baseline unchanged. The next safe feature is Scroll Focus in a separate task branch, with its own design and validation pass.
+
+## Development Workflow
+
+- `main` is the stable baseline.
+- Development work should use task branches.
+- Use `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/checkpoint.sh` to build, verify, commit intentional changes, and push the current task branch.
+- Merge task branches into `main` only after review and manual approval.
 
 ## Manual Test Checklist
 

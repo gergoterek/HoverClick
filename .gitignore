@@ -18,6 +18,9 @@ tmp/
 .vscode/
 .idea/
 
+# Local workflow instructions
+AGENTS.md
+
 # Local diagnostics
 *.trace
 *.swp
