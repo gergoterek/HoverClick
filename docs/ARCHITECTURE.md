@@ -30,36 +30,59 @@ For each click, HoverClick:
 4. Ignores HoverClick itself, menu roles, status items, and unresolved targets.
 5. Resolves a target window from `AXWindow` or by bounded `AXParent` climbing.
 6. Attempts `AXRaise`, app activation, and focused-window attributes.
-7. Logs immediate and delayed front-app verification.
+7. Logs immediate front-app verification.
 8. Returns the original event unchanged.
 
 `observed leftMouseDown` from Phase 1 was only event observation. Phase 2 success requires target resolution plus a focus/raise action result.
 
-Diagnostics intentionally remain verbose at this checkpoint. Logs distinguish click receipt, AX element lookup, target pid/app/window resolution, ignored targets, `AXRaise`, app activation, immediate verification, delayed verification, event pass-through, tap disabled/re-enabled, and tap removal. Each click now carries a monotonically increasing sequence id such as `click #42`, so delayed verification can be matched to the initiating click.
+Diagnostics intentionally remain verbose at this checkpoint. Logs distinguish click receipt, AX element lookup, target pid/app/window resolution, ignored targets, `AXRaise`, app activation, immediate verification, event pass-through, tap disabled/re-enabled, and tap removal. Each click now carries a monotonically increasing sequence id such as `click #42`.
 
-Delayed verification is asynchronous and capped so rapid clicks do not stack unbounded verification blocks. If the target app exits before delayed verification runs, HoverClick logs a stale target instead of treating it as a crash or false focus failure. If a newer click has occurred, delayed verification logs `newerClick=YES`.
+Delayed verification has been removed from runtime. Stable Left Click Focus does not schedule timers, callbacks, synthetic clicks, cursor movement, or hover-assist-like work after the immediate focus attempt.
 
-## Phase 3: Optional Hover Focus
+## Phase 3: Hover Focus Removal
 
-Implemented a minimal optional Hover Focus toggle. Hover Focus is OFF by default, persists with `NSUserDefaults`, and is independent from Click-to-Focus.
+The earlier optional Hover Focus experiment has been removed. HoverClick is not an AutoRaise-style app and must not focus, raise, or activate windows merely because the pointer moves over them.
 
-Hover Focus uses the same event tap and focus pipeline:
+The stable Phase 3 behavior is:
 
-1. The event tap also observes `kCGEventMouseMoved`.
-2. Mouse move events always pass through unchanged.
-3. When Hover Focus is OFF, mouse movement does no AX lookup.
-4. When Hover Focus is ON, the latest pointer location is stored and a 250 ms debounce is scheduled.
-5. If the pointer moves more than 6 px, the pending hover candidate is replaced.
-6. After the delay, HoverClick resolves the AX element under the pointer using the same target resolution helpers as Click-to-Focus.
-7. The same ignore rules, `AXRaise`, focused-window attributes, app activation, and delayed verification are used.
-8. Same-target hover refocus is suppressed for 750 ms to avoid focus spam while the pointer stays in place.
+1. The event tap observes click-down triggers only: `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`.
+2. Mouse movement is not tapped for focus behavior.
+3. A left click may trigger the existing click-to-focus path when Left Click Focus is on.
+4. A right click may trigger the same safe focus path only when Right Click Focus is on.
+5. The original click event is returned unchanged.
+6. No synthetic clicks, cursor movement, window movement, or window resizing are performed.
 
-Hover Focus does not synthesize clicks, consume mouse movement, move the cursor, move windows, or resize windows. Event Tap OFF disables both click-to-focus and hover-to-focus globally.
+The old persisted Hover Focus defaults key is intentionally no longer read, so an existing saved setting cannot re-enable mouse-move-to-focus behavior.
+
+## Stable And Experimental Paths
+
+Stable Left Click Focus is the normal behavior and defaults ON. It focuses, raises, and activates a background window immediately before the original left-click event is delivered, then returns that original event unchanged.
+
+Right Click Focus is an independent trigger and defaults OFF. It persists under `rightClickFocusEnabled`; when OFF, right-click events are returned unchanged without running the focus path. When ON, right-clicking a valid background window uses the same target-window filters, `AXRaise`, app activation, and immediate verification path as Left Click Focus, then returns the original right-click event unchanged so context menus remain normal.
+
+Experimental Hover Click Assist is a separate menu toggle and feature flag. It defaults OFF, persists under `hoverClickAssistEnabled`, and is independent from Left Click Focus and Right Click Focus. In this checkpoint it is an explicit no-op placeholder: ON or OFF, it does not schedule delayed verification, synthesize clicks, move the cursor, post replacement mouse events, or observe mouse movement. While OFF, HoverClick logs that no assist path was scheduled.
+
+## OS Integration
+
+Launch at Login is a menubar-only integration that uses `SMAppService.mainAppService` on macOS 13 and newer. It registers or unregisters the main app as the login item; no helper app is bundled, and the toggle does not change event tap, focus, hover assist, Accessibility, signing, or bundle identity behavior.
 
 ## Phase 4: DMG
 
 Package the app for normal local installation and distribution after the identity and runtime behavior are stable.
 
-## Phase 5: Experimental Hover Assist
+## Future Planned Triggers
 
-Explore hover-based assistance separately from the click-to-focus core, behind explicit controls.
+Scroll Focus is a planned future trigger type, but it is not part of this stabilization pass. It should be implemented only after the stable click core has been confirmed.
+
+Future menus should expose independent toggles for each trigger/action type:
+
+- Left Click Focus
+- Right Click Focus
+- Scroll Focus
+- Experimental Hover Click Assist
+
+Until a scroll phase is deliberately started, the event tap should continue to observe only the current stable click inputs: `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`.
+
+## Phase 5: Experimental Hover Click Assist
+
+Explore click-time assistance for hover-dependent UI elements after a window switch. Experimental Hover Click Assist must not focus windows from mouse movement alone, and it uses distinct naming from the removed Hover Focus experiment.

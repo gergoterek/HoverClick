@@ -18,9 +18,13 @@ Phase 2 uses Accessibility to inspect the element under the cursor, find its win
 
 No Screen Recording permission is currently required. HoverClick does not capture pixels, enumerate screen contents, or record the display. Future features that inspect pixels or screenshots should document and request that permission separately.
 
-This hardening pass does not add any permissions. It only improves nil checks, event tap lifecycle handling, transient UI ignores, and delayed verification diagnostics inside the existing Accessibility-based workflow.
+This hardening pass does not add any permissions. It only improves nil checks, event tap lifecycle handling, transient UI ignores, and immediate verification diagnostics inside the existing Accessibility-based workflow.
 
-Phase 3 Hover Focus does not add any permissions. It observes mouse movement through the existing Accessibility-trusted event tap and reuses the same AX target resolution and focus pipeline. No Screen Recording, Input Monitoring, or additional system permission is requested.
+Phase 3 Hover Focus removal does not add any permissions. HoverClick observes click-down triggers only; it does not focus, raise, or activate windows from pointer movement. The click event tap and AX focus behavior continue to use the existing Accessibility permission. No Screen Recording, Input Monitoring, or additional system permission is requested.
+
+Right Click Focus does not add any permissions. It observes `kCGEventRightMouseDown` through the same event tap and uses the same Accessibility-based target resolution, raise, activation, and verification path as Left Click Focus when the user enables it.
+
+Launch at Login is handled by ServiceManagement as a main-app login item on macOS 13 and newer. It is separate from Accessibility trust and does not reset or request Accessibility permission. If macOS reports that the login item requires user approval, HoverClick reflects that in the menu/logs and does not open System Settings automatically.
 
 Coordinates are passed from `CGEventGetLocation` to `AXUIElementCopyElementAtPosition` unchanged. These APIs use the same global display point space for mouse events; Retina scaling does not require pixel conversion, and secondary displays may legitimately produce negative coordinates.
 

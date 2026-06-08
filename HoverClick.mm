@@ -1,30 +1,45 @@
 #import <ApplicationServices/ApplicationServices.h>
 #import <Cocoa/Cocoa.h>
-#import <dispatch/dispatch.h>
 #import <os/log.h>
+#if __has_include(<ServiceManagement/ServiceManagement.h>)
+#import <ServiceManagement/ServiceManagement.h>
+#define HOVERCLICK_HAS_SERVICE_MANAGEMENT 1
+#else
+#define HOVERCLICK_HAS_SERVICE_MANAGEMENT 0
+#endif
 #include <stdarg.h>
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
 static NSString * const HoverClickBundleID = @"com.gergoterek.HoverClick";
-static NSString * const HoverClickHoverFocusDefaultsKey = @"HoverFocusEnabled";
-static const CFTimeInterval HoverClickHoverDelaySeconds = 0.25;
-static const CFTimeInterval HoverClickHoverRepeatIntervalSeconds = 0.75;
-static const CGFloat HoverClickHoverMovementTolerance = 6.0;
+static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
+static NSString * const HoverClickHoverClickAssistDefaultsKey = @"hoverClickAssistEnabled";
 
 static void HoverClickLog(const char *format, ...) {
     char buffer[1024];
+    char output[1200];
 
     va_list args;
     va_start(args, format);
     vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
-    printf("%s\n", buffer);
+    const char *message = buffer;
+    static const char legacyPrefix[] = "HoverClick: ";
+    static const char requiredPrefix[] = "[HoverClick]";
+    if (strncmp(message, requiredPrefix, sizeof(requiredPrefix) - 1) == 0) {
+        snprintf(output, sizeof(output), "%s", message);
+    } else {
+        if (strncmp(message, legacyPrefix, sizeof(legacyPrefix) - 1) == 0) {
+            message += sizeof(legacyPrefix) - 1;
+        }
+        snprintf(output, sizeof(output), "%s %s", requiredPrefix, message);
+    }
+
+    printf("%s\n", output);
     fflush(stdout);
-    os_log(OS_LOG_DEFAULT, "%{public}s", buffer);
+    os_log(OS_LOG_DEFAULT, "%{public}s", output);
 }
 
 static const char *HoverClickAXErrorName(AXError error) {
@@ -53,34 +68,31 @@ static const char *HoverClickAXErrorName(AXError error) {
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) NSMenuItem *permissionItem;
 @property(nonatomic, strong) NSMenuItem *eventTapItem;
-@property(nonatomic, strong) NSMenuItem *hoverFocusItem;
 @property(nonatomic, strong) NSMenuItem *clickToFocusItem;
+@property(nonatomic, strong) NSMenuItem *rightClickFocusItem;
+@property(nonatomic, strong) NSMenuItem *hoverClickAssistItem;
+@property(nonatomic, strong) NSMenuItem *launchAtLoginItem;
 @property(nonatomic, strong) NSMenuItem *verboseItem;
 @property(nonatomic, strong) NSMenuItem *lastClickItem;
 - (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable;
 - (void)handleLeftMouseDown:(CGEventRef)event;
-- (void)handleMouseMoved:(CGEventRef)event;
+- (void)handleRightMouseDown:(CGEventRef)event;
 @end
 
 @implementation HoverClickAppDelegate {
     BOOL _userWantsEventTap;
     BOOL _eventTapInstalled;
     BOOL _clickToFocusEnabled;
-    BOOL _hoverFocusEnabled;
+    BOOL _rightClickFocusEnabled;
+    BOOL _hoverClickAssistEnabled;
     BOOL _verboseDiagnostics;
     CFMachPortRef _eventTap;
     CFRunLoopSourceRef _eventTapSource;
     CFAbsoluteTime _lastMouseDownLogTime;
+    CFAbsoluteTime _lastRightMouseDownLogTime;
     uint64_t _clickSequence;
-    uint64_t _hoverSequence;
-    uint64_t _hoverGeneration;
-    uint64_t _latestVerificationSequence;
-    NSUInteger _pendingDelayedVerifications;
-    BOOL _hasLatestHoverPoint;
-    CGPoint _latestHoverPoint;
-    NSString *_lastHoverTargetKey;
-    CFAbsoluteTime _lastHoverFocusTime;
     NSString *_lastClickResult;
+    NSString *_lastLaunchAtLoginStatusDescription;
 }
 
 static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
@@ -108,8 +120,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (type == kCGEventLeftMouseDown) {
         [controller handleLeftMouseDown:event];
-    } else if (type == kCGEventMouseMoved) {
-        [controller handleMouseMoved:event];
+    } else if (type == kCGEventRightMouseDown) {
+        [controller handleRightMouseDown:event];
     }
 
     return event;
@@ -121,21 +133,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _userWantsEventTap = YES;
     _eventTapInstalled = NO;
     _clickToFocusEnabled = YES;
-    _hoverFocusEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickHoverFocusDefaultsKey];
+    _rightClickFocusEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickRightClickFocusDefaultsKey];
+    _hoverClickAssistEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickHoverClickAssistDefaultsKey];
     _verboseDiagnostics = YES;
     _eventTap = NULL;
     _eventTapSource = NULL;
     _lastMouseDownLogTime = 0;
+    _lastRightMouseDownLogTime = 0;
     _clickSequence = 0;
-    _hoverSequence = 0;
-    _hoverGeneration = 0;
-    _latestVerificationSequence = 0;
-    _pendingDelayedVerifications = 0;
-    _hasLatestHoverPoint = NO;
-    _latestHoverPoint = CGPointZero;
-    _lastHoverTargetKey = nil;
-    _lastHoverFocusTime = 0;
     _lastClickResult = @"None";
+    _lastLaunchAtLoginStatusDescription = nil;
 
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     [self createStatusItem];
@@ -182,19 +189,35 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.eventTapItem.enabled = YES;
     [menu addItem:self.eventTapItem];
 
-    self.hoverFocusItem = [[NSMenuItem alloc] initWithTitle:@"Hover Focus: Off"
-                                                     action:@selector(toggleHoverFocus:)
-                                              keyEquivalent:@""];
-    self.hoverFocusItem.target = self;
-    self.hoverFocusItem.enabled = YES;
-    [menu addItem:self.hoverFocusItem];
+    [menu addItem:[NSMenuItem separatorItem]];
 
-    self.clickToFocusItem = [[NSMenuItem alloc] initWithTitle:@"Click-to-Focus: Enabled"
+    self.clickToFocusItem = [[NSMenuItem alloc] initWithTitle:@"Left Click Focus: On"
                                                        action:@selector(toggleClickToFocus:)
                                                 keyEquivalent:@""];
     self.clickToFocusItem.target = self;
     self.clickToFocusItem.enabled = YES;
     [menu addItem:self.clickToFocusItem];
+
+    self.rightClickFocusItem = [[NSMenuItem alloc] initWithTitle:@"Right Click Focus"
+                                                          action:@selector(toggleRightClickFocus:)
+                                                   keyEquivalent:@""];
+    self.rightClickFocusItem.target = self;
+    self.rightClickFocusItem.enabled = YES;
+    [menu addItem:self.rightClickFocusItem];
+
+    self.hoverClickAssistItem = [[NSMenuItem alloc] initWithTitle:@"Experimental Hover Click Assist: Off"
+                                                           action:@selector(toggleHoverClickAssist:)
+                                                    keyEquivalent:@""];
+    self.hoverClickAssistItem.target = self;
+    self.hoverClickAssistItem.enabled = YES;
+    [menu addItem:self.hoverClickAssistItem];
+
+    self.launchAtLoginItem = [[NSMenuItem alloc] initWithTitle:@"Launch at Login"
+                                                        action:@selector(toggleLaunchAtLogin:)
+                                                 keyEquivalent:@""];
+    self.launchAtLoginItem.target = self;
+    self.launchAtLoginItem.enabled = YES;
+    [menu addItem:self.launchAtLoginItem];
 
     self.verboseItem = [[NSMenuItem alloc] initWithTitle:@"Verbose Diagnostics: On"
                                                   action:@selector(toggleVerboseDiagnostics:)
@@ -235,6 +258,96 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     BOOL trusted = [self accessibilityTrusted];
     HoverClickLog("HoverClick: bundle id = %s", HoverClickBundleID.UTF8String);
     HoverClickLog("HoverClick: accessibility trusted = %s", trusted ? "YES" : "NO");
+    HoverClickLog("HoverClick: launch state leftClickFocus=%s rightClickFocus=%s experimentalHoverClickAssist=%s rightClickDefaultsKey=%s hoverClickAssistDefaultsKey=%s",
+                  _clickToFocusEnabled ? "ON" : "OFF",
+                  _rightClickFocusEnabled ? "ON" : "OFF",
+                  _hoverClickAssistEnabled ? "ON" : "OFF",
+                  HoverClickRightClickFocusDefaultsKey.UTF8String,
+                  HoverClickHoverClickAssistDefaultsKey.UTF8String);
+}
+
+- (void)logLaunchAtLoginStatus:(NSString *)statusDescription force:(BOOL)force {
+    if (statusDescription == nil) {
+        statusDescription = @"unknown";
+    }
+
+    if (!force &&
+        _lastLaunchAtLoginStatusDescription != nil &&
+        [_lastLaunchAtLoginStatusDescription isEqualToString:statusDescription]) {
+        return;
+    }
+
+    _lastLaunchAtLoginStatusDescription = [statusDescription copy];
+    HoverClickLog("HoverClick: Launch at Login status = %s", statusDescription.UTF8String);
+}
+
+- (void)logLaunchAtLoginErrorForOperation:(NSString *)operation error:(NSError *)error {
+    NSString *domain = error.domain ?: @"unknown";
+    NSString *description = error.localizedDescription ?: @"unknown";
+    NSLog(@"[HoverClick] Launch at Login %@ failed domain=%@ code=%ld description=%@",
+          operation ?: @"operation",
+          domain,
+          (long)error.code,
+          description);
+}
+
+#if HOVERCLICK_HAS_SERVICE_MANAGEMENT
+- (NSString *)launchAtLoginStatusDescription:(SMAppServiceStatus)status {
+    if (@available(macOS 13.0, *)) {
+        switch (status) {
+            case SMAppServiceStatusNotRegistered:
+                return @"not registered";
+            case SMAppServiceStatusEnabled:
+                return @"enabled";
+            case SMAppServiceStatusRequiresApproval:
+                return @"requires approval";
+            case SMAppServiceStatusNotFound:
+                return @"not found";
+        }
+    }
+
+    return @"unavailable";
+}
+#endif
+
+- (void)updateLaunchAtLoginMenuItem {
+    if (self.launchAtLoginItem == nil) {
+        return;
+    }
+
+    self.launchAtLoginItem.title = @"Launch at Login";
+
+#if HOVERCLICK_HAS_SERVICE_MANAGEMENT
+    if (@available(macOS 13.0, *)) {
+        SMAppService *service = SMAppService.mainAppService;
+        SMAppServiceStatus status = service.status;
+        NSString *statusDescription = [self launchAtLoginStatusDescription:status];
+
+        self.launchAtLoginItem.enabled = YES;
+        self.launchAtLoginItem.toolTip = [NSString stringWithFormat:@"ServiceManagement status: %@", statusDescription];
+
+        switch (status) {
+            case SMAppServiceStatusEnabled:
+                self.launchAtLoginItem.state = NSControlStateValueOn;
+                break;
+            case SMAppServiceStatusRequiresApproval:
+                self.launchAtLoginItem.state = NSControlStateValueMixed;
+                break;
+            case SMAppServiceStatusNotRegistered:
+            case SMAppServiceStatusNotFound:
+                self.launchAtLoginItem.state = NSControlStateValueOff;
+                break;
+        }
+
+        [self logLaunchAtLoginStatus:statusDescription force:NO];
+        return;
+    }
+#endif
+
+    self.launchAtLoginItem.enabled = NO;
+    self.launchAtLoginItem.state = NSControlStateValueOff;
+    self.launchAtLoginItem.toolTip = @"Launch at Login requires macOS 13 or later.";
+    [self logLaunchAtLoginStatus:@"unavailable on this macOS version" force:NO];
 }
 
 - (BOOL)accessibilityTrusted {
@@ -278,7 +391,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         [self removeEventTap];
     }
 
-    CGEventMask mask = CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventMouseMoved);
+    CGEventMask mask = CGEventMaskBit(kCGEventLeftMouseDown) |
+                       CGEventMaskBit(kCGEventRightMouseDown);
+    HoverClickLog("HoverClick: event tap mask=0x%llx leftMouseDown=YES rightMouseDown=YES mouseMoved=NO scroll=NO",
+                  (unsigned long long)mask);
     _eventTap = CGEventTapCreate(kCGHIDEventTap,
                                  kCGHeadInsertEventTap,
                                  kCGEventTapOptionDefault,
@@ -316,7 +432,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 - (void)removeEventTap {
     if (_eventTap == NULL && _eventTapSource == NULL && !_eventTapInstalled) {
         HoverClickLog("HoverClick: event tap remove requested but no active tap");
-        _hoverGeneration++;
         [self updateMenuTitles];
         return;
     }
@@ -341,7 +456,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     _eventTapInstalled = NO;
-    _hoverGeneration++;
     [self updateMenuTitles];
 }
 
@@ -396,26 +510,70 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self installEventTap];
 }
 
-- (void)toggleHoverFocus:(id)sender {
-    (void)sender;
-    _hoverFocusEnabled = !_hoverFocusEnabled;
-    [[NSUserDefaults standardUserDefaults] setBool:_hoverFocusEnabled forKey:HoverClickHoverFocusDefaultsKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-
-    if (!_hoverFocusEnabled) {
-        _hoverGeneration++;
-        _hasLatestHoverPoint = NO;
-    }
-
-    HoverClickLog("HoverClick: hover focus %s", _hoverFocusEnabled ? "enabled" : "disabled");
-    [self updateMenuTitles];
-}
-
 - (void)toggleClickToFocus:(id)sender {
     (void)sender;
     _clickToFocusEnabled = !_clickToFocusEnabled;
-    HoverClickLog("HoverClick: click-to-focus %s", _clickToFocusEnabled ? "enabled" : "disabled");
-    [self setLastClickResult:_clickToFocusEnabled ? @"Click-to-Focus Enabled" : @"Click-to-Focus Disabled"];
+    HoverClickLog("HoverClick: left click focus %s", _clickToFocusEnabled ? "enabled" : "disabled");
+    [self setLastClickResult:_clickToFocusEnabled ? @"Left Click Focus Enabled" : @"Left Click Focus Disabled"];
+    [self updateMenuTitles];
+}
+
+- (void)toggleRightClickFocus:(id)sender {
+    (void)sender;
+    _rightClickFocusEnabled = !_rightClickFocusEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:_rightClickFocusEnabled forKey:HoverClickRightClickFocusDefaultsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+
+    HoverClickLog("HoverClick: right click focus %s", _rightClickFocusEnabled ? "enabled" : "disabled");
+    [self setLastClickResult:_rightClickFocusEnabled ? @"Right Click Focus Enabled" : @"Right Click Focus Disabled"];
+    [self updateMenuTitles];
+}
+
+- (void)toggleHoverClickAssist:(id)sender {
+    (void)sender;
+    _hoverClickAssistEnabled = !_hoverClickAssistEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:_hoverClickAssistEnabled forKey:HoverClickHoverClickAssistDefaultsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+
+    HoverClickLog("HoverClick: Experimental Hover Click Assist %s", _hoverClickAssistEnabled ? "enabled" : "disabled");
+    HoverClickLog("HoverClick: Experimental Hover Click Assist %s: no assist path scheduled",
+                  _hoverClickAssistEnabled ? "ON" : "OFF");
+    [self setLastClickResult:_hoverClickAssistEnabled ? @"Experimental Assist Enabled" : @"Experimental Assist Disabled"];
+    [self updateMenuTitles];
+}
+
+- (void)toggleLaunchAtLogin:(id)sender {
+    (void)sender;
+
+#if HOVERCLICK_HAS_SERVICE_MANAGEMENT
+    if (@available(macOS 13.0, *)) {
+        SMAppService *service = SMAppService.mainAppService;
+        SMAppServiceStatus status = service.status;
+        NSString *statusDescription = [self launchAtLoginStatusDescription:status];
+        NSError *error = nil;
+
+        HoverClickLog("HoverClick: Launch at Login toggle requested currentStatus=%s", statusDescription.UTF8String);
+
+        if (status == SMAppServiceStatusEnabled || status == SMAppServiceStatusRequiresApproval) {
+            if ([service unregisterAndReturnError:&error]) {
+                HoverClickLog("HoverClick: Launch at Login unregister succeeded");
+            } else {
+                [self logLaunchAtLoginErrorForOperation:@"unregister" error:error];
+            }
+        } else {
+            if ([service registerAndReturnError:&error]) {
+                HoverClickLog("HoverClick: Launch at Login register succeeded");
+            } else {
+                [self logLaunchAtLoginErrorForOperation:@"register" error:error];
+            }
+        }
+
+        [self updateMenuTitles];
+        return;
+    }
+#endif
+
+    HoverClickLog("HoverClick: Launch at Login unavailable; requires macOS 13 or later");
     [self updateMenuTitles];
 }
 
@@ -438,8 +596,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         self.eventTapItem.title = @"Event Tap: Disabled";
     }
 
-    self.hoverFocusItem.title = _hoverFocusEnabled ? @"Hover Focus: On" : @"Hover Focus: Off";
-    self.clickToFocusItem.title = _clickToFocusEnabled ? @"Click-to-Focus: Enabled" : @"Click-to-Focus: Disabled";
+    self.clickToFocusItem.title = _clickToFocusEnabled ? @"Left Click Focus: On" : @"Left Click Focus: Off";
+    self.rightClickFocusItem.title = @"Right Click Focus";
+    self.rightClickFocusItem.state = _rightClickFocusEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.hoverClickAssistItem.title = _hoverClickAssistEnabled ? @"Experimental Hover Click Assist: On" : @"Experimental Hover Click Assist: Off";
+    [self updateLaunchAtLoginMenuItem];
     self.verboseItem.title = _verboseDiagnostics ? @"Verbose Diagnostics: On" : @"Verbose Diagnostics: Off";
 
     NSString *result = _lastClickResult ?: @"None";
@@ -479,15 +640,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
-    [self diagnosticLog:"HoverClick: click #%llu received raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
+    [self diagnosticLog:"HoverClick: click #%llu received leftClickFocus=%s experimentalHoverClickAssist=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
                         clickID,
+                        _clickToFocusEnabled ? "ON" : "OFF",
+                        _hoverClickAssistEnabled ? "ON" : "OFF",
                         rawPoint.x,
                         rawPoint.y,
                         axPoint.x,
                         axPoint.y];
 
     if (!_clickToFocusEnabled) {
-        HoverClickLog("HoverClick: click #%llu click-to-focus disabled; event passed through", clickID);
+        HoverClickLog("HoverClick: click #%llu left click focus disabled; event passed through", clickID);
         [self setLastClickResult:@"Disabled"];
         return;
     }
@@ -503,64 +666,42 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CFRelease(element);
 }
 
-- (void)handleMouseMoved:(CGEventRef)event {
-    if (!_hoverFocusEnabled || !_eventTapInstalled || event == NULL) {
+- (void)handleRightMouseDown:(CGEventRef)event {
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    if (now - _lastRightMouseDownLogTime < 0.02) {
         return;
     }
+    _lastRightMouseDownLogTime = now;
+    _clickSequence++;
+    uint64_t clickID = _clickSequence;
 
     CGPoint rawPoint = CGEventGetLocation(event);
-    if (_hasLatestHoverPoint && [self distanceFromPoint:rawPoint toPoint:_latestHoverPoint] < HoverClickHoverMovementTolerance) {
+    CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
+    [self diagnosticLog:"HoverClick: right-click #%llu received rightClickFocus=%s leftClickFocus=%s experimentalHoverClickAssist=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
+                        clickID,
+                        _rightClickFocusEnabled ? "ON" : "OFF",
+                        _clickToFocusEnabled ? "ON" : "OFF",
+                        _hoverClickAssistEnabled ? "ON" : "OFF",
+                        rawPoint.x,
+                        rawPoint.y,
+                        axPoint.x,
+                        axPoint.y];
+
+    if (!_rightClickFocusEnabled) {
+        HoverClickLog("HoverClick: right-click #%llu right click focus disabled; event passed through", clickID);
+        [self setLastClickResult:@"Right Click Disabled"];
         return;
     }
-
-    _hasLatestHoverPoint = YES;
-    _latestHoverPoint = rawPoint;
-    _hoverGeneration++;
-    uint64_t generation = _hoverGeneration;
-    CGPoint scheduledPoint = rawPoint;
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(HoverClickHoverDelaySeconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (generation != self->_hoverGeneration ||
-            !self->_hoverFocusEnabled ||
-            !self->_eventTapInstalled ||
-            !self->_hasLatestHoverPoint) {
-            return;
-        }
-
-        if ([self distanceFromPoint:scheduledPoint toPoint:self->_latestHoverPoint] > HoverClickHoverMovementTolerance) {
-            return;
-        }
-
-        [self performHoverFocusAtPoint:scheduledPoint];
-    });
-}
-
-- (void)performHoverFocusAtPoint:(CGPoint)rawPoint {
-    _hoverSequence++;
-    uint64_t hoverID = _hoverSequence;
-    CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
-
-    HoverClickLog("HoverClick: hover #%llu candidate raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
-                  hoverID,
-                  rawPoint.x,
-                  rawPoint.y,
-                  axPoint.x,
-                  axPoint.y);
 
     AXUIElementRef element = [self copyElementAtAccessibilityPoint:axPoint];
     if (element == NULL) {
-        HoverClickLog("HoverClick: hover #%llu ignored reason=no-ax-element", hoverID);
+        HoverClickLog("HoverClick: right-click #%llu AX element not found at x=%.1f, y=%.1f; event passed through", clickID, axPoint.x, axPoint.y);
+        [self setLastClickResult:@"No AX Element"];
         return;
     }
 
-    [self handleResolvedElement:element rawPoint:rawPoint axPoint:axPoint sequenceID:hoverID trigger:"hover"];
+    [self handleResolvedElement:element rawPoint:rawPoint axPoint:axPoint sequenceID:clickID trigger:"right-click"];
     CFRelease(element);
-}
-
-- (CGFloat)distanceFromPoint:(CGPoint)a toPoint:(CGPoint)b {
-    CGFloat dx = a.x - b.x;
-    CGFloat dy = a.y - b.y;
-    return sqrt((dx * dx) + (dy * dy));
 }
 
 - (CGPoint)accessibilityPointForEventPoint:(CGPoint)eventPoint {
@@ -650,12 +791,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
-    if (strcmp(trigger, "hover") == 0 && [self shouldSkipRepeatedHoverForPid:targetPid appName:appName windowTitle:windowTitle]) {
-        HoverClickLog("HoverClick: hover #%llu ignored reason=same-target-repeat app=%s pid=%d", sequenceID, appName.UTF8String, targetPid);
-        CFRelease(targetWindow);
-        return;
-    }
-
     [self focusTargetApp:targetApp
                      pid:targetPid
                  appName:appName
@@ -665,21 +800,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
               sequenceID:sequenceID
                  trigger:trigger];
     CFRelease(targetWindow);
-}
-
-- (BOOL)shouldSkipRepeatedHoverForPid:(pid_t)targetPid appName:(NSString *)appName windowTitle:(NSString *)windowTitle {
-    NSString *targetKey = [NSString stringWithFormat:@"%d:%@:%@", targetPid, appName ?: @"", windowTitle ?: @""];
-    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-
-    if (_lastHoverTargetKey != nil &&
-        [_lastHoverTargetKey isEqualToString:targetKey] &&
-        now - _lastHoverFocusTime < HoverClickHoverRepeatIntervalSeconds) {
-        return YES;
-    }
-
-    _lastHoverTargetKey = targetKey;
-    _lastHoverFocusTime = now;
-    return NO;
 }
 
 - (BOOL)shouldIgnoreRole:(NSString *)role appName:(NSString *)appName targetPid:(pid_t)targetPid point:(CGPoint)point {
@@ -783,75 +903,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   (frontAfter.localizedName ?: @"unknown").UTF8String,
                   frontAfter.processIdentifier);
 
-    [self setLastClickResult:frontImmediate ? @"Succeeded" : @"Verify Pending"];
+    [self setLastClickResult:frontImmediate ? @"Succeeded" : @"Verify Failed"];
     HoverClickLog("HoverClick: %s #%llu event passed through", trigger, sequenceID);
 
-    if (_pendingDelayedVerifications >= 8) {
-        HoverClickLog("HoverClick: %s #%llu delayed verify skipped; pending limit reached", trigger, sequenceID);
+    if (!_hoverClickAssistEnabled) {
+        HoverClickLog("HoverClick: Experimental Hover Click Assist OFF: no assist path scheduled");
         return;
     }
 
-    _pendingDelayedVerifications++;
-    _latestVerificationSequence++;
-    uint64_t verifyToken = _latestVerificationSequence;
-    AXUIElementRef retainedWindow = targetWindow != NULL ? (AXUIElementRef)CFRetain(targetWindow) : NULL;
-    pid_t verifyPid = targetPid;
-    NSString *verifyAppName = [appName copy];
-    uint64_t verifySequenceID = sequenceID;
-    NSString *verifyTrigger = [NSString stringWithUTF8String:trigger];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (self->_pendingDelayedVerifications > 0) {
-            self->_pendingDelayedVerifications--;
-        }
-
-        NSRunningApplication *targetStillRunning = [NSRunningApplication runningApplicationWithProcessIdentifier:verifyPid];
-        if (targetStillRunning == nil) {
-            HoverClickLog("HoverClick: %s #%llu delayed verify stale target=%s pid=%d appExited=YES",
-                          verifyTrigger.UTF8String,
-                          verifySequenceID,
-                          verifyAppName.UTF8String,
-                          verifyPid);
-            if (retainedWindow != NULL) {
-                CFRelease(retainedWindow);
-            }
-            return;
-        }
-
-        NSRunningApplication *delayedFront = [NSWorkspace sharedWorkspace].frontmostApplication;
-        BOOL delayedFrontMatches = delayedFront.processIdentifier == verifyPid;
-        BOOL newerClickOccurred = self->_latestVerificationSequence != verifyToken;
-
-        BOOL focusedWindowMatches = NO;
-        if (retainedWindow != NULL) {
-            AXUIElementRef verifyAppElement = AXUIElementCreateApplication(verifyPid);
-            if (verifyAppElement != NULL) {
-                CFTypeRef focusedWindowValue = NULL;
-                AXError focusedWindowRead = AXUIElementCopyAttributeValue(verifyAppElement,
-                                                                          kAXFocusedWindowAttribute,
-                                                                          &focusedWindowValue);
-                if (focusedWindowRead == kAXErrorSuccess && focusedWindowValue != NULL) {
-                    if (CFGetTypeID(focusedWindowValue) == AXUIElementGetTypeID()) {
-                        focusedWindowMatches = CFEqual(focusedWindowValue, retainedWindow);
-                    }
-                    CFRelease(focusedWindowValue);
-                }
-                CFRelease(verifyAppElement);
-            }
-        }
-
-        HoverClickLog("HoverClick: %s #%llu delayed verify target=%s pid=%d frontApp=%s focusedWindow=%s newerClick=%s",
-                      verifyTrigger.UTF8String,
-                      verifySequenceID,
-                      verifyAppName.UTF8String,
-                      verifyPid,
-                      delayedFrontMatches ? "YES" : "NO",
-                      focusedWindowMatches ? "YES" : "NO",
-                      newerClickOccurred ? "YES" : "NO");
-
-        if (retainedWindow != NULL) {
-            CFRelease(retainedWindow);
-        }
-    });
+    HoverClickLog("HoverClick: Experimental Hover Click Assist ON: placeholder no-op; no assist path scheduled");
 }
 
 - (AXUIElementRef)copyWindowForElement:(AXUIElementRef)element {
