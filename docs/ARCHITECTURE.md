@@ -60,11 +60,17 @@ Stable Left Click Focus is the normal behavior and defaults ON. It focuses, rais
 
 Right Click Focus is an independent trigger and defaults OFF. It persists under `rightClickFocusEnabled`; when OFF, right-click events are returned unchanged without running the focus path. When ON, right-clicking a valid background window uses the same target-window filters, app activation, AX frontmost, `AXRaise`, and immediate verification path as Left Click Focus, then returns the original right-click event unchanged so context menus remain normal.
 
-Experimental Hover Click Assist is a separate menu toggle and feature flag. It defaults OFF, persists under `hoverClickAssistEnabled`, and is independent from Left Click Focus and Right Click Focus. In this checkpoint it is an explicit no-op placeholder: ON or OFF, it does not schedule delayed verification, synthesize clicks, move the cursor, post replacement mouse events, or observe mouse movement. While OFF, HoverClick logs that no assist path was scheduled.
+Experimental Hover Click Assist is a separate feature flag under the `Hover` submenu. It defaults OFF and persists under `hoverClickAssistEnabled`, but the submenu and child toggle are enabled only while Left Click Focus is on. Turning Left Click Focus off does not overwrite the stored Hover Click Assist preference; turning Left Click Focus back on restores the previous checked or unchecked state. The effective assist state is `leftClickFocusEnabled && hoverClickAssistEnabled`. In this checkpoint it is an explicit no-op placeholder: ON or OFF, it does not schedule delayed verification, synthesize clicks, move the cursor, post replacement mouse events, or observe mouse movement. While effectively OFF, HoverClick logs that no assist path was scheduled.
 
 ## OS Integration
 
 Launch at Login is a menubar-only integration that uses `SMAppService.mainAppService` on macOS 13 and newer. It registers or unregisters the main app as the login item; no helper app is bundled, and the toggle does not change event tap, focus, hover assist, Accessibility, signing, or bundle identity behavior.
+
+The status menu starts with one non-clickable custom header row: `HoverClick` on the left and `v<short-version> (<build>)` on the right. The version label reads from `CFBundleShortVersionString` and `CFBundleVersion` in the main bundle at runtime, with generic fallbacks only for malformed bundle metadata. The header tooltip is a one-sentence summary of the current version.
+
+Feature toggles use stable titles with native macOS checked/unchecked menu item state rather than appending `On` or `Off` to the title. Left Click Focus and Right Click Focus stay at the top level. Hover-related controls live under the `Hover` submenu, which is disabled when Left Click Focus is off. Permission and login/startup items live under the `Permissions & Startup` submenu to keep the top-level menu compact; that submenu ends with `Open Accessibility Settings` as an explicit user-click action. Submenu parent items do not carry tooltips, while child status/action items keep specific native `NSMenuItem` tooltip/help text. Technical runtime details such as click detection state and last handled action are not persistent menu rows; they are available through `Diagnostics` > `Copy Diagnostics Summary`. Custom tracking loops, focus-stealing help windows, hover timing controls, or hover event monitors should remain separate future work if native menu tooltips prove insufficient.
+
+Intentional shipped behavior or UI changes should bump `CFBundleShortVersionString` and `CFBundleVersion`. Git checkpoint-only tasks, read-only audits, and docs-only tasks should not bump the visible app version unless they affect shipped behavior or UI.
 
 ## Phase 4: DMG
 
@@ -74,12 +80,12 @@ Package the app for normal local installation and distribution after the identit
 
 Scroll Focus is a planned future trigger type, but it is not part of this stabilization pass. It should be implemented only after the stable click core has been confirmed.
 
-Future menus should expose independent toggles for each trigger/action type:
+Future menus should expose controls for each trigger/action type:
 
 - Left Click Focus
 - Right Click Focus
 - Scroll Focus
-- Experimental Hover Click Assist
+- Hover > Hover Click Assist
 
 Until a scroll phase is deliberately started, the event tap should continue to observe only the current stable click inputs: `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`.
 
