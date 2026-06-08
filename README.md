@@ -4,6 +4,23 @@ HoverClick is a menubar-only macOS utility that focuses a background window imme
 
 HoverClick focuses a background window immediately before your left or right click is delivered, then passes your original click through unchanged.
 
+HoverClick is currently published as a GitHub/source-first open-source macOS utility. A notarized public binary release is not available yet.
+
+## Current Distribution Model
+
+Current:
+
+- GitHub source repository.
+- Build locally from source.
+- Internal/test DMG packaging for development and local testing.
+
+Not current:
+
+- Notarized public DMG.
+- Developer ID signed public binary.
+- Mac App Store release.
+- Signed `.pkg` installer.
+
 ## What It Does
 
 - Lets a left click focus a background window before the click continues.
@@ -41,13 +58,17 @@ HoverClick also does not synthesize clicks, move the cursor, move windows, resiz
 
 ## Installation And First Launch
 
-1. Build or obtain `HoverClick.app`.
-2. Put `HoverClick.app` in Applications or another stable location.
-3. Launch `HoverClick.app`.
+The recommended current path is to build HoverClick locally from the GitHub source repository:
+
+1. Clone the repository.
+2. Build the signed app bundle with `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/build-app.sh`.
+3. Launch the signed `.app` bundle with `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh`.
 4. Look for the HoverClick status item in the menu bar.
-5. Open the HoverClick menu and complete Accessibility setup.
+5. Open the HoverClick menu and grant Accessibility permission through System Settings.
 
 Always run HoverClick as `HoverClick.app`. Do not run the raw binary inside the app bundle, because Accessibility permission belongs to the signed app bundle identity.
+
+Because HoverClick does not currently have a Developer ID signed and notarized public binary release, do not expect a polished double-click installer flow for every Mac yet.
 
 ## Accessibility Permission Setup
 
@@ -86,7 +107,7 @@ Do not reset macOS privacy databases for normal setup. Permission should be mana
 - `Right Click Focus` is off by default because users may prefer the default macOS context-menu behavior on background windows.
 - `Hover Click Assist` is visible but experimental and currently inert.
 - HoverClick does not add Scroll Focus. macOS already supports background scrolling in many apps, and HoverClick currently observes only left and right mouse-down triggers.
-- Internal Apple Development signed DMG packaging is available for test builds. It is not Developer ID signed or notarized.
+- Internal/test Apple Development signed DMG packaging is available for local testing. It is not Developer ID signed, not notarized, and not a polished public installer.
 
 ## Troubleshooting
 
@@ -146,16 +167,16 @@ Verify the built app:
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/verify-app.sh
 ```
 
-Create an internal test DMG:
+Create an internal/test Apple Development signed DMG:
 
 ```sh
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/package-dmg.sh
 ```
 
-The DMG workflow builds and verifies the existing signed app bundle, then writes an ignored artifact under `dist/`. It does not notarize the app.
+The internal/test DMG workflow builds and verifies the existing Apple Development signed app bundle, then writes an ignored artifact under `dist/`. It is useful for local/internal testing only; it is not notarized and is not a polished public installer.
 
 For development workflow details, see `docs/DEVELOPMENT.md`.
 
 ## License
 
-No license file is included yet. Treat the project as unreleased unless a license is added.
+No license file is included yet. The source-first GitHub distribution should add one before broader public reuse is encouraged.

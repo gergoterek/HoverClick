@@ -1,15 +1,38 @@
-# Release Signing Requirements
+# Release Positioning
 
-This document records the requirements for a future public Developer ID signed and notarized HoverClick release. It is a planning document only; Developer ID signing, notarization, stapling, release packaging scripts, certificates, app identity, and Accessibility behavior are not implemented or changed here.
+This document records the current GitHub/source-first distribution model and the optional future requirements for a polished Developer ID signed and notarized HoverClick binary release. Developer ID signing, notarization, stapling, release packaging scripts, certificates, app identity, and Accessibility behavior are not implemented or changed here.
 
 ## Release Status
 
-- An internal Apple Development signed DMG exists for local testing.
-- A public Developer ID signed and notarized release is not implemented yet.
+- HoverClick is currently distributed as a GitHub/source-first macOS utility.
+- Users should build locally from source and run the signed `.app` bundle.
+- An internal/test Apple Development signed DMG exists for local/internal testing.
+- A public Developer ID signed and notarized binary release is not available yet.
+- There is no Mac App Store release and no signed `.pkg` installer.
 
-## Current Internal Packaging
+Apple Developer Program membership is not required for the current GitHub/source-first project. Membership would be needed later for a polished Developer ID signed and notarized public binary release. Because Apple Developer Program membership is not wanted right now, that binary-release path is deferred.
 
-`scripts/package-dmg.sh` is the current internal DMG packaging workflow. It builds HoverClick, verifies the signed app bundle, stages `HoverClick.app` with an `Applications` symlink, creates a compressed read-only DMG under `dist/`, and verifies the image with command-line checks.
+## Current Distribution Model
+
+Current:
+
+- GitHub source repository.
+- Build locally from source.
+- Run the signed `HoverClick.app` bundle through the project script.
+- Grant Accessibility permission through System Settings.
+- Use the internal/test DMG only for local/internal testing.
+
+Not current:
+
+- Notarized public DMG.
+- Developer ID signed public binary.
+- Mac App Store release.
+- Signed `.pkg` installer.
+- Smooth double-click install flow for every Mac.
+
+## Current Internal/Test Packaging
+
+`scripts/package-dmg.sh` is the current internal/test Apple Development signed DMG packaging workflow. It builds HoverClick, verifies the signed app bundle, stages `HoverClick.app` with an `Applications` symlink, creates a compressed read-only DMG under `dist/`, and verifies the image with command-line checks.
 
 The internal DMG filename for version `0.4.2` is:
 
@@ -23,11 +46,11 @@ This workflow uses the current Apple Development signing identity:
 Apple Development: rizsutt@gmail.com (MVQ5PX4679)
 ```
 
-The internal DMG is for testing. It is not a Developer ID signed, notarized, stapled, public release artifact.
+This is an internal/test DMG. It is Apple Development signed, not Developer ID signed, not notarized, not stapled, not a polished public installer, and not the main public release artifact.
 
-## Public Release Requirements
+## Optional Future Binary Release Requirements
 
-A future public release needs:
+A future polished public binary release would need:
 
 - Apple Developer Program membership.
 - A Developer ID Application certificate installed and available for code signing.
@@ -38,6 +61,8 @@ A future public release needs:
 - Team ID.
 - A separate release packaging script added in a future task.
 - A separate clean test environment for first-launch Accessibility testing.
+
+This work is deferred. Do not add Developer ID signing, notarization, stapling, release packaging, signing identity changes, or app identity changes until that future path is explicitly chosen.
 
 ## Certificate Checklist
 
@@ -65,6 +90,8 @@ Do not recommend `tccutil reset` as a normal troubleshooting or release step. Do
 
 ## Recommended Future Release Flow
 
+Only use this flow if the Developer ID/notarization path is explicitly resumed later.
+
 1. Keep the internal DMG workflow stable.
 2. Add Developer ID release packaging on a separate branch.
 3. Keep internal and release packaging scripts separate.
@@ -74,11 +101,46 @@ Do not recommend `tccutil reset` as a normal troubleshooting or release step. Do
 7. Staple the notarization ticket.
 8. Validate on a clean user account, VM, or separate Mac.
 9. Test first launch and Accessibility permission grant behavior.
-10. Create a GitHub Release only after clean-environment validation passes.
+10. Create a binary GitHub Release only after clean-environment validation passes.
+
+## GitHub Source-First Release Draft
+
+This draft is for a possible GitHub release entry. Do not create a release from this document automatically.
+
+```text
+HoverClick v0.4.2
+
+HoverClick is currently a source-first macOS utility published through GitHub. A notarized public binary release is not available yet.
+
+Current release path:
+- Clone the repository.
+- Build locally from source.
+- Run the signed HoverClick.app bundle.
+- Grant Accessibility permission through System Settings.
+
+Stable features:
+- Left Click Focus defaults on.
+- Right Click Focus defaults off.
+- Launch at Login is available on supported macOS versions.
+- The status menu includes Hover, Permissions & Startup, Diagnostics, and Copy Diagnostics Summary.
+
+Safety and scope:
+- Accessibility permission is required.
+- No mouse-move focus.
+- No synthetic clicks.
+- No cursor movement.
+- No CGEventPost.
+- No CGDisplayMoveCursorToPoint.
+
+Packaging note:
+- If HoverClick-0.4.2-internal.dmg is attached later, it is an internal/test DMG.
+- The internal/test DMG is Apple Development signed.
+- The internal/test DMG is not notarized and is not a polished public installer.
+```
 
 ## Future Script Naming
 
-`scripts/package-dmg.sh` should remain the internal Apple Development packaging workflow.
+`scripts/package-dmg.sh` should remain the internal/test Apple Development signed DMG packaging workflow. It should not notarize, staple, or become a polished public installer.
 
 A future task may add:
 
@@ -86,7 +148,7 @@ A future task may add:
 scripts/package-release-dmg.sh
 ```
 
-That future script may handle Developer ID signing, release DMG creation, notarization submission, and stapling.
+That future script may handle Developer ID signing, release DMG creation, notarization submission, and stapling if the optional future binary-release path is resumed.
 
 Future public release DMGs should use this filename pattern:
 
@@ -113,10 +175,12 @@ HoverClick-<version>-release.dmg
 
 ## Next Recommended Task
 
-The next implementation task should be:
+There is no Developer ID/notarization implementation task recommended for the current GitHub/source-first release path.
+
+If a polished public binary release becomes a priority later, the next implementation task would be:
 
 ```text
 Add Developer ID Release Packaging Script
 ```
 
-Do that only after the Developer ID Application certificate and notarization credential plan are available.
+Do that only after Apple Developer Program membership, the Developer ID Application certificate, and the notarization credential plan are available.

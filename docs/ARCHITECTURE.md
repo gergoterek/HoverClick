@@ -76,7 +76,11 @@ Intentional shipped behavior or UI changes should bump `CFBundleShortVersionStri
 
 ## Distribution Packaging
 
-Package the app for normal local installation and distribution after the identity and runtime behavior are stable.
+HoverClick is currently distributed as a GitHub/source-first macOS utility: clone the repository, build locally from source, run the signed `HoverClick.app` bundle, and grant Accessibility permission through System Settings.
+
+`scripts/package-dmg.sh` is only an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a polished public installer.
+
+Developer ID signing, notarization, stapling, a Mac App Store release, and a signed `.pkg` installer are not part of the current architecture. They remain optional future distribution work.
 
 ## Trigger Scope
 
