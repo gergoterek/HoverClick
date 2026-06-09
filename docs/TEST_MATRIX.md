@@ -2,6 +2,7 @@
 
 | Test | Method | Expected Result |
 | --- | --- | --- |
+| Release test plan is completed | Follow `docs/RELEASE_TEST.md` before tagging or publishing a source-first release candidate. | Manual release, Accessibility, focus, menu, diagnostics, Launch at Login, internal DMG, and performance sanity checks are complete or documented with clear exceptions. |
 | App launches as `.app` | Manual Finder UI validation — not run automatically. Run `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended. | The app is opened through `HoverClick.app`, not the raw binary. |
 | Exactly one instance runs | Manual Finder UI validation — not run automatically. Run `scripts/run-app.sh` only when a manual UI test is intended, then run `scripts/verify-app.sh`. | Verification reports exactly one HoverClick process. |
 | Menubar icon is clear and balanced | Manual Finder UI validation — not run automatically. Compare the HoverClick menu bar status item with nearby native status items after relaunch. | The `cursorarrow.click` template icon is slightly smaller than the previous 17 pt version, still clearer than the original tiny icon, vertically aligned, and not clipped, blurry, or stretched. |

@@ -32,6 +32,8 @@ CI currently runs static safety checks only. The workflow checks repository text
 
 CI does not build, sign, package, launch, notarize, use Apple credentials, or change macOS permissions. Local signed build and verification work remains handled by the local project scripts.
 
+Manual release and performance validation is local. Use `docs/RELEASE_TEST.md` before tagging or publishing a source-first release candidate.
+
 ## Internal DMG Packaging
 
 Create an internal/test Apple Development signed DMG with:
