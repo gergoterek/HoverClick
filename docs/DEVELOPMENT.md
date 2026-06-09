@@ -26,6 +26,12 @@ The checkpoint script refuses generated artifacts such as `HoverClick.app/`, `De
 
 Do not merge task branches into `main` automatically.
 
+## Continuous Integration
+
+CI currently runs static safety checks only. The workflow checks repository text, stable event tap scope, the bundle identifier, script syntax, generated artifact tracking, and documentation safety wording.
+
+CI does not build, sign, package, launch, notarize, use Apple credentials, or change macOS permissions. Local signed build and verification work remains handled by the local project scripts.
+
 ## Internal DMG Packaging
 
 Create an internal/test Apple Development signed DMG with:

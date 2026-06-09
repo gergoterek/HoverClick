@@ -1,0 +1,19 @@
+name: Safety Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - ci-safety-checks
+
+jobs:
+  safety-checks:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run safety checks
+        run: /bin/zsh scripts/ci-safety-check.sh
