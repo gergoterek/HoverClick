@@ -124,7 +124,3 @@ For development workflow details, see `docs/DEVELOPMENT.md`.
 2. If enabled, turn off `Launch at Login`.
 3. Remove `HoverClick.app` from Applications or wherever you placed it.
 4. If desired, remove HoverClick from Accessibility privacy settings manually in System Settings.
-
-## License
-
-No license file is included yet.
