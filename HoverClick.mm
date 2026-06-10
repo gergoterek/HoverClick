@@ -164,6 +164,8 @@ static const char *HoverClickAXErrorName(AXError error) {
     CFRunLoopSourceRef _eventTapSource;
     CFAbsoluteTime _lastMouseDownLogTime;
     CFAbsoluteTime _lastRightMouseDownLogTime;
+    CFAbsoluteTime _lastRightClickFocusTime;
+    pid_t _lastRightClickFocusPid;
     uint64_t _clickSequence;
     NSString *_lastClickResult;
     NSString *_lastLaunchAtLoginStatusDescription;
@@ -214,6 +216,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _eventTapSource = NULL;
     _lastMouseDownLogTime = 0;
     _lastRightMouseDownLogTime = 0;
+    _lastRightClickFocusTime = 0;
+    _lastRightClickFocusPid = 0;
     _clickSequence = 0;
     _lastClickResult = @"None";
     _lastLaunchAtLoginStatusDescription = nil;
@@ -1044,6 +1048,22 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
+    NSRunningApplication *frontApp = [NSWorkspace sharedWorkspace].frontmostApplication;
+    BOOL targetIsFrontmost = frontApp != nil && frontApp.processIdentifier == targetPid;
+    if (targetIsFrontmost) {
+        BOOL afterRecentRightClickFocus = (strcmp(trigger, "click") == 0 &&
+                                           _lastRightClickFocusPid == targetPid &&
+                                           CFAbsoluteTimeGetCurrent() - _lastRightClickFocusTime < 5.0);
+        HoverClickLog("HoverClick: %s #%llu ignored reason=already-frontmost pid=%d app=%s recentRightClickFocus=%s; event passed through",
+                      trigger,
+                      sequenceID,
+                      targetPid,
+                      appName.UTF8String,
+                      afterRecentRightClickFocus ? "YES" : "NO");
+        [self setLastClickResult:@"Already Frontmost"];
+        return;
+    }
+
     if ([self shouldIgnoreRole:role appName:appName targetPid:targetPid point:axPoint]) {
         HoverClickLog("HoverClick: %s #%llu ignored reason=menu-role role=%s app=%s; event passed through", trigger, sequenceID, role.UTF8String, appName.UTF8String);
         [self setLastClickResult:@"Ignored Menu/UI"];
@@ -1186,6 +1206,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   frontAfter.processIdentifier);
 
     [self setLastClickResult:frontImmediate ? @"Succeeded" : @"Verify Failed"];
+    if (frontImmediate && strcmp(trigger, "right-click") == 0) {
+        _lastRightClickFocusPid = targetPid;
+        _lastRightClickFocusTime = CFAbsoluteTimeGetCurrent();
+    }
     HoverClickLog("HoverClick: %s #%llu event passed through", trigger, sequenceID);
 
     if (![self isEffectiveHoverClickAssistEnabled]) {
