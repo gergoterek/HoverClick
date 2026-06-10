@@ -7,8 +7,8 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick` with `v0.4.2` on the same row
-- Bundle short version/build version: `0.4.2` / `28`
+- Visible menu header: `HoverClick` with `v0.4.3` on the same row
+- Bundle short version/build version: `0.4.3` / `29`
 
 ## Commands
 
@@ -100,7 +100,7 @@ Manual Finder UI validation -- not run automatically.
 
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
-- Confirm the status menu shows `HoverClick` and `v0.4.2` on the same header row.
+- Confirm the status menu shows `HoverClick` and `v0.4.3` on the same header row.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
 - Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.
