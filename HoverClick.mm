@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 static NSString * const HoverClickBundleID = @"com.gergoterek.HoverClick";
+static NSString * const HoverClickFinderBundleID = @"com.apple.finder";
 static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
 static NSString * const HoverClickHoverClickAssistDefaultsKey = @"hoverClickAssistEnabled";
@@ -981,7 +982,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
-    [self handleResolvedElement:element rawPoint:rawPoint axPoint:axPoint sequenceID:clickID trigger:"right-click"];
+    CGEventFlags modifierFlags = CGEventGetFlags(event);
+    [self handleResolvedElement:element
+                       rawPoint:rawPoint
+                        axPoint:axPoint
+                     sequenceID:clickID
+                        trigger:"right-click"
+                  modifierFlags:modifierFlags];
     CFRelease(element);
 }
 
@@ -1012,10 +1019,20 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 - (void)handleResolvedElement:(AXUIElementRef)element rawPoint:(CGPoint)rawPoint axPoint:(CGPoint)axPoint clickID:(uint64_t)clickID {
-    [self handleResolvedElement:element rawPoint:rawPoint axPoint:axPoint sequenceID:clickID trigger:"click"];
+    [self handleResolvedElement:element
+                       rawPoint:rawPoint
+                        axPoint:axPoint
+                     sequenceID:clickID
+                        trigger:"click"
+                  modifierFlags:0];
 }
 
-- (void)handleResolvedElement:(AXUIElementRef)element rawPoint:(CGPoint)rawPoint axPoint:(CGPoint)axPoint sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger {
+- (void)handleResolvedElement:(AXUIElementRef)element
+                     rawPoint:(CGPoint)rawPoint
+                      axPoint:(CGPoint)axPoint
+                   sequenceID:(uint64_t)sequenceID
+                      trigger:(const char *)trigger
+                modifierFlags:(CGEventFlags)modifierFlags {
     NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:element] ?: @"unknown";
     NSString *elementTitle = [self stringAttribute:kAXTitleAttribute fromElement:element] ?: @"";
     [self diagnosticLog:"HoverClick: %s #%llu AX element found role=%s title=%s",
@@ -1092,10 +1109,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                      pid:targetPid
                  appName:appName
                   window:targetWindow
+           sourceElement:element
                  rawPoint:rawPoint
                   axPoint:axPoint
               sequenceID:sequenceID
-                 trigger:trigger];
+                 trigger:trigger
+           modifierFlags:modifierFlags];
     CFRelease(targetWindow);
 }
 
@@ -1135,10 +1154,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                    pid:(pid_t)targetPid
                appName:(NSString *)appName
                 window:(AXUIElementRef)targetWindow
+         sourceElement:(AXUIElementRef)sourceElement
                rawPoint:(CGPoint)rawPoint
                 axPoint:(CGPoint)axPoint
             sequenceID:(uint64_t)sequenceID
-               trigger:(const char *)trigger {
+               trigger:(const char *)trigger
+         modifierFlags:(CGEventFlags)modifierFlags {
     (void)rawPoint;
     (void)axPoint;
 
@@ -1205,11 +1226,18 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   (frontAfter.localizedName ?: @"unknown").UTF8String,
                   frontAfter.processIdentifier);
 
-    [self setLastClickResult:frontImmediate ? @"Succeeded" : @"Verify Failed"];
     if (frontImmediate && strcmp(trigger, "right-click") == 0) {
+        if ([self isFinderApplication:targetApp]) {
+            [self selectFinderItemForRightClickElement:sourceElement
+                                            sequenceID:sequenceID
+                                         modifierFlags:modifierFlags];
+        }
+
         _lastRightClickFocusPid = targetPid;
         _lastRightClickFocusTime = CFAbsoluteTimeGetCurrent();
     }
+
+    [self setLastClickResult:frontImmediate ? @"Succeeded" : @"Verify Failed"];
     HoverClickLog("HoverClick: %s #%llu event passed through", trigger, sequenceID);
 
     if (![self isEffectiveHoverClickAssistEnabled]) {
@@ -1223,6 +1251,329 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     HoverClickLog("HoverClick: Experimental Hover Click Assist ON: placeholder no-op; no assist path scheduled");
+}
+
+- (BOOL)isFinderApplication:(NSRunningApplication *)application {
+    if (application == nil) {
+        return NO;
+    }
+
+    NSString *bundleIdentifier = application.bundleIdentifier ?: @"";
+    return [bundleIdentifier isEqualToString:HoverClickFinderBundleID];
+}
+
+- (BOOL)modifierFlagsAllowFinderSelectionAssist:(CGEventFlags)modifierFlags {
+    CGEventFlags selectionModifierFlags = kCGEventFlagMaskShift |
+                                          kCGEventFlagMaskControl |
+                                          kCGEventFlagMaskAlternate |
+                                          kCGEventFlagMaskCommand;
+    return (modifierFlags & selectionModifierFlags) == 0;
+}
+
+- (void)selectFinderItemForRightClickElement:(AXUIElementRef)sourceElement
+                                  sequenceID:(uint64_t)sequenceID
+                               modifierFlags:(CGEventFlags)modifierFlags {
+    if (sourceElement == NULL) {
+        return;
+    }
+
+    if (![self modifierFlagsAllowFinderSelectionAssist:modifierFlags]) {
+        HoverClickLog("HoverClick: right-click #%llu Finder selection assist skipped reason=modifier-flags flags=0x%llx",
+                      sequenceID,
+                      (unsigned long long)modifierFlags);
+        return;
+    }
+
+    AXUIElementRef selectionContainer = NULL;
+    CFStringRef selectionAttribute = NULL;
+    AXUIElementRef item = [self copyFinderSelectableItemForElement:sourceElement
+                                                selectionContainer:&selectionContainer
+                                                selectionAttribute:&selectionAttribute];
+    if (item == NULL || selectionContainer == NULL || selectionAttribute == NULL) {
+        [self diagnosticLog:"HoverClick: right-click #%llu Finder selection assist skipped reason=no-file-selection-target",
+                            sequenceID];
+        if (item != NULL) {
+            CFRelease(item);
+        }
+        if (selectionContainer != NULL) {
+            CFRelease(selectionContainer);
+        }
+        return;
+    }
+
+    BOOL alreadySelected = NO;
+    if (![self finderItemIsSelected:item
+                         inContainer:selectionContainer
+                  selectionAttribute:selectionAttribute
+                            selected:&alreadySelected]) {
+        HoverClickLog("HoverClick: right-click #%llu Finder selection assist skipped reason=selection-state-unknown",
+                      sequenceID);
+        CFRelease(item);
+        CFRelease(selectionContainer);
+        return;
+    }
+
+    NSString *attributeName = (__bridge NSString *)selectionAttribute;
+    if (alreadySelected) {
+        HoverClickLog("HoverClick: right-click #%llu Finder selection assist preserved existing selection attribute=%s",
+                      sequenceID,
+                      attributeName.UTF8String);
+        CFRelease(item);
+        CFRelease(selectionContainer);
+        return;
+    }
+
+    const void *values[] = { item };
+    CFArrayRef selectedItems = CFArrayCreate(kCFAllocatorDefault,
+                                             values,
+                                             1,
+                                             &kCFTypeArrayCallBacks);
+    if (selectedItems == NULL) {
+        HoverClickLog("HoverClick: right-click #%llu Finder selection assist failed reason=array-create",
+                      sequenceID);
+        CFRelease(item);
+        CFRelease(selectionContainer);
+        return;
+    }
+
+    AXError selectionError = AXUIElementSetAttributeValue(selectionContainer,
+                                                         selectionAttribute,
+                                                         selectedItems);
+    CFRelease(selectedItems);
+
+    if (selectionError == kAXErrorSuccess) {
+        HoverClickLog("HoverClick: right-click #%llu Finder selection assist selected target attribute=%s",
+                      sequenceID,
+                      attributeName.UTF8String);
+    } else {
+        HoverClickLog("HoverClick: right-click #%llu Finder selection assist set failed error=%s attribute=%s",
+                      sequenceID,
+                      HoverClickAXErrorName(selectionError),
+                      attributeName.UTF8String);
+    }
+    CFRelease(item);
+    CFRelease(selectionContainer);
+}
+
+- (AXUIElementRef)copyFinderSelectableItemForElement:(AXUIElementRef)element
+                                 selectionContainer:(AXUIElementRef *)selectionContainer
+                                 selectionAttribute:(CFStringRef *)selectionAttribute {
+    if (selectionContainer != NULL) {
+        *selectionContainer = NULL;
+    }
+    if (selectionAttribute != NULL) {
+        *selectionAttribute = NULL;
+    }
+    if (element == NULL) {
+        return NULL;
+    }
+
+    AXUIElementRef current = (AXUIElementRef)CFRetain(element);
+    for (NSInteger depth = 0; depth < 8 && current != NULL; depth++) {
+        NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:current] ?: @"unknown";
+        if ([self finderElementHasFilename:current]) {
+            CFStringRef foundSelectionAttribute = NULL;
+            AXUIElementRef foundSelectionContainer = [self copySettableFinderSelectionContainerForItem:current
+                                                                                    selectionAttribute:&foundSelectionAttribute];
+            if (foundSelectionContainer != NULL && foundSelectionAttribute != NULL) {
+                [self diagnosticLog:"HoverClick: Finder selectable item found depth=%ld role=%s selectionAttribute=%s",
+                                    (long)depth,
+                                    role.UTF8String,
+                                    ((__bridge NSString *)foundSelectionAttribute).UTF8String];
+                if (selectionContainer != NULL) {
+                    *selectionContainer = foundSelectionContainer;
+                } else {
+                    CFRelease(foundSelectionContainer);
+                }
+                if (selectionAttribute != NULL) {
+                    *selectionAttribute = foundSelectionAttribute;
+                }
+                return current;
+            }
+
+            if (foundSelectionContainer != NULL) {
+                CFRelease(foundSelectionContainer);
+            }
+        }
+
+        if ([self roleLooksLikeWindow:role]) {
+            break;
+        }
+
+        AXUIElementRef parent = [self copyParentElementForElement:current];
+        CFRelease(current);
+        current = parent;
+    }
+
+    if (current != NULL) {
+        CFRelease(current);
+    }
+    return NULL;
+}
+
+- (BOOL)finderElementHasFilename:(AXUIElementRef)element {
+    NSString *filename = [self stringAttribute:kAXFilenameAttribute fromElement:element];
+    return filename.length > 0;
+}
+
+- (AXUIElementRef)copySettableFinderSelectionContainerForItem:(AXUIElementRef)item
+                                           selectionAttribute:(CFStringRef *)selectionAttribute {
+    if (selectionAttribute != NULL) {
+        *selectionAttribute = NULL;
+    }
+    if (item == NULL) {
+        return NULL;
+    }
+
+    NSString *itemRole = [self stringAttribute:kAXRoleAttribute fromElement:item] ?: @"";
+    BOOL preferRows = [itemRole isEqualToString:@"AXRow"];
+    CFStringRef firstAttribute = preferRows ? kAXSelectedRowsAttribute : kAXSelectedChildrenAttribute;
+    CFStringRef secondAttribute = preferRows ? kAXSelectedChildrenAttribute : kAXSelectedRowsAttribute;
+
+    AXUIElementRef current = (AXUIElementRef)CFRetain(item);
+    for (NSInteger depth = 0; depth < 8 && current != NULL; depth++) {
+        AXUIElementRef parent = [self copyParentElementForElement:current];
+        CFRelease(current);
+        current = parent;
+        if (current == NULL) {
+            return NULL;
+        }
+
+        CFStringRef candidateAttributes[] = { firstAttribute, secondAttribute };
+        for (NSUInteger index = 0; index < 2; index++) {
+            Boolean settable = false;
+            AXError settableError = AXUIElementIsAttributeSettable(current,
+                                                                   candidateAttributes[index],
+                                                                   &settable);
+            if (settableError == kAXErrorSuccess && settable) {
+                if (selectionAttribute != NULL) {
+                    *selectionAttribute = candidateAttributes[index];
+                }
+                return current;
+            }
+        }
+    }
+
+    if (current != NULL) {
+        CFRelease(current);
+    }
+    return NULL;
+}
+
+- (BOOL)finderItemIsSelected:(AXUIElementRef)item
+                 inContainer:(AXUIElementRef)selectionContainer
+          selectionAttribute:(CFStringRef)selectionAttribute
+                    selected:(BOOL *)selected {
+    BOOL known = NO;
+    BOOL isSelected = NO;
+
+    BOOL selectedAttributeValue = NO;
+    if ([self boolAttribute:kAXSelectedAttribute fromElement:item value:&selectedAttributeValue]) {
+        known = YES;
+        isSelected = selectedAttributeValue;
+    }
+
+    BOOL containedInSelection = NO;
+    if ([self element:item
+        appearsInArrayAttribute:selectionAttribute
+                      ofElement:selectionContainer
+                       contains:&containedInSelection]) {
+        known = YES;
+        isSelected = isSelected || containedInSelection;
+    }
+
+    if (selected != NULL) {
+        *selected = isSelected;
+    }
+    return known;
+}
+
+- (BOOL)element:(AXUIElementRef)element
+appearsInArrayAttribute:(CFStringRef)attribute
+      ofElement:(AXUIElementRef)container
+       contains:(BOOL *)contains {
+    if (contains != NULL) {
+        *contains = NO;
+    }
+    if (element == NULL || container == NULL || attribute == NULL) {
+        return NO;
+    }
+
+    CFTypeRef value = NULL;
+    AXError error = AXUIElementCopyAttributeValue(container, attribute, &value);
+    if (error != kAXErrorSuccess || value == NULL) {
+        return NO;
+    }
+
+    BOOL known = NO;
+    BOOL found = NO;
+    if (CFGetTypeID(value) == CFArrayGetTypeID()) {
+        known = YES;
+        CFArrayRef array = (CFArrayRef)value;
+        CFIndex count = CFArrayGetCount(array);
+        for (CFIndex index = 0; index < count; index++) {
+            CFTypeRef candidate = CFArrayGetValueAtIndex(array, index);
+            if (candidate != NULL &&
+                CFGetTypeID(candidate) == AXUIElementGetTypeID() &&
+                CFEqual(candidate, element)) {
+                found = YES;
+                break;
+            }
+        }
+    }
+
+    CFRelease(value);
+    if (contains != NULL) {
+        *contains = found;
+    }
+    return known;
+}
+
+- (BOOL)boolAttribute:(CFStringRef)attribute fromElement:(AXUIElementRef)element value:(BOOL *)outValue {
+    if (outValue != NULL) {
+        *outValue = NO;
+    }
+    if (element == NULL || attribute == NULL) {
+        return NO;
+    }
+
+    CFTypeRef value = NULL;
+    AXError error = AXUIElementCopyAttributeValue(element, attribute, &value);
+    if (error != kAXErrorSuccess || value == NULL) {
+        return NO;
+    }
+
+    BOOL known = NO;
+    BOOL result = NO;
+    if (CFGetTypeID(value) == CFBooleanGetTypeID()) {
+        known = YES;
+        result = CFBooleanGetValue((CFBooleanRef)value);
+    }
+
+    CFRelease(value);
+    if (known && outValue != NULL) {
+        *outValue = result;
+    }
+    return known;
+}
+
+- (AXUIElementRef)copyParentElementForElement:(AXUIElementRef)element {
+    if (element == NULL) {
+        return NULL;
+    }
+
+    CFTypeRef parentValue = NULL;
+    AXError parentError = AXUIElementCopyAttributeValue(element, kAXParentAttribute, &parentValue);
+    if (parentError != kAXErrorSuccess || parentValue == NULL) {
+        return NULL;
+    }
+
+    if (CFGetTypeID(parentValue) != AXUIElementGetTypeID()) {
+        CFRelease(parentValue);
+        return NULL;
+    }
+
+    return (AXUIElementRef)parentValue;
 }
 
 - (AXUIElementRef)copyWindowForElement:(AXUIElementRef)element {
