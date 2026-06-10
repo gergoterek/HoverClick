@@ -1,159 +1,100 @@
 # HoverClick
 
-HoverClick is a menubar-only macOS utility that focuses a background window immediately before your configured click is delivered.
+HoverClick gives macOS a more Windows-like click-to-focus feel.
 
-HoverClick focuses a background window immediately before your left or right click is delivered, then passes your original click through unchanged.
+When you click a background window, HoverClick focuses that window before the original click is delivered. Mouse movement alone never focuses windows. HoverClick is not AutoRaise.
 
-HoverClick is currently published as a GitHub/source-first open-source macOS utility. A notarized public binary release is not available yet.
-
-## Current Distribution Model
-
-Current:
-
-- GitHub source repository.
-- Build locally from source.
-- Internal/test DMG packaging for development and local testing.
-
-Not current:
-
-- Notarized public DMG.
-- Developer ID signed public binary.
-- Mac App Store release.
-- Signed `.pkg` installer.
-
-## What It Does
-
-- Lets a left click focus a background window before the click continues.
-- Optionally lets a right click focus a background window before the normal context menu click continues.
-- Runs from the macOS menu bar with no Dock icon.
-- Shows Accessibility permission, Launch at Login, and diagnostics from the status menu.
-- Copies a diagnostics summary that is useful when reporting issues.
-
-## What It Does Not Do
-
-HoverClick is not AutoRaise.
-
-- Moving the mouse over another window does not focus it.
-- Only configured click actions trigger focus.
-- No mouse-move hover focus is used.
-
-HoverClick also does not synthesize clicks, move the cursor, move windows, resize windows, record the screen, or upload click data.
+The original click event is passed through unchanged: no synthetic clicks, no cursor movement, no replacement events, and no hover-to-window-focus behavior.
 
 ## Features
 
-- `Left Click Focus`: on by default. A left click on a background window can focus that window before the original click is delivered.
-- `Right Click Focus`: off by default. When enabled, a right click can focus the target window before the original right-click continues, so normal context menus can still appear.
-- `Launch at Login`: starts HoverClick automatically after login on supported macOS versions.
+- `Left Click Focus`: enabled by default. Left-clicking a background window focuses it before the click continues.
+- `Right Click Focus`: disabled by default. When enabled, right-clicking a background window focuses it before the normal right-click continues.
+- `Launch at Login`: starts HoverClick automatically after login when supported by macOS.
 - `Permissions & Startup`: shows Accessibility status, Launch at Login, and an explicit `Open Accessibility Settings` action.
-- `Diagnostics`: includes `Verbose Diagnostics` and `Copy Diagnostics Summary`.
-- `Hover Click Assist`: experimental placeholder under `Hover`. It is default off, not required for normal use, and currently adds no cursor movement, synthetic clicks, delayed verification, or mouse-move focus behavior.
+- `Diagnostics`: includes `Verbose Diagnostics` and `Copy Diagnostics Summary` for issue reports.
+
+HoverClick runs from the macOS menu bar and has no Dock icon.
 
 ## Requirements
 
 - macOS 12 or later.
-- macOS Accessibility permission for click detection and window focus.
+- Accessibility permission.
 - A normally launched, signed `HoverClick.app` bundle.
 
-`Launch at Login` uses the modern ServiceManagement main-app login item API on macOS 13 and later. On older macOS versions, the menu item may be unavailable.
+Always launch HoverClick as `HoverClick.app`, not the raw executable inside the app bundle. macOS Accessibility permission belongs to the signed app bundle identity.
 
-## Installation And First Launch
+## Download And Install
 
-The recommended current path is to build HoverClick locally from the GitHub source repository:
+HoverClick is currently distributed from GitHub.
 
-1. Clone the repository.
-2. Build the signed app bundle with `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/build-app.sh`.
-3. Launch the signed `.app` bundle with `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh`.
-4. Look for the HoverClick status item in the menu bar.
-5. Open the HoverClick menu and grant Accessibility permission through System Settings.
+A macOS DMG is attached for convenience. You can also build the app locally from source.
 
-Always run HoverClick as `HoverClick.app`. Do not run the raw binary inside the app bundle, because Accessibility permission belongs to the signed app bundle identity.
+After launching HoverClick:
 
-Because HoverClick does not currently have a Developer ID signed and notarized public binary release, do not expect a polished double-click installer flow for every Mac yet.
+1. Open the HoverClick menu from the menu bar.
+2. Open `Permissions & Startup`.
+3. Choose `Open Accessibility Settings`.
+4. Enable HoverClick in macOS Accessibility privacy settings.
+5. Return to the menu and confirm `Accessibility: Granted`.
 
-## Accessibility Permission Setup
-
-1. Launch HoverClick.
-2. Open the HoverClick menu from the menu bar.
-3. Open `Permissions & Startup`.
-4. Choose `Open Accessibility Settings`.
-5. In macOS Accessibility privacy settings, enable HoverClick.
-6. If HoverClick still reports `Accessibility: Not Granted`, quit and relaunch the normal signed app bundle.
-
-Do not reset macOS privacy databases for normal setup. Permission should be managed from System Settings.
+If the app still shows `Accessibility: Not Granted`, quit HoverClick and relaunch the signed `HoverClick.app` bundle.
 
 ## How To Use
 
-- Leave `Left Click Focus` checked for the normal click-to-focus behavior.
-- Turn on `Right Click Focus` only if you want right-clicks on background windows to focus the target before the context menu opens.
-- Use `Launch at Login` if you want HoverClick to start after login.
-- Use `Diagnostics` > `Copy Diagnostics Summary` when reporting behavior that does not match expectations.
+- Keep `Left Click Focus` checked for the normal Windows-like click-to-focus behavior.
+- Enable `Right Click Focus` if you want right-clicks on background windows to focus the target before the context menu opens.
+- Enable `Launch at Login` if you want HoverClick to start automatically.
+- Use `Diagnostics` > `Copy Diagnostics Summary` when reporting a problem.
 
 ## Menu Overview
 
-- Header: shows `HoverClick` and the visible app version, such as `v0.4.2`.
 - `Left Click Focus`: toggles left-click focus behavior.
 - `Right Click Focus`: toggles right-click focus behavior.
-- `Hover` > `Hover Click Assist`: experimental placeholder, default off.
-- `Permissions & Startup` > `Accessibility`: shows whether macOS has granted Accessibility access.
-- `Permissions & Startup` > `Launch at Login`: toggles startup registration when supported.
+- `Hover` > `Hover Click Assist`: experimental placeholder. It is off by default and does not add cursor movement, synthetic clicks, delayed verification, or mouse-move focus.
+- `Permissions & Startup` > `Accessibility`: shows whether macOS has granted Accessibility permission.
+- `Permissions & Startup` > `Launch at Login`: toggles startup registration where supported.
 - `Permissions & Startup` > `Open Accessibility Settings`: opens the macOS Accessibility privacy pane when clicked.
 - `Diagnostics` > `Verbose Diagnostics`: toggles extra logs.
-- `Diagnostics` > `Copy Diagnostics Summary`: copies version, permission, startup, click detection, feature state, and safety details.
-- `Quit`: stops HoverClick until you launch it again.
-
-## Known Limitations
-
-- Some apps may reject specific Accessibility focus or raise requests. HoverClick passes the original click through even when a focus attempt cannot be completed.
-- `Right Click Focus` is off by default because users may prefer the default macOS context-menu behavior on background windows.
-- `Hover Click Assist` is visible but experimental and currently inert.
-- HoverClick does not add Scroll Focus. macOS already supports background scrolling in many apps, and HoverClick currently observes only left and right mouse-down triggers.
-- Internal/test Apple Development signed DMG packaging is available for local testing. It is not Developer ID signed, not notarized, and not a polished public installer.
+- `Diagnostics` > `Copy Diagnostics Summary`: copies version, permission, startup, feature, event tap, and safety details.
+- `Quit`: stops HoverClick.
 
 ## Troubleshooting
 
-If HoverClick does not respond to clicks:
+If clicks do not focus background windows:
 
-- Check `Permissions & Startup` and confirm `Accessibility: Granted`.
+- Confirm `Permissions & Startup` shows `Accessibility: Granted`.
 - Confirm `Left Click Focus` is checked for left-click behavior.
-- Confirm `Right Click Focus` is checked if you are testing right-click focus behavior.
+- Confirm `Right Click Focus` is checked if you are testing right-click behavior.
 - Use `Diagnostics` > `Copy Diagnostics Summary` and review the permission, click detection, and feature states.
 
 If HoverClick is not visible in Accessibility settings:
 
-- Make sure you launched the signed `HoverClick.app` bundle, not the raw executable inside it.
-- Keep the app in a stable location such as Applications, then launch it again and reopen Accessibility settings from the HoverClick menu.
+- Confirm you launched the signed `HoverClick.app` bundle, not the raw executable.
+- Keep the app in a stable location such as Applications.
+- Relaunch HoverClick and reopen Accessibility settings from the menu.
 
 If context menus do not behave as expected:
 
-- Remember that `Right Click Focus` defaults off.
-- With `Right Click Focus` off, HoverClick should pass right-clicks through without running the focus path.
-- With `Right Click Focus` on, HoverClick tries to focus the target first and then returns the original right-click unchanged.
+- `Right Click Focus` is off by default.
+- With `Right Click Focus` off, right-clicks pass through without running the focus path.
+- With `Right Click Focus` on, HoverClick focuses the target first and returns the original right-click unchanged.
 
 If Launch at Login does not start HoverClick:
 
-- Open `Permissions & Startup` and check the `Launch at Login` state.
-- macOS may require user approval before the login item becomes active.
-- Launch at Login is separate from Accessibility permission, so enabling one does not enable the other.
+- Check `Permissions & Startup` > `Launch at Login`.
+- macOS may require user approval before a login item becomes active.
+- Launch at Login is separate from Accessibility permission.
 
-If the menu or version seems old after a build:
+## Privacy And Safety
 
-- Quit the running HoverClick instance.
-- Rebuild the app.
-- Relaunch the signed `HoverClick.app` bundle.
-- Check the header row for the visible version.
+HoverClick runs locally. It uses macOS Accessibility APIs to inspect the element under the click point and focus the owning window when configured.
 
-## Privacy
+HoverClick does not upload click data, record screen contents, synthesize clicks, move the cursor, move windows, resize windows, or focus windows from mouse movement alone.
 
-HoverClick runs locally. It uses macOS Accessibility APIs to inspect the element under the click point and focus the owning window when configured. It does not upload click data, record screen contents, send analytics, synthesize clicks, or move the cursor in the stable core.
+Some apps may reject specific Accessibility focus or raise requests. When that happens, HoverClick still passes the original click through unchanged.
 
-## Uninstall
-
-1. Quit HoverClick from the menu.
-2. If enabled, turn off `Launch at Login`.
-3. Remove `HoverClick.app` from Applications or wherever you placed it.
-4. If desired, remove HoverClick from Accessibility privacy settings manually in System Settings.
-
-## Development
+## Build From Source
 
 Build the app bundle:
 
@@ -167,16 +108,23 @@ Verify the built app:
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/verify-app.sh
 ```
 
-Create an internal/test Apple Development signed DMG:
+Create a local DMG:
 
 ```sh
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/package-dmg.sh
 ```
 
-The internal/test DMG workflow builds and verifies the existing Apple Development signed app bundle, then writes an ignored artifact under `dist/`. It is useful for local/internal testing only; it is not notarized and is not a polished public installer.
+The DMG workflow writes an ignored artifact under `dist/`. It is useful for local packaging and testing.
 
 For development workflow details, see `docs/DEVELOPMENT.md`.
 
+## Uninstall
+
+1. Quit HoverClick from the menu.
+2. If enabled, turn off `Launch at Login`.
+3. Remove `HoverClick.app` from Applications or wherever you placed it.
+4. If desired, remove HoverClick from Accessibility privacy settings manually in System Settings.
+
 ## License
 
-No license file is included yet. The source-first GitHub distribution should add one before broader public reuse is encouraged.
+No license file is included yet.
