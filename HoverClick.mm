@@ -870,7 +870,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 - (void)updateMenuTitles {
     BOOL trusted = [self accessibilityTrusted];
     self.permissionItem.title = trusted ? @"Accessibility: Granted" : @"Accessibility: Not Granted";
-    self.permissionItem.state = NSControlStateValueOff;
+    self.permissionItem.state = trusted ? NSControlStateValueOn : NSControlStateValueOff;
 
     self.clickToFocusItem.title = @"Left Click Focus";
     self.clickToFocusItem.state = _clickToFocusEnabled ? NSControlStateValueOn : NSControlStateValueOff;

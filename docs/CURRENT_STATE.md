@@ -36,6 +36,7 @@
 - `Right Click Focus` defaults off and is independent from left-click behavior.
 - `Hover` contains `Hover Click Assist`.
 - `Permissions & Startup` contains Accessibility status, Launch at Login, and `Open Accessibility Settings`.
+- `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Not Granted` is unchecked.
 - `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
 - Technical click detection and last action details are available in the copied diagnostics summary.
 
