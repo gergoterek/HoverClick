@@ -25,7 +25,7 @@ static NSString * const HoverClickHoverClickAssistHelp = @"Experimental placehol
 static NSString * const HoverClickAccessibilityStatusHelp = @"Shows whether macOS currently allows HoverClick to inspect and focus windows.";
 static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Opens the macOS Accessibility privacy pane so you can review HoverClick access.";
 static NSString * const HoverClickLaunchAtLoginHelp = @"Starts HoverClick automatically after you log in, without changing click behavior.";
-static NSString * const HoverClickDiagnosticsVersionHelp = @"Shows the app version and internal build number.";
+static NSString * const HoverClickDiagnosticsVersionHelp = @"Current HoverClick app version and build.";
 static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
 static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the current HoverClick status summary to the clipboard.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
@@ -466,6 +466,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     quitItem.enabled = YES;
     quitItem.indentationLevel = 0;
     quitItem.state = NSControlStateValueOff;
+    quitItem.offStateImage = HoverClickMenuSymbolImage(@"power", @"Quit");
     quitItem.toolTip = HoverClickQuitHelp;
     [menu addItem:quitItem];
 
