@@ -93,6 +93,33 @@ static NSString *HoverClickVersionBuildLabel(void) {
     return [NSString stringWithFormat:@"Version %@ (%@)", HoverClickDisplayVersion(), HoverClickBuildVersion()];
 }
 
+static NSString *HoverClickDiagnosticTimestamp(CFAbsoluteTime timestamp) {
+    if (timestamp <= 0) {
+        return @"never";
+    }
+
+    NSDate *date = [NSDate dateWithTimeIntervalSinceReferenceDate:timestamp];
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    formatter.dateFormat = @"yyyy-MM-dd HH:mm:ss ZZZZZ";
+    return [formatter stringFromDate:date] ?: @"unknown";
+}
+
+static NSString *HoverClickEventTypeName(CGEventType type) {
+    switch (type) {
+        case kCGEventLeftMouseDown:
+            return @"kCGEventLeftMouseDown";
+        case kCGEventRightMouseDown:
+            return @"kCGEventRightMouseDown";
+        case kCGEventTapDisabledByTimeout:
+            return @"kCGEventTapDisabledByTimeout";
+        case kCGEventTapDisabledByUserInput:
+            return @"kCGEventTapDisabledByUserInput";
+        default:
+            return [NSString stringWithFormat:@"CGEventType(%u)", (unsigned int)type];
+    }
+}
+
 static NSString *HoverClickMenuItemTitle(NSString *title) {
     // Match the Quit row's state-slot icon spacing for plain, checked, icon, and submenu rows.
     return [HoverClickMenuItemTitlePadding stringByAppendingString:title];
@@ -214,6 +241,7 @@ static const char *HoverClickAXErrorName(AXError error) {
 @property(nonatomic, strong) NSMenuItem *launchAtLoginItem;
 @property(nonatomic, strong) NSMenuItem *diagnosticsItem;
 @property(nonatomic, strong) NSMenuItem *verboseItem;
+- (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
 - (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
@@ -224,6 +252,7 @@ static const char *HoverClickAXErrorName(AXError error) {
 @implementation HoverClickAppDelegate {
     BOOL _userWantsEventTap;
     BOOL _eventTapInstalled;
+    BOOL _eventTapEnabled;
     BOOL _clickToFocusEnabled;
     BOOL _rightClickFocusEnabled;
     BOOL _hoverClickAssistEnabled;
@@ -232,11 +261,19 @@ static const char *HoverClickAXErrorName(AXError error) {
     CFRunLoopSourceRef _eventTapSource;
     CFAbsoluteTime _lastMouseDownLogTime;
     CFAbsoluteTime _lastRightMouseDownLogTime;
+    CFAbsoluteTime _lastLeftMouseDownSeenTime;
+    CFAbsoluteTime _lastRightMouseDownSeenTime;
+    CFAbsoluteTime _lastEventTapCallbackTime;
+    CFAbsoluteTime _lastEventTapRecoveryAttemptTime;
+    CFAbsoluteTime _lastSuccessfulFocusTime;
     CFAbsoluteTime _lastRightClickFocusTime;
     pid_t _lastRightClickFocusPid;
     CFAbsoluteTime _lastFinderRightClickTime;
     pid_t _lastFinderRightClickPid;
     uint64_t _clickSequence;
+    NSString *_lastEventTapCallbackDescription;
+    NSString *_lastEventTapRecoveryResult;
+    NSString *_lastSuccessfulFocusDescription;
     NSString *_lastClickResult;
     NSString *_lastLaunchAtLoginStatusDescription;
 }
@@ -245,19 +282,23 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                              CGEventType type,
                                              CGEventRef event,
                                              void *refcon) {
-    (void)proxy;
-
     HoverClickAppDelegate *controller = (__bridge HoverClickAppDelegate *)refcon;
+    if (controller == nil) {
+        return event;
+    }
+
+    [controller recordEventTapCallbackWithType:type event:event proxy:proxy];
+
     if (type == kCGEventTapDisabledByTimeout) {
         HoverClickLog("HoverClick: event tap disabled by timeout");
         [controller handleEventTapDisabledWithReason:@"timeout" shouldReenable:YES];
-        return NULL;
+        return event;
     }
 
     if (type == kCGEventTapDisabledByUserInput) {
         HoverClickLog("HoverClick: event tap disabled by user input");
         [controller handleEventTapDisabledWithReason:@"user input" shouldReenable:YES];
-        return NULL;
+        return event;
     }
 
     if (event == NULL) {
@@ -278,6 +319,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     _userWantsEventTap = YES;
     _eventTapInstalled = NO;
+    _eventTapEnabled = NO;
     _clickToFocusEnabled = YES;
     _rightClickFocusEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickRightClickFocusDefaultsKey];
     _hoverClickAssistEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickHoverClickAssistDefaultsKey];
@@ -286,11 +328,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _eventTapSource = NULL;
     _lastMouseDownLogTime = 0;
     _lastRightMouseDownLogTime = 0;
+    _lastLeftMouseDownSeenTime = 0;
+    _lastRightMouseDownSeenTime = 0;
+    _lastEventTapCallbackTime = 0;
+    _lastEventTapRecoveryAttemptTime = 0;
+    _lastSuccessfulFocusTime = 0;
     _lastRightClickFocusTime = 0;
     _lastRightClickFocusPid = 0;
     _lastFinderRightClickTime = 0;
     _lastFinderRightClickPid = 0;
     _clickSequence = 0;
+    _lastEventTapCallbackDescription = @"none";
+    _lastEventTapRecoveryResult = @"none";
+    _lastSuccessfulFocusDescription = @"never";
     _lastClickResult = @"None";
     _lastLaunchAtLoginStatusDescription = nil;
 
@@ -608,19 +658,95 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateMenuTitles];
 }
 
+- (BOOL)isEventTapPortValid {
+    return _eventTap != NULL && CFMachPortIsValid(_eventTap);
+}
+
+- (BOOL)isEventTapSourceValid {
+    return _eventTapSource != NULL && CFRunLoopSourceIsValid(_eventTapSource);
+}
+
+- (void)updateEventTapLifecycleFlags {
+    BOOL hasValidPort = [self isEventTapPortValid];
+    BOOL hasValidSource = [self isEventTapSourceValid];
+    _eventTapInstalled = (_eventTap != NULL && _eventTapSource != NULL && hasValidPort && hasValidSource);
+    _eventTapEnabled = (_eventTapInstalled && CGEventTapIsEnabled(_eventTap));
+}
+
+- (NSString *)eventTapPortValidityDescription {
+    if (_eventTap == NULL) {
+        return @"not present";
+    }
+
+    return CFMachPortIsValid(_eventTap) ? @"valid" : @"invalid";
+}
+
+- (NSString *)eventTapSourceValidityDescription {
+    if (_eventTapSource == NULL) {
+        return @"not present";
+    }
+
+    return CFRunLoopSourceIsValid(_eventTapSource) ? @"valid" : @"invalid";
+}
+
+- (NSString *)eventTapDetectedEnabledDescription {
+    if (_eventTap == NULL) {
+        return @"not detectable (no tap)";
+    }
+
+    if (!CFMachPortIsValid(_eventTap)) {
+        return @"not detectable (invalid tap)";
+    }
+
+    return CGEventTapIsEnabled(_eventTap) ? @"yes" : @"no";
+}
+
+- (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy {
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    _lastEventTapCallbackTime = now;
+    _lastEventTapCallbackDescription = [NSString stringWithFormat:@"%@ at %@ (%@, %@)",
+                                        HoverClickEventTypeName(type),
+                                        HoverClickDiagnosticTimestamp(now),
+                                        event == NULL ? @"event=NULL" : @"event=present",
+                                        proxy == NULL ? @"proxy=NULL" : @"proxy=present"];
+
+    if (type == kCGEventLeftMouseDown) {
+        _lastLeftMouseDownSeenTime = now;
+    } else if (type == kCGEventRightMouseDown) {
+        _lastRightMouseDownSeenTime = now;
+    } else if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+        _eventTapEnabled = NO;
+    }
+}
+
 - (BOOL)installEventTap {
     if (![self accessibilityTrusted]) {
+        _eventTapEnabled = NO;
         [self updateMenuTitles];
         return NO;
     }
 
-    if (_eventTapInstalled && _eventTap != NULL && _eventTapSource != NULL) {
-        HoverClickLog("HoverClick: event tap already installed; skipping duplicate install");
-        [self updateMenuTitles];
-        return YES;
-    }
-
     if (_eventTap != NULL || _eventTapSource != NULL) {
+        [self updateEventTapLifecycleFlags];
+        if (_eventTapInstalled) {
+            if (!_eventTapEnabled) {
+                HoverClickLog("HoverClick: existing event tap installed but disabled; enabling");
+                CGEventTapEnable(_eventTap, true);
+                [self updateEventTapLifecycleFlags];
+                HoverClickLog("HoverClick: existing event tap enable result=%s", _eventTapEnabled ? "enabled" : "disabled");
+            }
+
+            if (_eventTapEnabled) {
+                HoverClickLog("HoverClick: event tap already installed; skipping duplicate install");
+                [self updateMenuTitles];
+                return YES;
+            }
+
+            HoverClickLog("HoverClick: existing event tap could not be enabled; recreating");
+        } else {
+            HoverClickLog("HoverClick: existing event tap objects are missing or invalid; recreating");
+        }
+
         [self removeEventTap];
     }
 
@@ -636,17 +762,20 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                  (__bridge void *)self);
     if (_eventTap == NULL) {
         _eventTapInstalled = NO;
+        _eventTapEnabled = NO;
         HoverClickLog("HoverClick: failed to create event tap. Check Accessibility permission.");
         [self setLastClickResult:@"Event Tap Create Failed"];
         [self updateMenuTitles];
         return NO;
     }
+    HoverClickLog("HoverClick: event tap created");
 
     _eventTapSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, _eventTap, 0);
     if (_eventTapSource == NULL) {
         CFRelease(_eventTap);
         _eventTap = NULL;
         _eventTapInstalled = NO;
+        _eventTapEnabled = NO;
         HoverClickLog("HoverClick: failed to create event tap source.");
         [self setLastClickResult:@"Event Tap Source Failed"];
         [self updateMenuTitles];
@@ -654,27 +783,42 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     CFRunLoopAddSource(CFRunLoopGetCurrent(), _eventTapSource, kCFRunLoopCommonModes);
+    _eventTapInstalled = YES;
     CGEventTapEnable(_eventTap, true);
-    _eventTapInstalled = CGEventTapIsEnabled(_eventTap);
+    [self updateEventTapLifecycleFlags];
+    HoverClickLog("HoverClick: event tap enable after install result=%s", _eventTapEnabled ? "enabled" : "disabled");
+
+    if (!_eventTapEnabled) {
+        [self setLastClickResult:@"Event Tap Enable Failed"];
+        [self updateMenuTitles];
+        return NO;
+    }
 
     HoverClickLog("HoverClick: event tap installed mode=pass-through-default");
     [self updateMenuTitles];
-    return _eventTapInstalled;
+    return YES;
 }
 
 - (void)removeEventTap {
-    if (_eventTap == NULL && _eventTapSource == NULL && !_eventTapInstalled) {
+    if (_eventTap == NULL && _eventTapSource == NULL && !_eventTapInstalled && !_eventTapEnabled) {
         HoverClickLog("HoverClick: event tap remove requested but no active tap");
         [self updateMenuTitles];
         return;
     }
 
     if (_eventTap != NULL) {
-        CGEventTapEnable(_eventTap, false);
+        if (CFMachPortIsValid(_eventTap)) {
+            CGEventTapEnable(_eventTap, false);
+            HoverClickLog("HoverClick: event tap disabled");
+        } else {
+            HoverClickLog("HoverClick: event tap disable skipped because port is invalid");
+        }
     }
 
     if (_eventTapSource != NULL) {
-        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), _eventTapSource, kCFRunLoopCommonModes);
+        if (CFRunLoopSourceIsValid(_eventTapSource)) {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), _eventTapSource, kCFRunLoopCommonModes);
+        }
         CFRelease(_eventTapSource);
         _eventTapSource = NULL;
     }
@@ -689,43 +833,67 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     _eventTapInstalled = NO;
+    _eventTapEnabled = NO;
     [self updateMenuTitles];
 }
 
 - (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable {
-    _eventTapInstalled = NO;
+    _lastEventTapRecoveryAttemptTime = CFAbsoluteTimeGetCurrent();
+    _eventTapEnabled = NO;
+    [self updateEventTapLifecycleFlags];
     [self updateMenuTitles];
 
     if (!_userWantsEventTap) {
+        _lastEventTapRecoveryResult = [NSString stringWithFormat:@"not re-enabled after %@: user disabled tap", reason];
         HoverClickLog("HoverClick: event tap disabled by %s; user disabled tap, not re-enabling", reason.UTF8String);
         return;
     }
 
     if (![self accessibilityTrusted]) {
+        _lastEventTapRecoveryResult = [NSString stringWithFormat:@"not re-enabled after %@: Accessibility permission missing", reason];
         [self removeEventTap];
         return;
     }
 
     if (!shouldReenable) {
+        _lastEventTapRecoveryResult = [NSString stringWithFormat:@"not re-enabled after %@: recovery disabled", reason];
         HoverClickLog("HoverClick: event tap disabled by %s; not re-enabling", reason.UTF8String);
         return;
     }
 
-    if (_eventTap != NULL) {
+    if ([self isEventTapPortValid] && [self isEventTapSourceValid]) {
+        HoverClickLog("HoverClick: attempting event tap re-enable after %s", reason.UTF8String);
         CGEventTapEnable(_eventTap, true);
-        _eventTapInstalled = CGEventTapIsEnabled(_eventTap);
-        HoverClickLog("HoverClick: event tap re-enabled after %s", reason.UTF8String);
-        [self updateMenuTitles];
-        return;
+        [self updateEventTapLifecycleFlags];
+        if (_eventTapEnabled) {
+            _lastEventTapRecoveryResult = [NSString stringWithFormat:@"re-enabled existing tap after %@", reason];
+            HoverClickLog("HoverClick: event tap re-enabled after %s", reason.UTF8String);
+            [self updateMenuTitles];
+            return;
+        }
+
+        HoverClickLog("HoverClick: event tap re-enable after %s failed; recreating", reason.UTF8String);
+    } else {
+        HoverClickLog("HoverClick: event tap disabled by %s with invalid or missing port/source; recreating", reason.UTF8String);
     }
 
-    [self installEventTap];
+    [self removeEventTap];
+    BOOL recovered = [self installEventTap];
+    _lastEventTapRecoveryResult = recovered ?
+        [NSString stringWithFormat:@"recreated tap after %@", reason] :
+        [NSString stringWithFormat:@"recreate failed after %@", reason];
+    HoverClickLog("HoverClick: event tap recovery after %s result=%s",
+                  reason.UTF8String,
+                  recovered ? "recreated" : "failed");
+    [self updateMenuTitles];
 }
 
 - (void)toggleEventTap:(id)sender {
     (void)sender;
 
-    if (_eventTapInstalled) {
+    [self updateEventTapLifecycleFlags];
+
+    if (_userWantsEventTap && (_eventTapInstalled || _eventTap != NULL || _eventTapSource != NULL)) {
         _userWantsEventTap = NO;
         [self removeEventTap];
         [self setLastClickResult:@"Event Tap Disabled"];
@@ -834,6 +1002,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 - (NSString *)clickDetectionStatusForDiagnostics {
+    [self updateEventTapLifecycleFlags];
+
     if (![self accessibilityTrusted]) {
         return _userWantsEventTap ? @"permission missing" : @"disabled";
     }
@@ -842,8 +1012,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return @"disabled";
     }
 
-    if (_eventTapInstalled && _eventTap != NULL) {
+    if (_eventTapEnabled) {
         return @"active";
+    }
+
+    if (_eventTapInstalled) {
+        return @"installed but disabled";
+    }
+
+    if (_eventTap != NULL || _eventTapSource != NULL) {
+        return @"inactive (invalid tap objects)";
     }
 
     return @"inactive";
@@ -865,6 +1043,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if ([result isEqualToString:@"Event Tap Source Failed"]) {
         return @"click detection source setup failed";
+    }
+
+    if ([result isEqualToString:@"Event Tap Enable Failed"]) {
+        return @"click detection enable failed";
     }
 
     if ([result isEqualToString:@"Event Tap Disabled"]) {
@@ -925,6 +1107,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (NSString *)diagnosticsSummaryText {
     NSString *accessibilityStatus = [self accessibilityTrusted] ? @"granted" : @"not granted";
+    [self updateEventTapLifecycleFlags];
+
+    NSString *lastAction = [self lastActionForDiagnostics];
+    NSString *lastSuccessfulFocus = @"never";
+    if (_lastSuccessfulFocusTime > 0) {
+        lastSuccessfulFocus = [NSString stringWithFormat:@"%@ at %@",
+                               _lastSuccessfulFocusDescription ?: @"success",
+                               HoverClickDiagnosticTimestamp(_lastSuccessfulFocusTime)];
+    }
 
     return [NSString stringWithFormat:
             @"HoverClick diagnostics\n"
@@ -935,8 +1126,21 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Launch at Login: %@\n"
              "Click detection: %@\n"
              "Last handled action: %@\n"
+             "Last focus action/skip: %@\n"
+             "Last successful focus: %@\n"
              "Event tap requested: %@\n"
-             "Event tap installed: %@\n"
+             "Event tap object exists: %@\n"
+             "Event tap port valid: %@\n"
+             "Event tap run loop source exists: %@\n"
+             "Event tap run loop source valid: %@\n"
+             "Event tap installed (believed): %@\n"
+             "Event tap enabled (believed): %@\n"
+             "Event tap enabled (detected): %@\n"
+             "Last event tap callback: %@\n"
+             "Last left mouse down seen: %@\n"
+             "Last right mouse down seen: %@\n"
+             "Last tap recovery attempt: %@\n"
+             "Last tap recovery result: %@\n"
              "Left Click Focus: %@\n"
              "Right Click Focus: %@\n"
              "Hover Click Assist: %@\n"
@@ -953,9 +1157,22 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             accessibilityStatus,
             [self launchAtLoginStatusForDiagnostics],
             [self clickDetectionStatusForDiagnostics],
-            [self lastActionForDiagnostics],
+            lastAction,
+            lastAction,
+            lastSuccessfulFocus,
             _userWantsEventTap ? @"enabled" : @"disabled",
-            (_eventTapInstalled && _eventTap != NULL) ? @"yes" : @"no",
+            _eventTap != NULL ? @"yes" : @"no",
+            [self eventTapPortValidityDescription],
+            _eventTapSource != NULL ? @"yes" : @"no",
+            [self eventTapSourceValidityDescription],
+            _eventTapInstalled ? @"yes" : @"no",
+            _eventTapEnabled ? @"yes" : @"no",
+            [self eventTapDetectedEnabledDescription],
+            _lastEventTapCallbackDescription ?: @"none",
+            HoverClickDiagnosticTimestamp(_lastLeftMouseDownSeenTime),
+            HoverClickDiagnosticTimestamp(_lastRightMouseDownSeenTime),
+            HoverClickDiagnosticTimestamp(_lastEventTapRecoveryAttemptTime),
+            _lastEventTapRecoveryResult ?: @"none",
             _clickToFocusEnabled ? @"enabled" : @"disabled",
             _rightClickFocusEnabled ? @"enabled" : @"disabled",
             _hoverClickAssistEnabled ? @"enabled" : @"disabled",
@@ -1458,9 +1675,18 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   frontAfter.processIdentifier);
 
     [self setLastClickResult:frontImmediate ? @"Succeeded" : @"Verify Failed"];
-    if (frontImmediate && strcmp(trigger, "right-click") == 0) {
-        _lastRightClickFocusPid = targetPid;
-        _lastRightClickFocusTime = CFAbsoluteTimeGetCurrent();
+    if (frontImmediate) {
+        CFAbsoluteTime focusTime = CFAbsoluteTimeGetCurrent();
+        _lastSuccessfulFocusTime = focusTime;
+        _lastSuccessfulFocusDescription = [NSString stringWithFormat:@"%s #%llu target=%@ pid=%d",
+                                           trigger,
+                                           sequenceID,
+                                           appName,
+                                           targetPid];
+        if (strcmp(trigger, "right-click") == 0) {
+            _lastRightClickFocusPid = targetPid;
+            _lastRightClickFocusTime = focusTime;
+        }
     }
     HoverClickLog("HoverClick: %s #%llu event passed through", trigger, sequenceID);
 

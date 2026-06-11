@@ -50,7 +50,7 @@
 - Bartender/menu-bar overlay pass-through: expanded or overflow menu bar items remain protected by the same non-layer-0 top-window check.
 - Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
-- Diagnostics summary: copies app name, version/build, bundle identifier, permission, startup, click detection, feature state, event tap requested/installed state, event tap mask, safety note, and concise known limitations.
+- Diagnostics summary: copies app name, version/build, bundle identifier, permission, startup, click detection, feature state, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last successful focus, last focus action/skip reason, event tap mask, safety note, and concise known limitations.
 - Diagnostics menu polish: visible runtime details stay out of the menu; `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` use left-slot action icons with exactly 1 ASCII space of title padding, and Quit preserves Cmd+Q.
 - Accessibility onboarding: available from `Permissions & Startup` > `Open Accessibility Settings`.
 
@@ -83,7 +83,11 @@ HoverClick currently does not add Scroll Focus because macOS already supports ba
 - Current event tap mask: `CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventRightMouseDown)`.
 - `kCGEventMouseMoved` and scroll events are not observed.
 - Normal tap callback behavior returns the original event unchanged.
-- `NULL` is returned only for system tap-disabled pseudo-events or a null incoming event.
+- System tap-disabled pseudo-events are not treated as normal mouse events.
+- Disabled-by-timeout and disabled-by-user-input callbacks attempt to re-enable the existing tap when user intent is still enabled and the CFMachPort/run loop source are valid.
+- If re-enable fails, or if the tap port/source is missing or invalid, HoverClick removes the stale objects and recreates the same left/right mouse-down-only event tap.
+- The callback returns the incoming pseudo-event value for system tap-disabled pseudo-events, and returns `NULL` only when the incoming event is `NULL`.
+- Copied diagnostics distinguish requested state, tap object/source presence, port/source validity, believed installed/enabled state, detected enabled state when available, the last callback type, last left/right mouse-down timestamps, last recovery attempt/result, and last successful focus.
 
 ## Permission And Signing Rules
 
@@ -123,9 +127,11 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Confirm `Open Accessibility Settings` uses its action symbol and exactly 1 ASCII space of title padding.
 - Confirm `Quit` uses one left-slot action symbol, exactly 1 ASCII space of title padding, and preserves Cmd+Q.
+- Confirm `Copy Diagnostics Summary` includes the event tap lifecycle fields: requested, object exists, port valid, run loop source exists, run loop source valid, installed/enabled believed state, detected enabled state, last callback, last left/right mouse-down, last recovery attempt/result, last successful focus, and last focus action/skip.
 - Move the pointer over background windows without clicking; no focus change should occur.
 - With `Left Click Focus` checked, click visible background windows; target focus should occur before the original click passes through.
 - With `Right Click Focus` checked, right-click visible background windows; target focus should occur before the original right-click passes through and the normal context menu works.
 - Click HoverClick status/menu UI and transient menu/popover UI; they should be ignored safely.
 - Drag windows, select text, and use sliders; drag behavior should remain unchanged.
-- Copy diagnostics and confirm it includes app name, version/build, bundle identifier, permission, startup, feature states, event tap requested/installed state, event tap mask, the safety note, and concise known limitations.
+- Copy diagnostics and confirm it includes app name, version/build, bundle identifier, permission, startup, feature states, expanded event tap lifecycle state, event tap mask, the safety note, and concise known limitations.
+- Leave the app running for a longer period, including idle/sleep/wake or lock-unlock if practical. If left and right click focus stop together, copy diagnostics immediately and compare the requested/enabled/validity/recovery fields.

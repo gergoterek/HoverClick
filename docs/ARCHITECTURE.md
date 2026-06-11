@@ -18,7 +18,9 @@ Event tap lifecycle guards:
 
 - Installs only once and logs `event tap already installed; skipping duplicate install` when a duplicate install is requested.
 - Logs `event tap disabled by timeout` or `event tap disabled by user input` for system-disabled pseudo-events.
-- Re-enables the existing tap when the user still wants it enabled and logs `event tap re-enabled after ...`.
+- Tracks user intent, tap object presence, CFMachPort validity, run loop source presence, run loop source validity, believed installed state, and believed enabled state separately.
+- Re-enables the existing tap when the user still wants it enabled, the CFMachPort is valid, and the run loop source is valid, then logs `event tap re-enabled after ...`.
+- Recreates the tap when disabled-event recovery finds a missing or invalid port/source, or when `CGEventTapEnable` does not leave the tap enabled.
 - Removes the run loop source and CFMach port on app quit or menu disable.
 - Logs `event tap remove requested but no active tap` for no-op cleanup.
 
@@ -35,7 +37,9 @@ For each click, HoverClick:
 
 `observed leftMouseDown` from Phase 1 was only event observation. Phase 2 success requires target resolution plus a focus/raise action result.
 
-Diagnostics intentionally remain detailed. Logs distinguish click receipt, AX element lookup, target pid/app/window resolution, ignored targets, `AXRaise`, app activation, immediate verification, event pass-through, tap disabled/re-enabled, and tap removal. Each click carries a monotonically increasing sequence id such as `click #42`.
+Diagnostics intentionally remain detailed. Logs distinguish click receipt, AX element lookup, target pid/app/window resolution, ignored targets, `AXRaise`, app activation, immediate verification, event pass-through, tap creation, tap enable/disable, tap disabled/re-enabled/recreated recovery, and tap removal. Each click carries a monotonically increasing sequence id such as `click #42`.
+
+`Diagnostics` > `Copy Diagnostics Summary` exposes the event tap lifecycle state needed for long-running failures: requested state, object/source presence, port/source validity, believed installed/enabled state, detected enabled state when available, last event tap callback type, last left/right mouse-down callback timestamps, last recovery attempt/result, last successful focus, and the last focus action or skip reason.
 
 Delayed verification has been removed from runtime. Stable Left Click Focus does not schedule timers, callbacks, synthetic clicks, cursor movement, or hover-assist-like work after the immediate focus attempt.
 
