@@ -15,6 +15,7 @@
 static NSString * const HoverClickBundleID = @"com.gergoterek.HoverClick";
 static NSString * const HoverClickFinderBundleID = @"com.apple.finder";
 static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
+static NSString * const HoverClickFallbackBuildVersion = @"unknown";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
 static NSString * const HoverClickHoverClickAssistDefaultsKey = @"hoverClickAssistEnabled";
 static NSString * const HoverClickVersionChangeHelp = @"UI-Menubar: simplified diagnostics, permissions layout, hover submenu, and live version display.";
@@ -24,11 +25,13 @@ static NSString * const HoverClickHoverClickAssistHelp = @"Experimental placehol
 static NSString * const HoverClickAccessibilityStatusHelp = @"Shows whether macOS currently allows HoverClick to inspect and focus windows.";
 static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Opens the macOS Accessibility privacy pane so you can review HoverClick access.";
 static NSString * const HoverClickLaunchAtLoginHelp = @"Starts HoverClick automatically after you log in, without changing click behavior.";
+static NSString * const HoverClickDiagnosticsVersionHelp = @"Shows the app version and internal build number.";
 static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
 static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the current HoverClick status summary to the clipboard.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
+static const CGFloat HoverClickMenuSymbolPointSize = 13.0;
 static const CGFloat HoverClickHeaderWidth = 286.0;
 static const CGFloat HoverClickHeaderHeight = 24.0;
 static const CGFloat HoverClickHeaderHorizontalPadding = 14.0;
@@ -48,8 +51,65 @@ static NSString *HoverClickDisplayVersion(void) {
     return shortVersion;
 }
 
+static NSString *HoverClickBuildVersion(void) {
+    NSString *buildVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"];
+
+    if (buildVersion.length == 0) {
+        buildVersion = HoverClickFallbackBuildVersion;
+    }
+
+    return buildVersion;
+}
+
+static NSString *HoverClickAppName(void) {
+    NSString *displayName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
+    if (displayName.length > 0) {
+        return displayName;
+    }
+
+    NSString *bundleName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+    if (bundleName.length > 0) {
+        return bundleName;
+    }
+
+    return @"HoverClick";
+}
+
+static NSString *HoverClickBundleIdentifier(void) {
+    NSString *bundleIdentifier = [[NSBundle mainBundle] bundleIdentifier];
+    if (bundleIdentifier.length > 0) {
+        return bundleIdentifier;
+    }
+
+    return HoverClickBundleID;
+}
+
 static NSString *HoverClickHeaderVersion(void) {
     return [NSString stringWithFormat:@"v%@", HoverClickDisplayVersion()];
+}
+
+static NSString *HoverClickVersionBuildLabel(void) {
+    return [NSString stringWithFormat:@"Version %@ (%@)", HoverClickDisplayVersion(), HoverClickBuildVersion()];
+}
+
+static NSImage *HoverClickMenuSymbolImage(NSString *symbolName, NSString *accessibilityDescription) {
+    if (@available(macOS 11.0, *)) {
+        NSImage *image = [NSImage imageWithSystemSymbolName:symbolName
+                                   accessibilityDescription:accessibilityDescription];
+        if (image == nil) {
+            return nil;
+        }
+
+        NSImageSymbolConfiguration *configuration = [NSImageSymbolConfiguration configurationWithPointSize:HoverClickMenuSymbolPointSize
+                                                                                                    weight:NSFontWeightRegular
+                                                                                                     scale:NSImageSymbolScaleMedium];
+        image = [image imageWithSymbolConfiguration:configuration] ?: image;
+        [image setTemplate:YES];
+        image.size = NSMakeSize(HoverClickStatusIconPointSize, HoverClickStatusIconPointSize);
+        return image;
+    }
+
+    return nil;
 }
 
 static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
@@ -365,6 +425,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.diagnosticsItem.submenu = diagnosticsMenu;
     [menu addItem:self.diagnosticsItem];
 
+    NSMenuItem *diagnosticsVersionItem = [[NSMenuItem alloc] initWithTitle:HoverClickVersionBuildLabel()
+                                                                    action:nil
+                                                             keyEquivalent:@""];
+    diagnosticsVersionItem.enabled = NO;
+    diagnosticsVersionItem.indentationLevel = 0;
+    diagnosticsVersionItem.state = NSControlStateValueOff;
+    diagnosticsVersionItem.toolTip = HoverClickDiagnosticsVersionHelp;
+    [diagnosticsMenu addItem:diagnosticsVersionItem];
+
+    [diagnosticsMenu addItem:[NSMenuItem separatorItem]];
+
     self.verboseItem = [[NSMenuItem alloc] initWithTitle:@"Verbose Diagnostics"
                                                   action:@selector(toggleVerboseDiagnostics:)
                                            keyEquivalent:@""];
@@ -381,6 +452,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     copyDiagnosticsItem.enabled = YES;
     copyDiagnosticsItem.indentationLevel = 0;
     copyDiagnosticsItem.state = NSControlStateValueOff;
+    copyDiagnosticsItem.image = HoverClickMenuSymbolImage(@"doc.on.doc", @"Copy");
     copyDiagnosticsItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
@@ -844,23 +916,33 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     return [NSString stringWithFormat:
             @"HoverClick diagnostics\n"
-             "Version: v%@\n"
-             "Accessibility: %@\n"
+             "App: %@\n"
+             "Version: %@ (%@)\n"
+             "Bundle Identifier: %@\n"
+             "Accessibility permission: %@\n"
              "Launch at Login: %@\n"
              "Click detection: %@\n"
              "Last handled action: %@\n"
+             "Event tap requested: %@\n"
+             "Event tap installed: %@\n"
              "Left Click Focus: %@\n"
              "Right Click Focus: %@\n"
              "Hover Click Assist: %@\n"
              "Hover Click Assist effective: %@\n"
              "Verbose Diagnostics: %@\n"
-             "Event tap mask: left and right mouse-down only; mouse movement is not observed\n"
-             "Stable core: no synthetic clicks and no cursor movement",
+             "Event tap mask: left mouse down + right mouse down only\n"
+             "Stable event tap mask note: left mouse down + right mouse down only; mouse movement, scroll, mouse-up, and dragged events are not observed\n"
+             "Stable core: no synthetic clicks, event replay, or cursor movement",
+            HoverClickAppName(),
             HoverClickDisplayVersion(),
+            HoverClickBuildVersion(),
+            HoverClickBundleIdentifier(),
             accessibilityStatus,
             [self launchAtLoginStatusForDiagnostics],
             [self clickDetectionStatusForDiagnostics],
             [self lastActionForDiagnostics],
+            _userWantsEventTap ? @"enabled" : @"disabled",
+            (_eventTapInstalled && _eventTap != NULL) ? @"yes" : @"no",
             _clickToFocusEnabled ? @"enabled" : @"disabled",
             _rightClickFocusEnabled ? @"enabled" : @"disabled",
             _hoverClickAssistEnabled ? @"enabled" : @"disabled",

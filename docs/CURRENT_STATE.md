@@ -8,6 +8,7 @@
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
 - Visible menu header: `HoverClick` with `v0.4.3` on the same row
+- Diagnostics submenu version row: `Version 0.4.3 (29)`
 - Bundle short version/build version: `0.4.3` / `29`
 
 ## Commands
@@ -37,7 +38,7 @@
 - `Hover` contains `Hover Click Assist`.
 - `Permissions & Startup` contains Accessibility status, Launch at Login, and `Open Accessibility Settings`.
 - `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Not Granted` is unchecked.
-- `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
+- `Diagnostics` contains `Version 0.4.3 (29)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
 - Technical click detection and last action details are available in the copied diagnostics summary.
 
 ## Stable Features
@@ -47,7 +48,7 @@
 - Overlay/menu-bar pass-through: if the topmost onscreen window under a click is non-layer-0, HoverClick skips AX background-window targeting so menu bar, status-item, overlay, and popover UI can receive the original click unchanged.
 - Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
-- Diagnostics summary: copies version, permission, startup, click detection, feature state, event tap mask, and safety details.
+- Diagnostics summary: copies app name, version/build, bundle identifier, permission, startup, click detection, feature state, event tap mask, and safety details.
 - Accessibility onboarding: available from `Permissions & Startup` > `Open Accessibility Settings`.
 
 ## Experimental Or Placeholder Items
@@ -66,6 +67,13 @@
 - Internal/test Apple Development signed DMG packaging is available for local testing only. It is not Developer ID signed, not notarized, and not a polished public installer.
 
 HoverClick currently does not add Scroll Focus because macOS already supports background scrolling in many apps. The current event tap observes only left and right mouse-down triggers.
+
+## Finder Right-Click Actual Selection Limitation
+
+- Finder may keep the previous actual selection while showing a separate context-target highlight for a right-clicked item.
+- HoverClick does not currently force the right-clicked Finder item to become the actual selection.
+- The safe Accessibility-only approach was not reliable.
+- HoverClick should not use synthetic clicks, event replay, or cursor movement to force that behavior.
 
 ## Event Tap
 
@@ -86,7 +94,8 @@ HoverClick currently does not add Scroll Focus because macOS already supports ba
 
 - The visible menu version reads from `CFBundleShortVersionString`.
 - The header displays the version as `v<short-version>`.
-- `CFBundleVersion` is an internal build number and is not shown in the menu.
+- The Diagnostics submenu displays `Version <short-version> (<build-version>)`.
+- `CFBundleVersion` is an internal build number and is not shown in the compact header.
 - Documentation-only tasks should not change app version fields.
 
 ## Development Workflow
@@ -107,10 +116,11 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `Right Click Focus` is unchecked by default.
 - Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.
 - Confirm `Hover` contains `Hover Click Assist`.
-- Confirm `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
+- Confirm `Diagnostics` contains `Version 0.4.3 (29)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
+- Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Move the pointer over background windows without clicking; no focus change should occur.
 - With `Left Click Focus` checked, click visible background windows; target focus should occur before the original click passes through.
 - With `Right Click Focus` checked, right-click visible background windows; target focus should occur before the original right-click passes through and the normal context menu works.
 - Click HoverClick status/menu UI and transient menu/popover UI; they should be ignored safely.
 - Drag windows, select text, and use sliders; drag behavior should remain unchanged.
-- Copy diagnostics and confirm it includes permission, click detection, feature states, and the stable-core safety note.
+- Copy diagnostics and confirm it includes app name, version/build, bundle identifier, permission, click detection, feature states, and the stable-core safety note.
