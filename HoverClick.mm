@@ -410,6 +410,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     settingsItem.enabled = YES;
     settingsItem.indentationLevel = 0;
     settingsItem.state = NSControlStateValueOff;
+    settingsItem.offStateImage = HoverClickMenuSymbolImage(@"gearshape", @"Open Accessibility Settings");
     settingsItem.toolTip = HoverClickOpenAccessibilitySettingsHelp;
     [permissionsStartupMenu addItem:settingsItem];
 
@@ -452,7 +453,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     copyDiagnosticsItem.enabled = YES;
     copyDiagnosticsItem.indentationLevel = 0;
     copyDiagnosticsItem.state = NSControlStateValueOff;
-    copyDiagnosticsItem.image = HoverClickMenuSymbolImage(@"doc.on.doc", @"Copy");
+    copyDiagnosticsItem.offStateImage = HoverClickMenuSymbolImage(@"doc.on.doc", @"Copy");
     copyDiagnosticsItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
