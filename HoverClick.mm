@@ -29,7 +29,7 @@ static NSString * const HoverClickDiagnosticsVersionHelp = @"Current HoverClick 
 static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
 static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the current HoverClick status summary to the clipboard.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
-static NSString * const HoverClickActionIconTitlePadding = @"   ";
+static NSString * const HoverClickActionIconTitlePadding = @"  ";
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
 static const CGFloat HoverClickMenuSymbolPointSize = 13.0;
@@ -409,7 +409,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [permissionsStartupMenu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *settingsItem = [[NSMenuItem alloc] initWithTitle:HoverClickActionIconTitle(@"Open Accessibility Settings")
+    NSMenuItem *settingsItem = [[NSMenuItem alloc] initWithTitle:@"Open Accessibility Settings"
                                                           action:@selector(openAccessibilitySettings:)
                                                    keyEquivalent:@""];
     settingsItem.target = self;
@@ -417,6 +417,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     settingsItem.indentationLevel = 0;
     settingsItem.state = NSControlStateValueOff;
     settingsItem.offStateImage = HoverClickMenuSymbolImage(@"gearshape", @"Open Accessibility Settings");
+    settingsItem.title = HoverClickActionIconTitle(@"Open Accessibility Settings");
     settingsItem.toolTip = HoverClickOpenAccessibilitySettingsHelp;
     [permissionsStartupMenu addItem:settingsItem];
 
@@ -452,7 +453,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.verboseItem.toolTip = HoverClickVerboseDiagnosticsHelp;
     [diagnosticsMenu addItem:self.verboseItem];
 
-    NSMenuItem *copyDiagnosticsItem = [[NSMenuItem alloc] initWithTitle:HoverClickActionIconTitle(@"Copy Diagnostics Summary")
+    NSMenuItem *copyDiagnosticsItem = [[NSMenuItem alloc] initWithTitle:@"Copy Diagnostics Summary"
                                                                  action:@selector(copyDiagnosticsSummary:)
                                                           keyEquivalent:@""];
     copyDiagnosticsItem.target = self;
@@ -460,12 +461,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     copyDiagnosticsItem.indentationLevel = 0;
     copyDiagnosticsItem.state = NSControlStateValueOff;
     copyDiagnosticsItem.offStateImage = HoverClickMenuSymbolImage(@"doc.on.doc", @"Copy");
+    copyDiagnosticsItem.title = HoverClickActionIconTitle(@"Copy Diagnostics Summary");
     copyDiagnosticsItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickActionIconTitle(@"Quit")
+    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:@"Quit"
                                                       action:@selector(quitApplication:)
                                                keyEquivalent:@"q"];
     quitItem.target = self;
@@ -476,6 +478,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     quitItem.onStateImage = nil;
     quitItem.mixedStateImage = nil;
     quitItem.offStateImage = HoverClickMenuSymbolImage(@"power", @"Quit");
+    quitItem.title = HoverClickActionIconTitle(@"Quit");
     quitItem.toolTip = HoverClickQuitHelp;
     [menu addItem:quitItem];
 
