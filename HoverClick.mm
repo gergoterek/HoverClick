@@ -945,8 +945,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Hover Click Assist effective: %@\n"
              "Verbose Diagnostics: %@\n"
              "Event tap mask: left mouse down + right mouse down only\n"
-             "Stable event tap mask note: left mouse down + right mouse down only; mouse movement, scroll, mouse-up, and dragged events are not observed\n"
-             "Stable core: no synthetic clicks, event replay, or cursor movement",
+             "Safety note: HoverClick returns original click events unchanged; no synthetic clicks, event replay, or cursor movement\n"
+             "Known limitations: Finder may show a right-click context-target highlight without changing actual selection; HoverClick does not force Finder selection.\n"
+             "Known limitations: Background text first-drag may require a second drag in some apps because the first mouse-down can be activation-only.",
             HoverClickAppName(),
             HoverClickDisplayVersion(),
             HoverClickBuildVersion(),
