@@ -7,9 +7,9 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick` with `v0.4.3` on the same row
-- Diagnostics submenu version row: `Version 0.4.3 (29)`
-- Bundle short version/build version: `0.4.3` / `29`
+- Visible menu header: `HoverClick` with `v0.4.4` on the same row
+- Diagnostics submenu version row: `Version 0.4.4 (30)`
+- Bundle short version/build version: `0.4.4` / `30`
 
 ## Commands
 
@@ -38,7 +38,7 @@
 - `Hover` contains `Hover Click Assist`.
 - `Permissions & Startup` contains Accessibility status, Launch at Login, and `Open Accessibility Settings`.
 - `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Not Granted` is unchecked.
-- `Diagnostics` contains `Version 0.4.3 (29)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
+- `Diagnostics` contains `Version 0.4.4 (30)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
 - Technical click detection and last action details are available in the copied diagnostics summary.
 
 ## Stable Features
@@ -46,6 +46,7 @@
 - Left-click focus: a left click on a background window can focus the target before the original click is delivered.
 - Right-click focus: when enabled, a right click on a background window can focus the target before the original right-click continues.
 - Overlay/menu-bar pass-through: if the topmost onscreen window under a click is non-layer-0, HoverClick skips AX background-window targeting so menu bar, status-item, overlay, and popover UI can receive the original click unchanged.
+- Finder context-menu follow-up left-click handling: after a recent Finder right-click while Finder is already frontmost, HoverClick skips AX hit-testing, focus, raise, and activation work for the next left click so the original left click can dismiss the context menu and reach Finder as close as possible to native behavior.
 - Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
 - Diagnostics summary: copies app name, version/build, bundle identifier, permission, startup, click detection, feature state, event tap mask, and safety details.
@@ -111,12 +112,12 @@ Manual Finder UI validation -- not run automatically.
 
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
-- Confirm the status menu shows `HoverClick` and `v0.4.3` on the same header row.
+- Confirm the status menu shows `HoverClick` and `v0.4.4` on the same header row.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
 - Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.
 - Confirm `Hover` contains `Hover Click Assist`.
-- Confirm `Diagnostics` contains `Version 0.4.3 (29)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
+- Confirm `Diagnostics` contains `Version 0.4.4 (30)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Move the pointer over background windows without clicking; no focus change should occur.
 - With `Left Click Focus` checked, click visible background windows; target focus should occur before the original click passes through.
