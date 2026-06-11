@@ -1,5 +1,6 @@
 #import <ApplicationServices/ApplicationServices.h>
 #import <Cocoa/Cocoa.h>
+#import <dispatch/dispatch.h>
 #import <os/log.h>
 #if __has_include(<ServiceManagement/ServiceManagement.h>)
 #import <ServiceManagement/ServiceManagement.h>
@@ -40,6 +41,7 @@ static const CGFloat HoverClickHeaderLabelY = 4.0;
 static const CGFloat HoverClickHeaderLabelHeight = 18.0;
 static const CGFloat HoverClickHeaderTitleWidth = 130.0;
 static const CGFloat HoverClickHeaderVersionWidth = 122.0;
+static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
 
 static NSString *HoverClickDisplayVersion(void) {
     NSString *shortVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
@@ -134,6 +136,26 @@ static NSString *HoverClickFocusTriggerLabel(const char *trigger) {
     }
 
     return [NSString stringWithUTF8String:trigger] ?: @"unknown";
+}
+
+static NSString *HoverClickRunningApplicationDescription(NSRunningApplication *app) {
+    if (app == nil) {
+        return @"none";
+    }
+
+    NSString *name = app.localizedName;
+    if (name.length == 0) {
+        name = @"unknown";
+    }
+
+    return [NSString stringWithFormat:@"%@ pid=%d", name, app.processIdentifier];
+}
+
+static NSString *HoverClickFrontmostVerificationDescription(NSRunningApplication *frontApp, pid_t targetPid) {
+    BOOL verified = (frontApp != nil && frontApp.processIdentifier == targetPid);
+    return [NSString stringWithFormat:@"%@ verified=%@",
+                                      HoverClickRunningApplicationDescription(frontApp),
+                                      verified ? @"yes" : @"no"];
 }
 
 static NSString *HoverClickMenuItemTitle(NSString *title) {
@@ -247,6 +269,14 @@ static const char *HoverClickAXErrorName(AXError error) {
     return "unknown";
 }
 
+static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
+    if (!attempted) {
+        return @"not-attempted";
+    }
+
+    return [NSString stringWithFormat:@"attempted:%s", HoverClickAXErrorName(error)];
+}
+
 @interface HoverClickAppDelegate : NSObject <NSApplicationDelegate>
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) NSMenuItem *permissionItem;
@@ -258,8 +288,9 @@ static const char *HoverClickAXErrorName(AXError error) {
 @property(nonatomic, strong) NSMenuItem *diagnosticsItem;
 @property(nonatomic, strong) NSMenuItem *verboseItem;
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
-- (void)recordBackgroundFocusAttemptWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID appName:(NSString *)appName pid:(pid_t)targetPid;
+- (void)recordBackgroundFocusAttemptWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID appName:(NSString *)appName pid:(pid_t)targetPid frontmostBefore:(NSString *)frontmostBefore;
 - (void)recordBackgroundFocusResult:(NSString *)result verification:(NSString *)verification failureReason:(NSString *)failureReason;
+- (void)completeDelayedBackgroundFocusVerification:(NSDictionary *)context;
 - (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
@@ -296,6 +327,11 @@ static const char *HoverClickAXErrorName(AXError error) {
     NSString *_lastEventTapRecoveryResult;
     NSString *_lastBackgroundFocusTrigger;
     NSString *_lastBackgroundFocusTargetApp;
+    NSString *_lastBackgroundFocusFrontmostBefore;
+    NSString *_lastBackgroundFocusActivation;
+    NSString *_lastBackgroundFocusAXOperations;
+    NSString *_lastBackgroundFocusImmediateFrontmost;
+    NSString *_lastBackgroundFocusDelayedVerification;
     NSString *_lastBackgroundFocusResult;
     NSString *_lastBackgroundFocusVerification;
     NSString *_lastBackgroundFocusFailureReason;
@@ -372,6 +408,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastEventTapRecoveryResult = @"none";
     _lastBackgroundFocusTrigger = @"none";
     _lastBackgroundFocusTargetApp = @"none";
+    _lastBackgroundFocusFrontmostBefore = @"none";
+    _lastBackgroundFocusActivation = @"not attempted";
+    _lastBackgroundFocusAXOperations = @"not attempted";
+    _lastBackgroundFocusImmediateFrontmost = @"not checked";
+    _lastBackgroundFocusDelayedVerification = @"not scheduled";
     _lastBackgroundFocusResult = @"none";
     _lastBackgroundFocusVerification = @"not applicable";
     _lastBackgroundFocusFailureReason = @"none";
@@ -755,13 +796,18 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 }
 
-- (void)recordBackgroundFocusAttemptWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID appName:(NSString *)appName pid:(pid_t)targetPid {
+- (void)recordBackgroundFocusAttemptWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID appName:(NSString *)appName pid:(pid_t)targetPid frontmostBefore:(NSString *)frontmostBefore {
     _lastBackgroundFocusAttemptTime = CFAbsoluteTimeGetCurrent();
     _lastBackgroundFocusSequence = sequenceID;
     _lastBackgroundFocusTrigger = HoverClickFocusTriggerLabel(trigger);
     _lastBackgroundFocusTargetApp = [NSString stringWithFormat:@"%@ pid=%d",
                                      appName ?: @"unknown",
                                      targetPid];
+    _lastBackgroundFocusFrontmostBefore = frontmostBefore ?: @"unknown";
+    _lastBackgroundFocusActivation = @"not attempted";
+    _lastBackgroundFocusAXOperations = @"not attempted";
+    _lastBackgroundFocusImmediateFrontmost = @"not checked";
+    _lastBackgroundFocusDelayedVerification = @"not scheduled";
     _lastBackgroundFocusResult = @"attempting";
     _lastBackgroundFocusVerification = @"pending";
     _lastBackgroundFocusFailureReason = @"none";
@@ -1152,6 +1198,18 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return @"target app already frontmost";
     }
 
+    if ([result isEqualToString:@"Verify Pending"]) {
+        return @"background focus delayed verification pending";
+    }
+
+    if ([result isEqualToString:@"Verify Failed"]) {
+        return @"background focus verification failed";
+    }
+
+    if ([result isEqualToString:@"Succeeded"]) {
+        return @"verified successful background focus";
+    }
+
     if ([result isEqualToString:@"Finder Context Menu Pass Through"]) {
         return @"Finder context-menu follow-up click passed through";
     }
@@ -1191,6 +1249,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last background focus attempt: %@\n"
              "Last background focus trigger: %@\n"
              "Last background focus target app: %@\n"
+             "Last background focus frontmost before: %@\n"
+             "Last background focus app activation: %@\n"
+             "Last background focus AX operations: %@\n"
+             "Last background focus immediate frontmost: %@\n"
+             "Last background focus delayed verification: %@\n"
              "Last background focus result: %@\n"
              "Last background focus verification: %@\n"
              "Last background focus failure reason: %@\n"
@@ -1229,6 +1292,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             lastBackgroundFocusAttempt,
             _lastBackgroundFocusTrigger ?: @"none",
             _lastBackgroundFocusTargetApp ?: @"none",
+            _lastBackgroundFocusFrontmostBefore ?: @"none",
+            _lastBackgroundFocusActivation ?: @"not attempted",
+            _lastBackgroundFocusAXOperations ?: @"not attempted",
+            _lastBackgroundFocusImmediateFrontmost ?: @"not checked",
+            _lastBackgroundFocusDelayedVerification ?: @"not scheduled",
             _lastBackgroundFocusResult ?: @"none",
             _lastBackgroundFocusVerification ?: @"not applicable",
             _lastBackgroundFocusFailureReason ?: @"none",
@@ -1677,6 +1745,79 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return NO;
 }
 
+- (void)recordSuccessfulBackgroundFocusWithTriggerLabel:(NSString *)triggerLabel sequenceID:(uint64_t)sequenceID appName:(NSString *)appName pid:(pid_t)targetPid {
+    CFAbsoluteTime focusTime = CFAbsoluteTimeGetCurrent();
+    NSString *successDescription = [NSString stringWithFormat:@"%@ #%llu target=%@ pid=%d",
+                                    triggerLabel ?: @"unknown",
+                                    sequenceID,
+                                    appName ?: @"unknown",
+                                    targetPid];
+    _lastSuccessfulBackgroundFocusTime = focusTime;
+    _lastSuccessfulBackgroundFocusDescription = successDescription;
+    _lastSuccessfulFocusTime = focusTime;
+    _lastSuccessfulFocusDescription = successDescription;
+    if ([triggerLabel isEqualToString:@"right"]) {
+        _lastRightClickFocusPid = targetPid;
+        _lastRightClickFocusTime = focusTime;
+    }
+}
+
+- (void)completeDelayedBackgroundFocusVerification:(NSDictionary *)context {
+    NSNumber *sequenceNumber = context[@"sequenceID"];
+    NSNumber *targetPidNumber = context[@"targetPid"];
+    NSNumber *delayNumber = context[@"delay"];
+    NSString *appName = context[@"appName"] ?: @"unknown";
+    NSString *triggerLabel = context[@"triggerLabel"] ?: @"unknown";
+    uint64_t sequenceID = sequenceNumber.unsignedLongLongValue;
+    pid_t targetPid = targetPidNumber.intValue;
+    NSTimeInterval delay = delayNumber.doubleValue;
+
+    if (sequenceID == 0 || targetPid <= 0) {
+        return;
+    }
+
+    if (_lastBackgroundFocusSequence != sequenceID) {
+        [self diagnosticLog:"HoverClick: %s #%llu delayed verify skipped reason=stale currentSequence=%llu",
+                            triggerLabel.UTF8String,
+                            sequenceID,
+                            _lastBackgroundFocusSequence];
+        return;
+    }
+
+    NSRunningApplication *frontDelayed = [NSWorkspace sharedWorkspace].frontmostApplication;
+    BOOL verified = (frontDelayed != nil && frontDelayed.processIdentifier == targetPid);
+    NSString *frontDelayedDescription = HoverClickRunningApplicationDescription(frontDelayed);
+    _lastBackgroundFocusDelayedVerification = [NSString stringWithFormat:@"%@ after %.2fs frontmost=%@",
+                                               verified ? @"passed" : @"failed",
+                                               delay,
+                                               frontDelayedDescription];
+
+    HoverClickLog("HoverClick: %s #%llu delayed verify after %.2fs frontApp=%s current=%s",
+                  triggerLabel.UTF8String,
+                  sequenceID,
+                  delay,
+                  verified ? "YES" : "NO",
+                  frontDelayedDescription.UTF8String);
+
+    NSString *failureReason = verified ?
+        @"none" :
+        [NSString stringWithFormat:@"frontmost after delayed check was %@", frontDelayedDescription];
+    [self recordBackgroundFocusResult:verified ? @"success" : @"verification failed"
+                          verification:verified ? @"delayed passed" : @"delayed failed"
+                        failureReason:failureReason];
+
+    if (verified) {
+        [self recordSuccessfulBackgroundFocusWithTriggerLabel:triggerLabel
+                                                   sequenceID:sequenceID
+                                                      appName:appName
+                                                          pid:targetPid];
+    }
+
+    if ([_lastClickResult isEqualToString:@"Verify Pending"]) {
+        [self setLastClickResult:verified ? @"Succeeded" : @"Verify Failed"];
+    }
+}
+
 - (void)focusTargetApp:(NSRunningApplication *)targetApp
                    pid:(pid_t)targetPid
                appName:(NSString *)appName
@@ -1690,12 +1831,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSRunningApplication *frontBefore = [NSWorkspace sharedWorkspace].frontmostApplication;
     pid_t frontBeforePid = frontBefore.processIdentifier;
-    NSString *frontBeforeName = frontBefore.localizedName ?: @"unknown";
+    NSString *frontBeforeDescription = HoverClickRunningApplicationDescription(frontBefore);
 
     [self recordBackgroundFocusAttemptWithTrigger:trigger
                                       sequenceID:sequenceID
                                          appName:appName
-                                             pid:targetPid];
+                                             pid:targetPid
+                                 frontmostBefore:frontBeforeDescription];
 
     if (frontBeforePid == targetPid) {
         HoverClickLog("HoverClick: %s #%llu ignored reason=already-frontmost pid=%d app=%s; event passed through", trigger, sequenceID, targetPid, appName.UTF8String);
@@ -1706,20 +1848,22 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
-    HoverClickLog("HoverClick: %s #%llu %s-to-focus started target=%s pid=%d frontBefore=%s pid=%d",
+    HoverClickLog("HoverClick: %s #%llu %s-to-focus started target=%s pid=%d frontBefore=%s",
                   trigger,
                   sequenceID,
                   trigger,
                   appName.UTF8String,
                   targetPid,
-                  frontBeforeName.UTF8String,
-                  frontBeforePid);
+                  frontBeforeDescription.UTF8String);
 
     BOOL activateAttempted = targetApp != nil;
     BOOL activateResult = NO;
     if (targetApp != nil) {
         activateResult = [targetApp activateWithOptions:NSApplicationActivateIgnoringOtherApps];
     }
+    _lastBackgroundFocusActivation = [NSString stringWithFormat:@"attempted=%@ returnValue=%@",
+                                      activateAttempted ? @"yes" : @"no",
+                                      activateAttempted ? (activateResult ? @"yes" : @"no") : @"not-applicable"];
     HoverClickLog("HoverClick: %s #%llu app activation attempted=%s result=%s",
                   trigger,
                   sequenceID,
@@ -1727,62 +1871,85 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   activateResult ? "YES" : "NO");
 
     AXUIElementRef appElement = AXUIElementCreateApplication(targetPid);
+    BOOL appElementCreated = (appElement != NULL);
+    BOOL frontmostAttempted = NO;
+    BOOL focusedWindowAttempted = NO;
     AXError frontmostError = kAXErrorIllegalArgument;
     AXError focusedWindowError = kAXErrorIllegalArgument;
     AXError mainWindowError = kAXErrorIllegalArgument;
     AXError focusedAttrError = kAXErrorIllegalArgument;
     if (appElement != NULL) {
+        frontmostAttempted = YES;
         frontmostError = AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute, kCFBooleanTrue);
+        focusedWindowAttempted = YES;
         focusedWindowError = AXUIElementSetAttributeValue(appElement, kAXFocusedWindowAttribute, targetWindow);
         CFRelease(appElement);
     }
 
     HoverClickLog("HoverClick: %s #%llu AX frontmost set %s", trigger, sequenceID, HoverClickAXErrorName(frontmostError));
 
+    BOOL raiseAttempted = (targetWindow != NULL);
     AXError raiseError = AXUIElementPerformAction(targetWindow, kAXRaiseAction);
     HoverClickLog("HoverClick: %s #%llu AXRaise %s", trigger, sequenceID, HoverClickAXErrorName(raiseError));
 
+    BOOL mainWindowAttempted = (targetWindow != NULL);
+    BOOL focusedAttrAttempted = (targetWindow != NULL);
     mainWindowError = AXUIElementSetAttributeValue(targetWindow, kAXMainAttribute, kCFBooleanTrue);
     focusedAttrError = AXUIElementSetAttributeValue(targetWindow, kAXFocusedAttribute, kCFBooleanTrue);
+    _lastBackgroundFocusAXOperations = [NSString stringWithFormat:@"appElement=%@ appFrontmost=%@ focusedWindow=%@ raise=%@ mainWindow=%@ focused=%@",
+                                        appElementCreated ? @"yes" : @"no",
+                                        HoverClickAXAttemptSummary(frontmostAttempted, frontmostError),
+                                        HoverClickAXAttemptSummary(focusedWindowAttempted, focusedWindowError),
+                                        HoverClickAXAttemptSummary(raiseAttempted, raiseError),
+                                        HoverClickAXAttemptSummary(mainWindowAttempted, mainWindowError),
+                                        HoverClickAXAttemptSummary(focusedAttrAttempted, focusedAttrError)];
 
     HoverClickLog("HoverClick: %s #%llu AX focusedWindow set %s", trigger, sequenceID, HoverClickAXErrorName(focusedWindowError));
     [self diagnosticLog:"HoverClick: %s #%llu AX mainWindow set %s", trigger, sequenceID, HoverClickAXErrorName(mainWindowError)];
     [self diagnosticLog:"HoverClick: %s #%llu AX focused attribute set %s", trigger, sequenceID, HoverClickAXErrorName(focusedAttrError)];
 
     NSRunningApplication *frontAfter = [NSWorkspace sharedWorkspace].frontmostApplication;
-    BOOL frontImmediate = frontAfter.processIdentifier == targetPid;
-    HoverClickLog("HoverClick: %s #%llu %s-to-focus immediate verify frontApp=%s current=%s pid=%d",
+    BOOL frontImmediate = (frontAfter != nil && frontAfter.processIdentifier == targetPid);
+    NSString *frontAfterDescription = HoverClickRunningApplicationDescription(frontAfter);
+    _lastBackgroundFocusImmediateFrontmost = HoverClickFrontmostVerificationDescription(frontAfter, targetPid);
+    HoverClickLog("HoverClick: %s #%llu %s-to-focus immediate verify frontApp=%s current=%s",
                   trigger,
                   sequenceID,
                   trigger,
                   frontImmediate ? "YES" : "NO",
-                  (frontAfter.localizedName ?: @"unknown").UTF8String,
-                  frontAfter.processIdentifier);
+                  frontAfterDescription.UTF8String);
 
-    [self setLastClickResult:frontImmediate ? @"Succeeded" : @"Verify Failed"];
-    NSString *verificationFailureReason = frontImmediate ?
-        @"none" :
-        [NSString stringWithFormat:@"frontmost after attempt was %@ pid=%d",
-                                   frontAfter.localizedName ?: @"unknown",
-                                   frontAfter.processIdentifier];
-    [self recordBackgroundFocusResult:frontImmediate ? @"success" : @"verification failed"
-                          verification:frontImmediate ? @"passed" : @"failed"
-                        failureReason:verificationFailureReason];
+    NSString *triggerLabel = HoverClickFocusTriggerLabel(trigger);
     if (frontImmediate) {
-        CFAbsoluteTime focusTime = CFAbsoluteTimeGetCurrent();
-        NSString *successDescription = [NSString stringWithFormat:@"%@ #%llu target=%@ pid=%d",
-                                        HoverClickFocusTriggerLabel(trigger),
-                                        sequenceID,
-                                        appName,
-                                        targetPid];
-        _lastSuccessfulBackgroundFocusTime = focusTime;
-        _lastSuccessfulBackgroundFocusDescription = successDescription;
-        _lastSuccessfulFocusTime = focusTime;
-        _lastSuccessfulFocusDescription = successDescription;
-        if (strcmp(trigger, "right-click") == 0) {
-            _lastRightClickFocusPid = targetPid;
-            _lastRightClickFocusTime = focusTime;
-        }
+        _lastBackgroundFocusDelayedVerification = @"not scheduled (immediate verification passed)";
+        [self setLastClickResult:@"Succeeded"];
+        [self recordBackgroundFocusResult:@"success"
+                              verification:@"immediate passed"
+                            failureReason:@"none"];
+        [self recordSuccessfulBackgroundFocusWithTriggerLabel:triggerLabel
+                                                   sequenceID:sequenceID
+                                                      appName:appName
+                                                          pid:targetPid];
+    } else {
+        NSString *verificationFailureReason = [NSString stringWithFormat:@"frontmost after immediate check was %@", frontAfterDescription];
+        _lastBackgroundFocusDelayedVerification = [NSString stringWithFormat:@"scheduled after %.2fs",
+                                                   HoverClickDelayedVerificationDelay];
+        [self setLastClickResult:@"Verify Pending"];
+        [self recordBackgroundFocusResult:@"immediate verification failed; delayed verification pending"
+                              verification:@"immediate failed; delayed pending"
+                            failureReason:verificationFailureReason];
+
+        NSDictionary *verificationContext = @{
+            @"sequenceID": @(sequenceID),
+            @"targetPid": @(targetPid),
+            @"appName": appName ?: @"unknown",
+            @"triggerLabel": triggerLabel ?: @"unknown",
+            @"delay": @(HoverClickDelayedVerificationDelay)
+        };
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(HoverClickDelayedVerificationDelay * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            [self completeDelayedBackgroundFocusVerification:verificationContext];
+        });
     }
     HoverClickLog("HoverClick: %s #%llu event passed through", trigger, sequenceID);
 
