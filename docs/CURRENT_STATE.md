@@ -50,7 +50,7 @@
 - Bartender/menu-bar overlay pass-through: expanded or overflow menu bar items remain protected by the same non-layer-0 top-window check.
 - Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
-- Diagnostics summary: copies app name, version/build, bundle identifier, permission, startup, click detection, feature state, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last successful focus, last focus action/skip reason, event tap mask, safety note, and concise known limitations.
+- Diagnostics summary: copies app name, version/build, bundle identifier, permission, startup, click detection, feature state, Hover Click Assist setting and no-op runtime behavior, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last successful focus, last focus action/skip reason, event tap mask, safety note, and concise known limitations.
 - Diagnostics menu polish: visible runtime details stay out of the menu; `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` use left-slot action icons with exactly 1 ASCII space of title padding, and Quit preserves Cmd+Q.
 - Accessibility onboarding: available from `Permissions & Startup` > `Open Accessibility Settings`.
 

@@ -1143,8 +1143,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last tap recovery result: %@\n"
              "Left Click Focus: %@\n"
              "Right Click Focus: %@\n"
-             "Hover Click Assist: %@\n"
-             "Hover Click Assist effective: %@\n"
+             "Hover Click Assist setting: %@\n"
+             "Hover Click Assist runtime behavior: %@\n"
              "Verbose Diagnostics: %@\n"
              "Event tap mask: left mouse down + right mouse down only\n"
              "Safety note: HoverClick returns original click events unchanged; no synthetic clicks, event replay, or cursor movement\n"
@@ -1176,7 +1176,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             _clickToFocusEnabled ? @"enabled" : @"disabled",
             _rightClickFocusEnabled ? @"enabled" : @"disabled",
             _hoverClickAssistEnabled ? @"enabled" : @"disabled",
-            [self isEffectiveHoverClickAssistEnabled] ? @"enabled" : @"disabled",
+            [self isEffectiveHoverClickAssistEnabled] ?
+                @"no-op placeholder (setting enabled; Left Click Focus enabled)" :
+                (_hoverClickAssistEnabled ?
+                    @"no-op placeholder (setting enabled; Left Click Focus disabled)" :
+                    @"no-op placeholder (setting disabled)"),
             _verboseDiagnostics ? @"enabled" : @"disabled"];
 }
 
