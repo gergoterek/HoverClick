@@ -212,6 +212,7 @@ static const char *HoverClickAXErrorName(AXError error) {
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
 - (BOOL)isEffectiveHoverClickAssistEnabled;
+- (void)quitApplication:(id)sender;
 @end
 
 @implementation HoverClickAppDelegate {
@@ -460,12 +461,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [menu addItem:[NSMenuItem separatorItem]];
 
     NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:@"Quit"
-                                                      action:@selector(terminate:)
+                                                      action:@selector(quitApplication:)
                                                keyEquivalent:@"q"];
-    quitItem.target = NSApp;
+    quitItem.target = self;
     quitItem.enabled = YES;
     quitItem.indentationLevel = 0;
     quitItem.state = NSControlStateValueOff;
+    quitItem.image = nil;
+    quitItem.onStateImage = nil;
+    quitItem.mixedStateImage = nil;
+    quitItem.offStateImage = HoverClickMenuSymbolImage(@"power", @"Quit");
     quitItem.toolTip = HoverClickQuitHelp;
     [menu addItem:quitItem];
 
@@ -1552,6 +1557,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (![[NSWorkspace sharedWorkspace] openURL:url]) {
         HoverClickLog("HoverClick: failed to open Accessibility settings URL");
     }
+}
+
+- (void)quitApplication:(id)sender {
+    [NSApp terminate:sender];
 }
 
 @end
