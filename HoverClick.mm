@@ -120,6 +120,22 @@ static NSString *HoverClickEventTypeName(CGEventType type) {
     }
 }
 
+static NSString *HoverClickFocusTriggerLabel(const char *trigger) {
+    if (trigger == NULL) {
+        return @"unknown";
+    }
+
+    if (strcmp(trigger, "click") == 0) {
+        return @"left";
+    }
+
+    if (strcmp(trigger, "right-click") == 0) {
+        return @"right";
+    }
+
+    return [NSString stringWithUTF8String:trigger] ?: @"unknown";
+}
+
 static NSString *HoverClickMenuItemTitle(NSString *title) {
     // Match the Quit row's state-slot icon spacing for plain, checked, icon, and submenu rows.
     return [HoverClickMenuItemTitlePadding stringByAppendingString:title];
@@ -242,6 +258,8 @@ static const char *HoverClickAXErrorName(AXError error) {
 @property(nonatomic, strong) NSMenuItem *diagnosticsItem;
 @property(nonatomic, strong) NSMenuItem *verboseItem;
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
+- (void)recordBackgroundFocusAttemptWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID appName:(NSString *)appName pid:(pid_t)targetPid;
+- (void)recordBackgroundFocusResult:(NSString *)result verification:(NSString *)verification failureReason:(NSString *)failureReason;
 - (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
@@ -265,14 +283,23 @@ static const char *HoverClickAXErrorName(AXError error) {
     CFAbsoluteTime _lastRightMouseDownSeenTime;
     CFAbsoluteTime _lastEventTapCallbackTime;
     CFAbsoluteTime _lastEventTapRecoveryAttemptTime;
+    CFAbsoluteTime _lastBackgroundFocusAttemptTime;
+    CFAbsoluteTime _lastSuccessfulBackgroundFocusTime;
     CFAbsoluteTime _lastSuccessfulFocusTime;
     CFAbsoluteTime _lastRightClickFocusTime;
     pid_t _lastRightClickFocusPid;
     CFAbsoluteTime _lastFinderRightClickTime;
     pid_t _lastFinderRightClickPid;
     uint64_t _clickSequence;
+    uint64_t _lastBackgroundFocusSequence;
     NSString *_lastEventTapCallbackDescription;
     NSString *_lastEventTapRecoveryResult;
+    NSString *_lastBackgroundFocusTrigger;
+    NSString *_lastBackgroundFocusTargetApp;
+    NSString *_lastBackgroundFocusResult;
+    NSString *_lastBackgroundFocusVerification;
+    NSString *_lastBackgroundFocusFailureReason;
+    NSString *_lastSuccessfulBackgroundFocusDescription;
     NSString *_lastSuccessfulFocusDescription;
     NSString *_lastClickResult;
     NSString *_lastLaunchAtLoginStatusDescription;
@@ -332,14 +359,23 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastRightMouseDownSeenTime = 0;
     _lastEventTapCallbackTime = 0;
     _lastEventTapRecoveryAttemptTime = 0;
+    _lastBackgroundFocusAttemptTime = 0;
+    _lastSuccessfulBackgroundFocusTime = 0;
     _lastSuccessfulFocusTime = 0;
     _lastRightClickFocusTime = 0;
     _lastRightClickFocusPid = 0;
     _lastFinderRightClickTime = 0;
     _lastFinderRightClickPid = 0;
     _clickSequence = 0;
+    _lastBackgroundFocusSequence = 0;
     _lastEventTapCallbackDescription = @"none";
     _lastEventTapRecoveryResult = @"none";
+    _lastBackgroundFocusTrigger = @"none";
+    _lastBackgroundFocusTargetApp = @"none";
+    _lastBackgroundFocusResult = @"none";
+    _lastBackgroundFocusVerification = @"not applicable";
+    _lastBackgroundFocusFailureReason = @"none";
+    _lastSuccessfulBackgroundFocusDescription = @"never";
     _lastSuccessfulFocusDescription = @"never";
     _lastClickResult = @"None";
     _lastLaunchAtLoginStatusDescription = nil;
@@ -717,6 +753,24 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     } else if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
         _eventTapEnabled = NO;
     }
+}
+
+- (void)recordBackgroundFocusAttemptWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID appName:(NSString *)appName pid:(pid_t)targetPid {
+    _lastBackgroundFocusAttemptTime = CFAbsoluteTimeGetCurrent();
+    _lastBackgroundFocusSequence = sequenceID;
+    _lastBackgroundFocusTrigger = HoverClickFocusTriggerLabel(trigger);
+    _lastBackgroundFocusTargetApp = [NSString stringWithFormat:@"%@ pid=%d",
+                                     appName ?: @"unknown",
+                                     targetPid];
+    _lastBackgroundFocusResult = @"attempting";
+    _lastBackgroundFocusVerification = @"pending";
+    _lastBackgroundFocusFailureReason = @"none";
+}
+
+- (void)recordBackgroundFocusResult:(NSString *)result verification:(NSString *)verification failureReason:(NSString *)failureReason {
+    _lastBackgroundFocusResult = result ?: @"unknown";
+    _lastBackgroundFocusVerification = verification ?: @"unknown";
+    _lastBackgroundFocusFailureReason = failureReason ?: @"none";
 }
 
 - (BOOL)installEventTap {
@@ -1110,11 +1164,18 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateEventTapLifecycleFlags];
 
     NSString *lastAction = [self lastActionForDiagnostics];
-    NSString *lastSuccessfulFocus = @"never";
-    if (_lastSuccessfulFocusTime > 0) {
-        lastSuccessfulFocus = [NSString stringWithFormat:@"%@ at %@",
-                               _lastSuccessfulFocusDescription ?: @"success",
-                               HoverClickDiagnosticTimestamp(_lastSuccessfulFocusTime)];
+    NSString *lastBackgroundFocusAttempt = @"never";
+    if (_lastBackgroundFocusAttemptTime > 0) {
+        lastBackgroundFocusAttempt = [NSString stringWithFormat:@"%@ sequence=%llu",
+                                      HoverClickDiagnosticTimestamp(_lastBackgroundFocusAttemptTime),
+                                      _lastBackgroundFocusSequence];
+    }
+
+    NSString *lastSuccessfulBackgroundFocus = @"never";
+    if (_lastSuccessfulBackgroundFocusTime > 0) {
+        lastSuccessfulBackgroundFocus = [NSString stringWithFormat:@"%@ at %@",
+                                         _lastSuccessfulBackgroundFocusDescription ?: @"success",
+                                         HoverClickDiagnosticTimestamp(_lastSuccessfulBackgroundFocusTime)];
     }
 
     return [NSString stringWithFormat:
@@ -1127,7 +1188,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Click detection: %@\n"
              "Last handled action: %@\n"
              "Last focus action/skip: %@\n"
-             "Last successful focus: %@\n"
+             "Last background focus attempt: %@\n"
+             "Last background focus trigger: %@\n"
+             "Last background focus target app: %@\n"
+             "Last background focus result: %@\n"
+             "Last background focus verification: %@\n"
+             "Last background focus failure reason: %@\n"
+             "Last verified successful background focus: %@\n"
              "Event tap requested: %@\n"
              "Event tap object exists: %@\n"
              "Event tap port valid: %@\n"
@@ -1159,7 +1226,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             [self clickDetectionStatusForDiagnostics],
             lastAction,
             lastAction,
-            lastSuccessfulFocus,
+            lastBackgroundFocusAttempt,
+            _lastBackgroundFocusTrigger ?: @"none",
+            _lastBackgroundFocusTargetApp ?: @"none",
+            _lastBackgroundFocusResult ?: @"none",
+            _lastBackgroundFocusVerification ?: @"not applicable",
+            _lastBackgroundFocusFailureReason ?: @"none",
+            lastSuccessfulBackgroundFocus,
             _userWantsEventTap ? @"enabled" : @"disabled",
             _eventTap != NULL ? @"yes" : @"no",
             [self eventTapPortValidityDescription],
@@ -1619,8 +1692,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     pid_t frontBeforePid = frontBefore.processIdentifier;
     NSString *frontBeforeName = frontBefore.localizedName ?: @"unknown";
 
+    [self recordBackgroundFocusAttemptWithTrigger:trigger
+                                      sequenceID:sequenceID
+                                         appName:appName
+                                             pid:targetPid];
+
     if (frontBeforePid == targetPid) {
         HoverClickLog("HoverClick: %s #%llu ignored reason=already-frontmost pid=%d app=%s; event passed through", trigger, sequenceID, targetPid, appName.UTF8String);
+        [self recordBackgroundFocusResult:@"skipped"
+                              verification:@"not applicable"
+                            failureReason:@"target already frontmost before focus attempt"];
         [self setLastClickResult:@"Already Frontmost"];
         return;
     }
@@ -1679,14 +1760,25 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   frontAfter.processIdentifier);
 
     [self setLastClickResult:frontImmediate ? @"Succeeded" : @"Verify Failed"];
+    NSString *verificationFailureReason = frontImmediate ?
+        @"none" :
+        [NSString stringWithFormat:@"frontmost after attempt was %@ pid=%d",
+                                   frontAfter.localizedName ?: @"unknown",
+                                   frontAfter.processIdentifier];
+    [self recordBackgroundFocusResult:frontImmediate ? @"success" : @"verification failed"
+                          verification:frontImmediate ? @"passed" : @"failed"
+                        failureReason:verificationFailureReason];
     if (frontImmediate) {
         CFAbsoluteTime focusTime = CFAbsoluteTimeGetCurrent();
+        NSString *successDescription = [NSString stringWithFormat:@"%@ #%llu target=%@ pid=%d",
+                                        HoverClickFocusTriggerLabel(trigger),
+                                        sequenceID,
+                                        appName,
+                                        targetPid];
+        _lastSuccessfulBackgroundFocusTime = focusTime;
+        _lastSuccessfulBackgroundFocusDescription = successDescription;
         _lastSuccessfulFocusTime = focusTime;
-        _lastSuccessfulFocusDescription = [NSString stringWithFormat:@"%s #%llu target=%@ pid=%d",
-                                           trigger,
-                                           sequenceID,
-                                           appName,
-                                           targetPid];
+        _lastSuccessfulFocusDescription = successDescription;
         if (strcmp(trigger, "right-click") == 0) {
             _lastRightClickFocusPid = targetPid;
             _lastRightClickFocusTime = focusTime;
