@@ -45,6 +45,7 @@
 - Left-click focus: a left click on a background window can focus the target before the original click is delivered.
 - Right-click focus: when enabled, a right click on a background window can focus the target before the original right-click continues.
 - Overlay/menu-bar pass-through: if the topmost onscreen window under a click is non-layer-0, HoverClick skips AX background-window targeting so menu bar, status-item, overlay, and popover UI can receive the original click unchanged.
+- Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
 - Diagnostics summary: copies version, permission, startup, click detection, feature state, event tap mask, and safety details.
 - Accessibility onboarding: available from `Permissions & Startup` > `Open Accessibility Settings`.
