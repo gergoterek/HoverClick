@@ -466,7 +466,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     quitItem.enabled = YES;
     quitItem.indentationLevel = 0;
     quitItem.state = NSControlStateValueOff;
-    quitItem.offStateImage = HoverClickMenuSymbolImage(@"power", @"Quit");
     quitItem.toolTip = HoverClickQuitHelp;
     [menu addItem:quitItem];
 
