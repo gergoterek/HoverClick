@@ -816,6 +816,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return @"menu or status-item click ignored";
     }
 
+    if ([result isEqualToString:@"Ignored Non-Normal UI"]) {
+        return @"topmost overlay or system UI click ignored";
+    }
+
     if ([result isEqualToString:@"No Target Window"]) {
         return @"target window unavailable";
     }
@@ -949,6 +953,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
+    if ([self passThroughTopmostNonNormalWindowAtPoint:axPoint sequenceID:clickID trigger:"click"]) {
+        return;
+    }
+
     AXUIElementRef element = [self copyElementAtAccessibilityPoint:axPoint];
     if (element == NULL) {
         HoverClickLog("HoverClick: click #%llu AX element not found at x=%.1f, y=%.1f; event passed through", clickID, axPoint.x, axPoint.y);
@@ -984,6 +992,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (!_rightClickFocusEnabled) {
         HoverClickLog("HoverClick: right-click #%llu right click focus disabled; event passed through", clickID);
         [self setLastClickResult:@"Right Click Disabled"];
+        return;
+    }
+
+    if ([self passThroughTopmostNonNormalWindowAtPoint:axPoint sequenceID:clickID trigger:"right-click"]) {
         return;
     }
 
@@ -1030,11 +1042,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (void)handleResolvedElement:(AXUIElementRef)element rawPoint:(CGPoint)rawPoint axPoint:(CGPoint)axPoint sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger {
     NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:element] ?: @"unknown";
+    NSString *subrole = [self stringAttribute:kAXSubroleAttribute fromElement:element] ?: @"";
     NSString *elementTitle = [self stringAttribute:kAXTitleAttribute fromElement:element] ?: @"";
-    [self diagnosticLog:"HoverClick: %s #%llu AX element found role=%s title=%s",
+    [self diagnosticLog:"HoverClick: %s #%llu AX element found role=%s subrole=%s title=%s",
                         trigger,
                         sequenceID,
                         role.UTF8String,
+                        subrole.UTF8String,
                         elementTitle.UTF8String];
 
     pid_t targetPid = 0;
@@ -1081,8 +1095,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
-    if ([self shouldIgnoreRole:role appName:appName targetPid:targetPid point:axPoint]) {
-        HoverClickLog("HoverClick: %s #%llu ignored reason=menu-role role=%s app=%s; event passed through", trigger, sequenceID, role.UTF8String, appName.UTF8String);
+    if ([self shouldIgnoreRole:role subrole:subrole appName:appName targetPid:targetPid point:axPoint]) {
+        HoverClickLog("HoverClick: %s #%llu ignored reason=menu-role role=%s subrole=%s app=%s; event passed through", trigger, sequenceID, role.UTF8String, subrole.UTF8String, appName.UTF8String);
         [self setLastClickResult:@"Ignored Menu/UI"];
         return;
     }
@@ -1165,7 +1179,76 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return YES;
 }
 
-- (BOOL)shouldIgnoreRole:(NSString *)role appName:(NSString *)appName targetPid:(pid_t)targetPid point:(CGPoint)point {
+- (BOOL)passThroughTopmostNonNormalWindowAtPoint:(CGPoint)point sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger {
+    NSDictionary *windowInfo = [self topmostWindowInfoAtPoint:point];
+    if (windowInfo == nil) {
+        [self diagnosticLog:"HoverClick: %s #%llu topmost CG window not found at x=%.1f y=%.1f",
+                            trigger,
+                            sequenceID,
+                            point.x,
+                            point.y];
+        return NO;
+    }
+
+    NSNumber *layerNumber = windowInfo[(__bridge NSString *)kCGWindowLayer];
+    NSInteger layer = layerNumber != nil ? layerNumber.integerValue : 0;
+    NSNumber *ownerPidNumber = windowInfo[(__bridge NSString *)kCGWindowOwnerPID];
+    pid_t ownerPid = ownerPidNumber != nil ? ownerPidNumber.intValue : 0;
+    NSString *ownerName = windowInfo[(__bridge NSString *)kCGWindowOwnerName] ?: @"unknown";
+    NSNumber *windowNumber = windowInfo[(__bridge NSString *)kCGWindowNumber];
+    NSString *windowTitle = windowInfo[(__bridge NSString *)kCGWindowName] ?: @"";
+
+    if (layer == 0) {
+        [self diagnosticLog:"HoverClick: %s #%llu topmost CG window layer=0 ownerPid=%d owner=%s windowNumber=%lld; continuing AX lookup",
+                            trigger,
+                            sequenceID,
+                            ownerPid,
+                            ownerName.UTF8String,
+                            windowNumber.longLongValue];
+        return NO;
+    }
+
+    HoverClickLog("HoverClick: %s #%llu ignored reason=non-normal-top-window layer=%ld ownerPid=%d owner=%s windowNumber=%lld title=%s; event passed through before AX lookup",
+                  trigger,
+                  sequenceID,
+                  (long)layer,
+                  ownerPid,
+                  ownerName.UTF8String,
+                  windowNumber.longLongValue,
+                  windowTitle.UTF8String);
+    [self setLastClickResult:@"Ignored Non-Normal UI"];
+    return YES;
+}
+
+- (NSDictionary *)topmostWindowInfoAtPoint:(CGPoint)point {
+    NSArray *windowList = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly,
+                                                                       kCGNullWindowID));
+    for (NSDictionary *windowInfo in windowList) {
+        NSNumber *alphaNumber = windowInfo[(__bridge NSString *)kCGWindowAlpha];
+        if (alphaNumber != nil && alphaNumber.doubleValue <= 0.0) {
+            continue;
+        }
+
+        NSDictionary *boundsDictionary = windowInfo[(__bridge NSString *)kCGWindowBounds];
+        if (![boundsDictionary isKindOfClass:[NSDictionary class]]) {
+            continue;
+        }
+
+        CGRect bounds = CGRectNull;
+        if (!CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)boundsDictionary, &bounds) ||
+            CGRectIsEmpty(bounds)) {
+            continue;
+        }
+
+        if (CGRectContainsPoint(bounds, point)) {
+            return [windowInfo copy];
+        }
+    }
+
+    return nil;
+}
+
+- (BOOL)shouldIgnoreRole:(NSString *)role subrole:(NSString *)subrole appName:(NSString *)appName targetPid:(pid_t)targetPid point:(CGPoint)point {
     (void)point;
     (void)targetPid;
 
@@ -1173,9 +1256,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return YES;
     }
 
+    if ([subrole rangeOfString:@"Menu" options:NSCaseInsensitiveSearch].location != NSNotFound ||
+        [subrole rangeOfString:@"Status" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+        return YES;
+    }
+
     if ([role isEqualToString:@"AXStatusItem"] ||
         [role isEqualToString:@"AXSystemWide"] ||
-        [role isEqualToString:@"AXPopover"]) {
+        [role isEqualToString:@"AXPopover"] ||
+        [subrole isEqualToString:@"AXStatusItem"] ||
+        [subrole isEqualToString:@"AXSystemWide"] ||
+        [subrole isEqualToString:@"AXPopover"]) {
         return YES;
     }
 
