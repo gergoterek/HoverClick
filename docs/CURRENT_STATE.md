@@ -51,7 +51,7 @@
 - Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
 - Diagnostics summary: copies app name, version/build, bundle identifier, permission, startup, click detection, feature state, event tap requested/installed state, event tap mask, safety note, and concise known limitations.
-- Diagnostics menu polish: visible runtime details stay out of the menu; `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` use left-slot action icons with two-space title padding, and Quit preserves Cmd+Q.
+- Diagnostics menu polish: visible runtime details stay out of the menu; `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` use left-slot action icons with exactly 1 ASCII space of title padding, and Quit preserves Cmd+Q.
 - Accessibility onboarding: available from `Permissions & Startup` > `Open Accessibility Settings`.
 
 ## Experimental Or Placeholder Items
@@ -121,8 +121,8 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `Hover` contains `Hover Click Assist`.
 - Confirm `Diagnostics` contains `Version 0.4.4 (30)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
-- Confirm `Open Accessibility Settings` uses its action symbol and two-space title padding.
-- Confirm `Quit` uses one left-slot action symbol, two-space title padding, and preserves Cmd+Q.
+- Confirm `Open Accessibility Settings` uses its action symbol and exactly 1 ASCII space of title padding.
+- Confirm `Quit` uses one left-slot action symbol, exactly 1 ASCII space of title padding, and preserves Cmd+Q.
 - Move the pointer over background windows without clicking; no focus change should occur.
 - With `Left Click Focus` checked, click visible background windows; target focus should occur before the original click passes through.
 - With `Right Click Focus` checked, right-click visible background windows; target focus should occur before the original right-click passes through and the normal context menu works.
