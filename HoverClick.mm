@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 static NSString * const HoverClickBundleID = @"com.gergoterek.HoverClick";
+static NSString * const HoverClickFinderBundleID = @"com.apple.finder";
 static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
 static NSString * const HoverClickHoverClickAssistDefaultsKey = @"hoverClickAssistEnabled";
@@ -166,6 +167,8 @@ static const char *HoverClickAXErrorName(AXError error) {
     CFAbsoluteTime _lastRightMouseDownLogTime;
     CFAbsoluteTime _lastRightClickFocusTime;
     pid_t _lastRightClickFocusPid;
+    CFAbsoluteTime _lastFinderRightClickTime;
+    pid_t _lastFinderRightClickPid;
     uint64_t _clickSequence;
     NSString *_lastClickResult;
     NSString *_lastLaunchAtLoginStatusDescription;
@@ -218,6 +221,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastRightMouseDownLogTime = 0;
     _lastRightClickFocusTime = 0;
     _lastRightClickFocusPid = 0;
+    _lastFinderRightClickTime = 0;
+    _lastFinderRightClickPid = 0;
     _clickSequence = 0;
     _lastClickResult = @"None";
     _lastLaunchAtLoginStatusDescription = nil;
@@ -823,6 +828,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return @"target app already frontmost";
     }
 
+    if ([result isEqualToString:@"Finder Context Menu Pass Through"]) {
+        return @"Finder context-menu follow-up click passed through";
+    }
+
     return result;
 }
 
@@ -933,6 +942,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (!_clickToFocusEnabled) {
         HoverClickLog("HoverClick: click #%llu left click focus disabled; event passed through", clickID);
         [self setLastClickResult:@"Disabled"];
+        return;
+    }
+
+    if ([self passThroughRecentFinderRightClickFollowUpForClickID:clickID]) {
         return;
     }
 
@@ -1048,6 +1061,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
+    if (strcmp(trigger, "right-click") == 0) {
+        [self recordRecentFinderRightClickForApp:targetApp pid:targetPid sequenceID:sequenceID];
+    }
+
     NSRunningApplication *frontApp = [NSWorkspace sharedWorkspace].frontmostApplication;
     BOOL targetIsFrontmost = frontApp != nil && frontApp.processIdentifier == targetPid;
     if (targetIsFrontmost) {
@@ -1097,6 +1114,55 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
               sequenceID:sequenceID
                  trigger:trigger];
     CFRelease(targetWindow);
+}
+
+- (void)recordRecentFinderRightClickForApp:(NSRunningApplication *)targetApp pid:(pid_t)targetPid sequenceID:(uint64_t)sequenceID {
+    NSString *bundleID = targetApp.bundleIdentifier ?: @"";
+    if (![bundleID isEqualToString:HoverClickFinderBundleID]) {
+        return;
+    }
+
+    _lastFinderRightClickPid = targetPid;
+    _lastFinderRightClickTime = CFAbsoluteTimeGetCurrent();
+    [self diagnosticLog:"HoverClick: right-click #%llu recorded Finder follow-up pass-through state pid=%d",
+                        sequenceID,
+                        targetPid];
+}
+
+- (void)clearRecentFinderRightClick {
+    _lastFinderRightClickPid = 0;
+    _lastFinderRightClickTime = 0;
+}
+
+- (BOOL)passThroughRecentFinderRightClickFollowUpForClickID:(uint64_t)clickID {
+    if (_lastFinderRightClickPid <= 0 || _lastFinderRightClickTime <= 0) {
+        return NO;
+    }
+
+    CFAbsoluteTime elapsed = CFAbsoluteTimeGetCurrent() - _lastFinderRightClickTime;
+    if (elapsed > 5.0) {
+        [self clearRecentFinderRightClick];
+        return NO;
+    }
+
+    NSRunningApplication *frontApp = [NSWorkspace sharedWorkspace].frontmostApplication;
+    pid_t frontPid = frontApp.processIdentifier;
+    NSString *bundleID = frontApp.bundleIdentifier ?: @"";
+    BOOL frontmostFinderMatchesRightClick = (frontApp != nil &&
+                                             frontPid == _lastFinderRightClickPid &&
+                                             [bundleID isEqualToString:HoverClickFinderBundleID]);
+
+    [self clearRecentFinderRightClick];
+
+    if (!frontmostFinderMatchesRightClick) {
+        return NO;
+    }
+
+    HoverClickLog("HoverClick: click #%llu ignored reason=recent-finder-right-click-context-menu pid=%d; event passed through before AX lookup",
+                  clickID,
+                  frontPid);
+    [self setLastClickResult:@"Finder Context Menu Pass Through"];
+    return YES;
 }
 
 - (BOOL)shouldIgnoreRole:(NSString *)role appName:(NSString *)appName targetPid:(pid_t)targetPid point:(CGPoint)point {
