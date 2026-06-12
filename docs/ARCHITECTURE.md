@@ -29,18 +29,20 @@ For each click, HoverClick:
 1. Reads the global click point from `CGEventGetLocation`.
 2. Uses `AXUIElementCreateSystemWide` and `AXUIElementCopyElementAtPosition` to resolve the element under the cursor.
 3. Reads the target pid and app name.
-4. Ignores HoverClick itself, menu roles, status items, and unresolved targets.
-5. Resolves a target window from `AXWindow` or by bounded `AXParent` climbing.
-6. Attempts app activation, AX frontmost, `AXRaise`, and focused-window attributes.
-7. Records frontmost-before, activation return value, AX operation results, and immediate front-app verification.
-8. If immediate verification fails, schedules a short main-queue delayed verification diagnostic.
-9. Returns the original event unchanged.
+4. Records the topmost CoreGraphics window under the point for overlay diagnostics.
+5. Uses AX hit-testing before treating a non-layer-0 CoreGraphics window as a hard skip.
+6. Ignores HoverClick itself, menu roles, status items, protected menu-bar/system UI overlays, compact popup-style overlays, and unresolved targets.
+7. Resolves a target window from `AXWindow` or by bounded `AXParent` climbing.
+8. Attempts app activation, AX frontmost, `AXRaise`, and focused-window attributes.
+9. Records frontmost-before, activation return value, AX operation results, and immediate front-app verification.
+10. If immediate verification fails, schedules a short main-queue delayed verification diagnostic.
+11. Returns the original event unchanged.
 
 `observed leftMouseDown` from Phase 1 was only event observation. Phase 2 success requires target resolution plus a focus/raise action result.
 
 Diagnostics intentionally remain detailed. Logs distinguish click receipt, AX element lookup, target pid/app/window resolution, ignored targets, `AXRaise`, app activation, immediate verification, delayed verification when immediate verification fails, event pass-through, tap creation, tap enable/disable, tap disabled/re-enabled/recreated recovery, and tap removal. Each click carries a monotonically increasing sequence id such as `click #42`.
 
-`Diagnostics` > `Copy Diagnostics Summary` exposes the event tap lifecycle state needed for long-running failures: requested state, object/source presence, port/source validity, believed installed/enabled state, detected enabled state when available, last event tap callback type, last left/right mouse-down callback timestamps, and last recovery attempt/result. It also separates volatile last click handling from persistent background-focus diagnostics, including the last background-focus attempt, trigger, target app, frontmost app before the attempt, activation return value, AX operation results, immediate frontmost app, delayed verification state, final result, failure reason, and last verified successful background focus. Later menu or overlay clicks may update the volatile last handled action, but they do not erase the last background-focus attempt or last verified background-focus success.
+`Diagnostics` > `Copy Diagnostics Summary` exposes the event tap lifecycle state needed for long-running failures: requested state, object/source presence, port/source validity, believed installed/enabled state, detected enabled state when available, last event tap callback type, last left/right mouse-down callback timestamps, and last recovery attempt/result. It also separates volatile last click handling from persistent background-focus diagnostics, including the last background-focus attempt, trigger, target app, frontmost app before the attempt, activation return value, AX operation results, immediate frontmost app, delayed verification state, final result, failure reason, and last verified successful background focus. Later menu or overlay clicks may update the volatile last handled action, but they do not erase the last non-menu focus decision, last background-focus attempt, or last verified background-focus success. Overlay diagnostics record the last overlay/system UI skip reason, the topmost CoreGraphics owner/window/layer/title/bounds involved, the AX role/subrole/app seen at the click point, and the last eligible AX hit-test candidate when one is safely available.
 
 Delayed verification is diagnostic-only and runs only after immediate frontmost verification fails. It is scheduled on the main queue after the original event has been left unmodified; it does not sleep in the event tap callback, consume the event, synthesize clicks, replay events, move the cursor, or add hover-assist-like work.
 
