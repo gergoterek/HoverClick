@@ -7,8 +7,8 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick`
-- Version/build UI surface: `About HoverClick...`
+- Visible menu header: `HoverClick` with `v0.4.6` on the same row
+- Full version/build UI surface: `About HoverClick...`
 - Bundle short version/build version: `0.4.6` / `32`
 - Latest released version: `v0.4.6` / build `32`
 - Latest public DMG asset: `HoverClick-0.4.6.dmg`
@@ -126,8 +126,9 @@ The failed 35 ms background drag assist / activation-settle experiment must not 
 ## Version Rule
 
 - The visible menu version reads from `CFBundleShortVersionString`.
+- The header displays the short version as `v<short-version>`.
 - `About HoverClick...` displays `Version <short-version>` and `Build <build-version>`.
-- The header, status item tooltip, and Diagnostics submenu do not show version/build.
+- The status item tooltip and Diagnostics submenu do not show version/build.
 - `CFBundleVersion` is an internal build number outside the About alert.
 - Documentation-only tasks should not change app version fields.
 
@@ -151,7 +152,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm the published GitHub v0.4.6 DMG smoke test result is recorded: downloaded `HoverClick-0.4.6.dmg`, SHA-256 `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`, launched successfully, showed version `0.4.6` / build `32`, reported correct Accessibility status, passed left-click focus, passed right-click focus when enabled, copied diagnostics, preserved Finder context-menu follow-up left-click behavior, preserved Bartender/menu-bar overlay pass-through, and quit through the menu/Cmd+Q.
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
-- Confirm the status menu shows `HoverClick` in the header row without version/build.
+- Confirm the status menu shows `HoverClick` and `v0.4.6` on the same header row.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
 - Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.

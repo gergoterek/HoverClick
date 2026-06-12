@@ -39,7 +39,8 @@ static const CGFloat HoverClickHeaderHeight = 24.0;
 static const CGFloat HoverClickHeaderHorizontalPadding = 14.0;
 static const CGFloat HoverClickHeaderLabelY = 4.0;
 static const CGFloat HoverClickHeaderLabelHeight = 18.0;
-static const CGFloat HoverClickHeaderTitleWidth = 258.0;
+static const CGFloat HoverClickHeaderTitleWidth = 130.0;
+static const CGFloat HoverClickHeaderVersionWidth = 122.0;
 static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
 
 static NSString *HoverClickDisplayVersion(void) {
@@ -84,6 +85,10 @@ static NSString *HoverClickBundleIdentifier(void) {
     }
 
     return HoverClickBundleID;
+}
+
+static NSString *HoverClickHeaderVersion(void) {
+    return [NSString stringWithFormat:@"v%@", HoverClickDisplayVersion()];
 }
 
 static NSString *HoverClickDiagnosticTimestamp(CFAbsoluteTime timestamp) {
@@ -175,6 +180,7 @@ static NSImage *HoverClickMenuSymbolImage(NSString *symbolName, NSString *access
 }
 
 static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
+    NSString *headerVersion = HoverClickHeaderVersion();
     NSRect headerFrame = NSMakeRect(0.0, 0.0, HoverClickHeaderWidth, HoverClickHeaderHeight);
     NSView *headerView = [[NSView alloc] initWithFrame:headerFrame];
     headerView.toolTip = HoverClickStableHelp;
@@ -188,6 +194,17 @@ static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
     nameLabel.textColor = [NSColor disabledControlTextColor];
     nameLabel.toolTip = HoverClickStableHelp;
     [headerView addSubview:nameLabel];
+
+    NSTextField *versionLabel = [NSTextField labelWithString:headerVersion];
+    versionLabel.frame = NSMakeRect(HoverClickHeaderWidth - HoverClickHeaderHorizontalPadding - HoverClickHeaderVersionWidth,
+                                    HoverClickHeaderLabelY,
+                                    HoverClickHeaderVersionWidth,
+                                    HoverClickHeaderLabelHeight);
+    versionLabel.alignment = NSTextAlignmentRight;
+    versionLabel.font = [NSFont menuFontOfSize:0.0];
+    versionLabel.textColor = [NSColor disabledControlTextColor];
+    versionLabel.toolTip = HoverClickStableHelp;
+    [headerView addSubview:versionLabel];
 
     NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:@""
                                                         action:nil
