@@ -71,6 +71,10 @@ The event tap mask remains left mouse down + right mouse down only. No synthetic
 
 `Hover Click Assist` is an experimental placeholder. It defaults off, is disabled while Left Click Focus is off, and currently performs no synthetic click, cursor movement, replacement event, mouse-move focus behavior, or delayed assist behavior. Delayed verification, when present, belongs only to background-focus diagnostics after an immediate frontmost check fails.
 
+## Failed Background Drag Assist Investigation
+
+Background click-and-drag from inactive windows remains an open limitation. The investigated `35 ms` activation-settle Background Drag Assist approach failed manual validation and was removed from runtime code. Do not merge or release that approach. Future attempts should use a new, separately scoped risky branch and must keep the stable click-focus core unchanged unless a safer design is proven.
+
 ## Non-Goals In The Current Build
 
 - No AutoRaise-style hover-to-focus behavior.

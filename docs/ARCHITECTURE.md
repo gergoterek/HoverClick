@@ -106,3 +106,7 @@ The event tap should continue to observe only the current stable click inputs: `
 ## Experimental Hover Click Assist
 
 Hover Click Assist is present as a default-off experimental placeholder for possible future hover-dependent button assistance. It is not part of the stable click-to-focus core, does not focus windows from mouse movement alone, and currently performs no cursor movement, synthetic click, replacement event, delayed assist behavior, or mouse-move behavior.
+
+## Failed Background Drag Assist Investigation
+
+Background click-and-drag from inactive windows remains an open limitation: some apps may treat the first mouse-down as activation-only before a drag can begin. A default-off `Background Drag Assist` experiment that waited `35 ms` before returning the original left mouse-down failed manual validation and is not merge-ready. Do not ship or release that activation-settle approach. Future attempts need a new, separately scoped risky branch and must preserve the stable click-focus core.
