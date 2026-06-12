@@ -7,13 +7,14 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick` with `v0.4.6` on the same row
+- Visible menu header: `HoverClick` with dynamic `v0.4.7` on the same row
 - Full version/build UI surface: `About HoverClick...`
-- Bundle short version/build version: `0.4.6` / `32`
+- Bundle short version/build version: `0.4.7` / `33`
 - Latest released version: `v0.4.6` / build `32`
 - Latest public DMG asset: `HoverClick-0.4.6.dmg`
 - Latest public DMG SHA-256: `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`
 - GitHub release: `https://github.com/gergoterek/HoverClick/releases/tag/v0.4.6`
+- Release prep target: `v0.4.7` / build `33`, not tagged, packaged, or released yet
 
 ## Commands
 
@@ -32,6 +33,7 @@
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a polished public installer path by itself.
 - There is no Mac App Store release or signed `.pkg` installer.
+- v0.4.7 / build 33 is release-prep metadata only. Do not package a DMG, create a tag, or create/edit a GitHub release until this branch is reviewed, merged to `main`, and manually smoke-tested if needed.
 
 ## Current Product Behavior
 
@@ -70,9 +72,29 @@ Manual main validation passed for Chrome as the eligible normal app/window targe
 
 Post-release published DMG manual smoke validation passed for the GitHub v0.4.6 release asset `HoverClick-0.4.6.dmg`. The downloaded DMG SHA-256 matched `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`; launch worked; the menu opened; version showed `0.4.6` / build `32`; Accessibility status was correct; Left Click Focus worked; Right Click Focus worked when enabled; diagnostics background-focus fields worked; Finder context-menu follow-up left-click worked; Bartender/menu-bar overlay pass-through worked; Copy Diagnostics Summary worked; and Quit/Cmd+Q worked. The user confirmed the DMG-installed app worked normally.
 
-Do not start v0.4.7 release prep until a new intentional change is implemented, validated, merged, and manually tested if runtime or UI behavior changed.
+v0.4.7 release prep has now started from the validated post-v0.4.6 maintenance/UI/docs polish state. It must remain a release-prep-only branch until reviewed and merged.
 
 The event tap mask remains left mouse down + right mouse down only. No synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, `mouseDragged`/`mouseUp` handling, or `CGEventPost` were added. Hover Click Assist remains a no-op placeholder, not a real runtime feature.
+
+## v0.4.7 Release Prep
+
+v0.4.7 / build 33 is not released yet. This branch prepares metadata and documentation for a maintenance/UI/docs polish release after v0.4.6.
+
+Included polish:
+
+- `About HoverClick...` is the native alert that shows Version, Build, bundle ID, and the description.
+- The visible top menu/header version label is dynamic `v<short-version>` from `CFBundleShortVersionString` through the version helper, not hardcoded.
+- Tooltip wording stays release-independent: `HoverClick - Windows-like click focus for macOS`.
+- `Copy Diagnostics Summary` does not include a separate Version line.
+- The Diagnostics submenu does not include a separate version/build row.
+- Documentation records the validated v0.4.6 state, the fresh Accessibility checklist, v0.4.7 guardrails, branch cleanup recommendations, and the failed background drag warning.
+
+Not included:
+
+- No event-tap mask change.
+- No mouse-move, mouse-dragged, mouse-up, or scroll handling.
+- No synthetic clicks, event replay, cursor movement, `CGEventPost`, `CGEventCreateMouseEvent`, `CGDisplayMoveCursorToPoint`, or `CGWarpMouseCursorPosition`.
+- No Scroll Focus, Modifier Key Focus, real Hover Click Assist, app icon integration, app rename, bundle identifier change, signing identity change, DMG packaging, tag creation, or GitHub release creation.
 
 ## Experimental Or Placeholder Items
 
@@ -131,6 +153,7 @@ The failed 35 ms background drag assist / activation-settle experiment must not 
 - The status item tooltip and Diagnostics submenu do not show version/build.
 - `CFBundleVersion` is an internal build number outside the About alert.
 - Documentation-only tasks should not change app version fields.
+- Release-prep metadata tasks may change version/build fields only for the explicit target version/build and must not package, tag, or publish the release before review, merge, and manual smoke validation if needed.
 
 ## Branch Cleanup Notes
 
@@ -153,12 +176,14 @@ Manual Finder UI validation -- not run automatically.
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
 - Confirm the status menu shows `HoverClick` and `v0.4.6` on the same header row.
+- For v0.4.7 prep, confirm the status menu shows `HoverClick` and dynamic `v0.4.7` on the same header row after a manual relaunch.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
 - Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.
 - Confirm `Hover` contains `Hover Click Assist`.
 - Confirm `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.6, Build 32, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
+- For v0.4.7 prep, confirm `About HoverClick...` shows HoverClick, Version 0.4.7, Build 33, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Confirm `Open Accessibility Settings` uses its action symbol and exactly 1 ASCII space of title padding.
 - Confirm `Quit` uses one left-slot action symbol, exactly 1 ASCII space of title padding, and preserves Cmd+Q.

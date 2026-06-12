@@ -29,6 +29,8 @@ Always launch HoverClick as `HoverClick.app`, not the raw executable inside the 
 
 HoverClick is currently distributed from GitHub. The latest validated release is `v0.4.6` / build `32`, with the public asset `HoverClick-0.4.6.dmg`.
 
+`v0.4.7` / build `33` is in release prep only. It is not tagged, packaged, or released yet. This prep updates release metadata for the maintenance/UI/docs polish already present after v0.4.6: the native `About HoverClick...` alert is the full version/build UI surface, the menu header shows dynamic `v<short-version>` from `Info.plist`, the tooltip remains stable and release-independent, copied diagnostics no longer duplicate a separate Version line, and the Diagnostics submenu no longer carries a separate version/build row. No event-tap or click-focus runtime behavior changes are part of this prep.
+
 You can also build the app locally from source.
 
 After launching HoverClick:
@@ -117,6 +119,8 @@ Create a local DMG:
 ```
 
 The DMG workflow writes an ignored artifact under `dist/`. It is useful for local packaging and testing.
+
+Do not package or tag `v0.4.7` until the release-prep branch has been reviewed, merged to `main`, and manually smoke-tested if needed.
 
 For development workflow details, see `docs/DEVELOPMENT.md`.
 

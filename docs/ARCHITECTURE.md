@@ -91,7 +91,9 @@ HoverClick is distributed from GitHub with source plus the validated public v0.4
 
 Developer ID signing, notarization, stapling, a Mac App Store release, and a signed `.pkg` installer are not part of the current architecture. They remain optional future distribution work.
 
-v0.4.6 / build 32 is fully released, validated, and closed. Do not start v0.4.7 release prep until a new intentional change is implemented, validated, merged, and manually tested if runtime or UI behavior changed.
+v0.4.6 / build 32 is fully released, validated, and closed.
+
+v0.4.7 / build 33 is release prep only, not a tag, package, or GitHub release. Its scope is maintenance/UI/docs polish after v0.4.6: native `About HoverClick...` version/build/bundle ID/description, dynamic header `v<short-version>` from `Info.plist`, stable release-independent tooltip text, no separate copied-diagnostics Version line, and no separate Diagnostics submenu version/build row. This release prep does not change runtime click-focus behavior, the event tap mask, app identity, bundle identifier, or signing identity. App icon integration remains a future feature request, not part of this prep.
 
 ## Trigger Scope
 
@@ -105,7 +107,7 @@ Current menu controls expose:
 
 The event tap should continue to observe only the current stable click inputs: `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`.
 
-Modifier Key Focus / Hold-to-Focus remains a future idea only. The failed 35 ms background drag assist / activation-settle experiment must not be reused; any future background click-and-drag work needs a new explicit, very risky branch.
+Modifier Key Focus / Hold-to-Focus remains a future idea only. The failed 35 ms background drag assist / activation-settle experiment must not be reused; any future background click-and-drag work needs a new explicit, very risky branch, separate approval, and no synthetic clicks, event replay, cursor movement, or expanded event tap mask unless that risk is explicitly accepted.
 
 ## Experimental Hover Click Assist
 
