@@ -13,6 +13,7 @@ The original click event is passed through unchanged: no synthetic clicks, no cu
 - `Launch at Login`: starts HoverClick automatically after login when supported by macOS.
 - `Permissions & Startup`: shows Accessibility status, Launch at Login, and an explicit `Open Accessibility Settings` action.
 - `Diagnostics`: includes `Verbose Diagnostics` and `Copy Diagnostics Summary` for issue reports.
+- `About HoverClick...`: shows version, build, bundle ID, and a short app description.
 
 HoverClick runs from the macOS menu bar and has no Dock icon.
 
@@ -26,9 +27,9 @@ Always launch HoverClick as `HoverClick.app`, not the raw executable inside the 
 
 ## Download And Install
 
-HoverClick is currently distributed from GitHub.
+HoverClick is currently distributed from GitHub. The latest validated release is `v0.4.6` / build `32`, with the public asset `HoverClick-0.4.6.dmg`.
 
-A macOS DMG is attached for convenience. You can also build the app locally from source.
+You can also build the app locally from source.
 
 After launching HoverClick:
 
@@ -57,6 +58,7 @@ If the app still shows `Accessibility: Not Granted`, quit HoverClick and relaunc
 - `Permissions & Startup` > `Open Accessibility Settings`: opens the macOS Accessibility privacy pane when clicked.
 - `Diagnostics` > `Verbose Diagnostics`: toggles extra logs.
 - `Diagnostics` > `Copy Diagnostics Summary`: copies version, permission, startup, feature, event tap, and safety details.
+- `About HoverClick...`: shows HoverClick version, build, bundle ID, and a short description without opening external links.
 - `Quit`: stops HoverClick.
 
 ## Troubleshooting

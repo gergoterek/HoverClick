@@ -10,6 +10,10 @@
 - Visible menu header: `HoverClick` with `v0.4.6` on the same row
 - Diagnostics submenu version row: `Version 0.4.6 (32)`
 - Bundle short version/build version: `0.4.6` / `32`
+- Latest released version: `v0.4.6` / build `32`
+- Latest public DMG asset: `HoverClick-0.4.6.dmg`
+- Latest public DMG SHA-256: `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`
+- GitHub release: `https://github.com/gergoterek/HoverClick/releases/tag/v0.4.6`
 
 ## Commands
 
@@ -22,12 +26,12 @@
 
 ## Current Distribution
 
-- HoverClick is currently a GitHub/source-first macOS utility.
-- The current public path is to clone the repository, build locally from source, run the signed `HoverClick.app` bundle, and grant Accessibility permission through System Settings.
-- Apple Developer Program membership is not required for the current GitHub/source-first path.
-- The internal/test DMG is Apple Development signed, not Developer ID signed, not notarized, and not a polished public installer.
-- Future public DMG asset names should be simple, for example `HoverClick-0.4.6.dmg`; avoid public release asset names containing `-internal`.
-- There is no notarized public DMG, Developer ID signed public binary, Mac App Store release, or signed `.pkg` installer.
+- HoverClick is distributed from GitHub with source plus the validated public `HoverClick-0.4.6.dmg` asset.
+- The downloaded published `HoverClick-0.4.6.dmg` SHA-256 was verified by the user against `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`.
+- Manual DMG install/launch smoke validation passed for v0.4.6, and the user confirmed the release was working normally.
+- Building locally from source remains supported.
+- The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a polished public installer path by itself.
+- There is no Mac App Store release or signed `.pkg` installer.
 
 ## Current Product Behavior
 
@@ -40,6 +44,7 @@
 - `Permissions & Startup` contains Accessibility status, Launch at Login, and `Open Accessibility Settings`.
 - `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Not Granted` is unchecked.
 - `Diagnostics` contains `Version 0.4.6 (32)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
+- The top-level menu contains `About HoverClick...`, which shows a small native version/build/bundle ID alert and opens no browser, System Settings, or external links.
 - Technical click detection and last action details are available in the copied diagnostics summary.
 
 ## Stable Features
@@ -55,15 +60,17 @@
 - Diagnostics menu polish: visible runtime details stay out of the menu; `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` use left-slot action icons with exactly 1 ASCII space of title padding, and Quit preserves Cmd+Q.
 - Accessibility onboarding: available from `Permissions & Startup` > `Open Accessibility Settings`.
 
-## v0.4.6 Release Readiness
+## v0.4.6 Validated Release
 
-v0.4.6 is a focused bugfix release after v0.4.5. It includes the overlay/system UI skip ordering fix so large transparent or otherwise non-interactive non-layer-0 windows do not suppress normal eligible AX app-window candidates underneath them.
+v0.4.6 / build 32 is fully released, validated, and closed. It is a focused bugfix release after v0.4.5. It includes the overlay/system UI skip ordering fix so large transparent or otherwise non-interactive non-layer-0 windows do not suppress normal eligible AX app-window candidates underneath them.
 
 The release preserves menu/status/Bartender overlay protection while improving diagnostics for last non-menu focus action/skip, overlay/system UI skip reason, overlay/system UI candidate, and last eligible hit-test candidate. `Copy Diagnostics Summary` should preserve the useful last non-menu focus result instead of erasing it with later menu or overlay clicks.
 
 Manual main validation passed for Chrome as the eligible normal app/window target while a large overlay/system UI candidate was skipped appropriately. Background focus succeeded with activation attempted=yes, returnValue=yes, AX operations attempted:success, delayed verification passing after 0.20s, result success, and verification delayed passed.
 
-The latest released version remains v0.4.5 / build 31 until v0.4.6 is tagged and published. Post-release published DMG manual smoke validation passed for the GitHub v0.4.5 release asset `HoverClick-0.4.5.dmg`. The downloaded DMG SHA-256 matched `d13bf53cedea7658fd63d77995b6f73d9430de0f7ad26b961e14409b5f174c4c`; launch worked; the menu opened; version showed `0.4.5` / build `31`; Accessibility status was correct; Left Click Focus worked; Right Click Focus worked when enabled; diagnostics background-focus fields worked; Finder context-menu follow-up left-click worked; Bartender/menu-bar overlay pass-through worked; Copy Diagnostics Summary worked; and Quit/Cmd+Q worked.
+Post-release published DMG manual smoke validation passed for the GitHub v0.4.6 release asset `HoverClick-0.4.6.dmg`. The downloaded DMG SHA-256 matched `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`; launch worked; the menu opened; version showed `0.4.6` / build `32`; Accessibility status was correct; Left Click Focus worked; Right Click Focus worked when enabled; diagnostics background-focus fields worked; Finder context-menu follow-up left-click worked; Bartender/menu-bar overlay pass-through worked; Copy Diagnostics Summary worked; and Quit/Cmd+Q worked. The user confirmed the DMG-installed app worked normally.
+
+Do not start v0.4.7 release prep until a new intentional change is implemented, validated, merged, and manually tested if runtime or UI behavior changed.
 
 The event tap mask remains left mouse down + right mouse down only. No synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, `mouseDragged`/`mouseUp` handling, or `CGEventPost` were added. Hover Click Assist remains a no-op placeholder, not a real runtime feature.
 
@@ -84,12 +91,18 @@ The event tap mask remains left mouse down + right mouse down only. No synthetic
 
 HoverClick currently does not add Scroll Focus because macOS already supports background scrolling in many apps. The current event tap observes only left and right mouse-down triggers.
 
+Modifier Key Focus / Hold-to-Focus remains a future idea only. It is not designed or implemented in the current build.
+
 ## Finder Right-Click Actual Selection Limitation
 
 - Finder may keep the previous actual selection while showing a separate context-target highlight for a right-clicked item.
 - HoverClick does not currently force the right-clicked Finder item to become the actual selection.
 - The safe Accessibility-only approach was not reliable.
 - HoverClick should not use synthetic clicks, event replay, or cursor movement to force that behavior.
+
+## Background Click-And-Drag Experiments
+
+The failed 35 ms background drag assist / activation-settle experiment must not be reused. Future background click-and-drag work must start from a new, explicit, very risky branch and must not synthesize clicks, replay events, move the cursor, or expand the stable event tap mask without separate approval.
 
 ## Event Tap
 
@@ -118,6 +131,12 @@ HoverClick currently does not add Scroll Focus because macOS already supports ba
 - `CFBundleVersion` is an internal build number and is not shown in the compact header.
 - Documentation-only tasks should not change app version fields.
 
+## Branch Cleanup Notes
+
+Branch cleanup candidates exist after v0.4.6, but deletion requires explicit user approval. Do not delete local or remote branches automatically.
+
+Merged local branch cleanup candidates include older task/release branches such as `release-v0.4.6-prep`, `stabilize-overlay-hit-test-skip`, `docs-post-v0.4.5-accessibility-flow-checklist`, `release-v0.4.5-prep`, `investigate-long-run-click-loss`, `post-v0.4.3-diagnostics-polish`, and earlier merged docs/fix/release branches. Unmerged or investigation branches such as `investigate-background-click-drag`, `fix-finder-right-click-select-target`, and older workflow branches should be reviewed before any cleanup decision.
+
 ## Development Workflow
 
 - `main` is the stable baseline.
@@ -129,7 +148,7 @@ HoverClick currently does not add Scroll Focus because macOS already supports ba
 
 Manual Finder UI validation -- not run automatically.
 
-- Confirm the published GitHub v0.4.5 DMG smoke test result is recorded: downloaded `HoverClick-0.4.5.dmg`, SHA-256 `d13bf53cedea7658fd63d77995b6f73d9430de0f7ad26b961e14409b5f174c4c`, launched successfully, showed version `0.4.5` / build `31`, reported correct Accessibility status, passed left-click focus, passed right-click focus when enabled, copied diagnostics, preserved Finder context-menu follow-up left-click behavior, preserved Bartender/menu-bar overlay pass-through, and quit through the menu/Cmd+Q.
+- Confirm the published GitHub v0.4.6 DMG smoke test result is recorded: downloaded `HoverClick-0.4.6.dmg`, SHA-256 `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`, launched successfully, showed version `0.4.6` / build `32`, reported correct Accessibility status, passed left-click focus, passed right-click focus when enabled, copied diagnostics, preserved Finder context-menu follow-up left-click behavior, preserved Bartender/menu-bar overlay pass-through, and quit through the menu/Cmd+Q.
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
 - Confirm the status menu shows `HoverClick` and `v0.4.6` on the same header row.
@@ -138,6 +157,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.
 - Confirm `Hover` contains `Hover Click Assist`.
 - Confirm `Diagnostics` contains `Version 0.4.6 (32)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
+- Confirm `About HoverClick...` shows HoverClick, Version 0.4.6, Build 32, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Confirm `Open Accessibility Settings` uses its action symbol and exactly 1 ASCII space of title padding.
 - Confirm `Quit` uses one left-slot action symbol, exactly 1 ASCII space of title padding, and preserves Cmd+Q.

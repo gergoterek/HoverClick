@@ -29,6 +29,7 @@ static NSString * const HoverClickLaunchAtLoginHelp = @"Starts HoverClick automa
 static NSString * const HoverClickDiagnosticsVersionHelp = @"Current HoverClick app version and build.";
 static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
 static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the current HoverClick status summary to the clipboard.";
+static NSString * const HoverClickAboutHelp = @"Shows HoverClick version and bundle identity.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static NSString * const HoverClickMenuItemTitlePadding = @" ";
 static const CGFloat HoverClickStatusItemLength = 23.0;
@@ -295,6 +296,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
 - (BOOL)isEffectiveHoverClickAssistEnabled;
+- (void)showAboutHoverClick:(id)sender;
 - (void)quitApplication:(id)sender;
 @end
 
@@ -600,6 +602,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick...")
+                                                       action:@selector(showAboutHoverClick:)
+                                                keyEquivalent:@""];
+    aboutItem.target = self;
+    aboutItem.enabled = YES;
+    aboutItem.indentationLevel = 0;
+    aboutItem.state = NSControlStateValueOff;
+    aboutItem.offStateImage = HoverClickMenuSymbolImage(@"info.circle", @"About");
+    aboutItem.toolTip = HoverClickAboutHelp;
+    [menu addItem:aboutItem];
 
     NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quit")
                                                       action:@selector(quitApplication:)
@@ -1309,7 +1322,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             [self launchAtLoginStatusForDiagnostics],
             [self clickDetectionStatusForDiagnostics],
             lastAction,
-            lastAction,
+            lastNonMenuAction,
             lastNonMenuAction,
             _lastOverlaySkipReason ?: @"none",
             _lastOverlayCandidateDescription ?: @"none",
@@ -1360,6 +1373,24 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     HoverClickLog("HoverClick: diagnostics summary copied");
     [self setLastClickResult:@"Diagnostics Summary Copied"];
+}
+
+- (void)showAboutHoverClick:(id)sender {
+    (void)sender;
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"HoverClick";
+    alert.informativeText = [NSString stringWithFormat:
+                             @"Version %@\n"
+                              "Build %@\n"
+                              "Bundle ID: %@\n\n"
+                              "Windows-like click focus for macOS.",
+                             HoverClickDisplayVersion(),
+                             HoverClickBuildVersion(),
+                             HoverClickBundleIdentifier()];
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
 }
 
 - (void)updateMenuTitles {

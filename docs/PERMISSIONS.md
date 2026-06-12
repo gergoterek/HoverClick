@@ -28,13 +28,13 @@ Do not use privacy database resets for normal setup. Manage the permission from 
 
 ## Fresh Accessibility Permission Flow Test
 
-This is a manual release-readiness confidence test, not an automated script and not a normal development task. Run it only when someone intentionally wants to verify the first-time Accessibility flow, preferably in a safe clean-user or fresh manual-install scenario where HoverClick has not already been granted Accessibility permission.
+This is a manual release-readiness confidence test, not an automated script and not a normal development task. Run it only when someone intentionally wants to verify the first-time Accessibility flow, preferably in a safe fresh macOS user account or fresh manual-install scenario where HoverClick has not already been granted Accessibility permission.
 
 This checklist is different from resetting permissions. Do not use `tccutil reset` for this normal flow test. Only consider a permission-reset test if the user separately and explicitly chooses that risk, understands it can affect local privacy permissions, and labels it as a risky reset-specific validation.
 
 Manual Finder UI validation -- not run automatically.
 
-1. Start from a clean-user or fresh manual-install environment when available. Do not disrupt a normal development machine just to force a first-run state.
+1. Start from a fresh macOS user account, clean-user test account, or fresh manual-install environment when available. Do not disrupt a normal development machine just to force a first-run state.
 2. Confirm the app under test is the signed `HoverClick.app` bundle, not `HoverClick.app/Contents/MacOS/HoverClick` or any other raw binary launch.
 3. Confirm the bundle identifier remains `com.gergoterek.HoverClick`.
 4. Confirm the signing authority remains `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`.
@@ -45,7 +45,9 @@ Manual Finder UI validation -- not run automatically.
 9. Confirm the HoverClick menu opens normally after permission is granted.
 10. Confirm `Left Click Focus` is checked, then left-click a visible background window and verify it focuses before the original click continues.
 11. Use `Diagnostics` > `Copy Diagnostics Summary` and confirm the summary reports the expected Accessibility granted state and event tap requested/object/source/validity/installed/enabled state.
-12. Quit HoverClick from the menu when finished.
+12. Quit HoverClick from the menu, relaunch the signed app bundle normally, and confirm there is no unexpected repeat prompt after the permission has been granted.
+13. Reopen the menu after relaunch and confirm `Permissions & Startup` still shows `Accessibility: Granted`.
+14. Quit HoverClick from the menu when finished.
 
 ## Permission Behavior
 
