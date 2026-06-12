@@ -89,7 +89,7 @@ HoverClick is currently distributed as a GitHub/source-first macOS utility: clon
 
 `scripts/package-dmg.sh` is only an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a polished public installer.
 
-Future public DMG asset names should be simple, such as `HoverClick-0.4.5.dmg`; avoid public release asset names containing `-internal`.
+Future public DMG asset names should be simple, such as `HoverClick-0.4.6.dmg`; avoid public release asset names containing `-internal`.
 
 Developer ID signing, notarization, stapling, a Mac App Store release, and a signed `.pkg` installer are not part of the current architecture. They remain optional future distribution work.
 
