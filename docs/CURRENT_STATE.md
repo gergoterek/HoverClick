@@ -63,6 +63,8 @@ Delayed focus verification is included because immediate `NSWorkspace.frontmostA
 
 Manual main validation passed for Chrome-to-Finder left-click and right-click background focus with activation attempted=yes, returnValue=yes, AX operations attempted:success, immediate frontmost remaining Chrome, delayed verification passing after 0.20s with Finder frontmost, result success, and verification delayed passed.
 
+Post-release published DMG manual smoke validation passed for the GitHub v0.4.5 release asset `HoverClick-0.4.5.dmg`. The downloaded DMG SHA-256 matched `d13bf53cedea7658fd63d77995b6f73d9430de0f7ad26b961e14409b5f174c4c`; launch worked; the menu opened; version showed `0.4.5` / build `31`; Accessibility status was correct; Left Click Focus worked; Right Click Focus worked when enabled; diagnostics background-focus fields worked; Finder context-menu follow-up left-click worked; Bartender/menu-bar overlay pass-through worked; Copy Diagnostics Summary worked; and Quit/Cmd+Q worked.
+
 The event tap mask remains left mouse down + right mouse down only. No synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, `mouseDragged`/`mouseUp` handling, or `CGEventPost` were added. Hover Click Assist remains a no-op placeholder, not a real runtime feature.
 
 ## Experimental Or Placeholder Items
@@ -127,6 +129,7 @@ HoverClick currently does not add Scroll Focus because macOS already supports ba
 
 Manual Finder UI validation -- not run automatically.
 
+- Confirm the published GitHub v0.4.5 DMG smoke test result is recorded: downloaded `HoverClick-0.4.5.dmg`, SHA-256 `d13bf53cedea7658fd63d77995b6f73d9430de0f7ad26b961e14409b5f174c4c`, launched successfully, showed version `0.4.5` / build `31`, reported correct Accessibility status, passed left-click focus, passed right-click focus when enabled, copied diagnostics, preserved Finder context-menu follow-up left-click behavior, preserved Bartender/menu-bar overlay pass-through, and quit through the menu/Cmd+Q.
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
 - Confirm the status menu shows `HoverClick` and `v0.4.5` on the same header row.
