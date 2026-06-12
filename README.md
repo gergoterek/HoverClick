@@ -57,7 +57,7 @@ If the app still shows `Accessibility: Not Granted`, quit HoverClick and relaunc
 - `Permissions & Startup` > `Launch at Login`: toggles startup registration where supported.
 - `Permissions & Startup` > `Open Accessibility Settings`: opens the macOS Accessibility privacy pane when clicked.
 - `Diagnostics` > `Verbose Diagnostics`: toggles extra logs.
-- `Diagnostics` > `Copy Diagnostics Summary`: copies version, permission, startup, feature, event tap, and safety details.
+- `Diagnostics` > `Copy Diagnostics Summary`: copies runtime permission, startup, feature, event tap, and safety details.
 - `About HoverClick...`: shows HoverClick version, build, bundle ID, and a short description without opening external links.
 - `Quit`: stops HoverClick.
 

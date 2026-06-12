@@ -1269,7 +1269,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return [NSString stringWithFormat:
             @"HoverClick diagnostics\n"
              "App: %@\n"
-             "Version: %@ (%@)\n"
              "Bundle Identifier: %@\n"
              "Accessibility permission: %@\n"
              "Launch at Login: %@\n"
@@ -1315,8 +1314,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Known limitations: Finder may show a right-click context-target highlight without changing actual selection; HoverClick does not force Finder selection.\n"
              "Known limitations: Background text first-drag may require a second drag in some apps because the first mouse-down can be activation-only.",
             HoverClickAppName(),
-            HoverClickDisplayVersion(),
-            HoverClickBuildVersion(),
             HoverClickBundleIdentifier(),
             accessibilityStatus,
             [self launchAtLoginStatusForDiagnostics],
