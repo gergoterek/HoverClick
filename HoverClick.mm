@@ -19,14 +19,13 @@ static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
 static NSString * const HoverClickFallbackBuildVersion = @"unknown";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
 static NSString * const HoverClickHoverClickAssistDefaultsKey = @"hoverClickAssistEnabled";
-static NSString * const HoverClickVersionChangeHelp = @"UI-Menubar: simplified diagnostics, permissions layout, hover submenu, and live version display.";
+static NSString * const HoverClickStableHelp = @"HoverClick - Windows-like click focus for macOS.";
 static NSString * const HoverClickLeftClickFocusHelp = @"Activates a background window before passing through your original left click.";
 static NSString * const HoverClickRightClickFocusHelp = @"Activates a background window before opening its normal right-click menu.";
 static NSString * const HoverClickHoverClickAssistHelp = @"Experimental placeholder for future hover-dependent buttons; requires Left Click Focus and currently adds no cursor movement or synthetic clicks.";
 static NSString * const HoverClickAccessibilityStatusHelp = @"Shows whether macOS currently allows HoverClick to inspect and focus windows.";
 static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Opens the macOS Accessibility privacy pane so you can review HoverClick access.";
 static NSString * const HoverClickLaunchAtLoginHelp = @"Starts HoverClick automatically after you log in, without changing click behavior.";
-static NSString * const HoverClickDiagnosticsVersionHelp = @"Current HoverClick app version and build.";
 static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
 static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the current HoverClick status summary to the clipboard.";
 static NSString * const HoverClickAboutHelp = @"Shows HoverClick version and bundle identity.";
@@ -40,8 +39,7 @@ static const CGFloat HoverClickHeaderHeight = 24.0;
 static const CGFloat HoverClickHeaderHorizontalPadding = 14.0;
 static const CGFloat HoverClickHeaderLabelY = 4.0;
 static const CGFloat HoverClickHeaderLabelHeight = 18.0;
-static const CGFloat HoverClickHeaderTitleWidth = 130.0;
-static const CGFloat HoverClickHeaderVersionWidth = 122.0;
+static const CGFloat HoverClickHeaderTitleWidth = 258.0;
 static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
 
 static NSString *HoverClickDisplayVersion(void) {
@@ -86,14 +84,6 @@ static NSString *HoverClickBundleIdentifier(void) {
     }
 
     return HoverClickBundleID;
-}
-
-static NSString *HoverClickHeaderVersion(void) {
-    return [NSString stringWithFormat:@"v%@", HoverClickDisplayVersion()];
-}
-
-static NSString *HoverClickVersionBuildLabel(void) {
-    return [NSString stringWithFormat:@"Version %@ (%@)", HoverClickDisplayVersion(), HoverClickBuildVersion()];
 }
 
 static NSString *HoverClickDiagnosticTimestamp(CFAbsoluteTime timestamp) {
@@ -185,10 +175,9 @@ static NSImage *HoverClickMenuSymbolImage(NSString *symbolName, NSString *access
 }
 
 static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
-    NSString *headerVersion = HoverClickHeaderVersion();
     NSRect headerFrame = NSMakeRect(0.0, 0.0, HoverClickHeaderWidth, HoverClickHeaderHeight);
     NSView *headerView = [[NSView alloc] initWithFrame:headerFrame];
-    headerView.toolTip = HoverClickVersionChangeHelp;
+    headerView.toolTip = HoverClickStableHelp;
 
     NSTextField *nameLabel = [NSTextField labelWithString:@"HoverClick"];
     nameLabel.frame = NSMakeRect(HoverClickHeaderHorizontalPadding,
@@ -197,19 +186,8 @@ static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
                                  HoverClickHeaderLabelHeight);
     nameLabel.font = [NSFont menuBarFontOfSize:0.0];
     nameLabel.textColor = [NSColor disabledControlTextColor];
-    nameLabel.toolTip = HoverClickVersionChangeHelp;
+    nameLabel.toolTip = HoverClickStableHelp;
     [headerView addSubview:nameLabel];
-
-    NSTextField *versionLabel = [NSTextField labelWithString:headerVersion];
-    versionLabel.frame = NSMakeRect(HoverClickHeaderWidth - HoverClickHeaderHorizontalPadding - HoverClickHeaderVersionWidth,
-                                    HoverClickHeaderLabelY,
-                                    HoverClickHeaderVersionWidth,
-                                    HoverClickHeaderLabelHeight);
-    versionLabel.alignment = NSTextAlignmentRight;
-    versionLabel.font = [NSFont menuFontOfSize:0.0];
-    versionLabel.textColor = [NSColor disabledControlTextColor];
-    versionLabel.toolTip = HoverClickVersionChangeHelp;
-    [headerView addSubview:versionLabel];
 
     NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:@""
                                                         action:nil
@@ -218,7 +196,7 @@ static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
     headerItem.indentationLevel = 0;
     headerItem.state = NSControlStateValueOff;
     headerItem.view = headerView;
-    headerItem.toolTip = HoverClickVersionChangeHelp;
+    headerItem.toolTip = HoverClickStableHelp;
     return headerItem;
 }
 
@@ -465,6 +443,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     } else {
         button.title = @"HC";
     }
+    button.toolTip = HoverClickStableHelp;
 
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"HoverClick"];
     [menu setAutoenablesItems:NO];
@@ -569,17 +548,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [diagnosticsMenu setAutoenablesItems:NO];
     self.diagnosticsItem.submenu = diagnosticsMenu;
     [menu addItem:self.diagnosticsItem];
-
-    NSMenuItem *diagnosticsVersionItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(HoverClickVersionBuildLabel())
-                                                                    action:nil
-                                                             keyEquivalent:@""];
-    diagnosticsVersionItem.enabled = NO;
-    diagnosticsVersionItem.indentationLevel = 0;
-    diagnosticsVersionItem.state = NSControlStateValueOff;
-    diagnosticsVersionItem.toolTip = HoverClickDiagnosticsVersionHelp;
-    [diagnosticsMenu addItem:diagnosticsVersionItem];
-
-    [diagnosticsMenu addItem:[NSMenuItem separatorItem]];
 
     self.verboseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Verbose Diagnostics")
                                                   action:@selector(toggleVerboseDiagnostics:)

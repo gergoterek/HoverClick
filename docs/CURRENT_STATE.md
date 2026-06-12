@@ -7,8 +7,8 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick` with `v0.4.6` on the same row
-- Diagnostics submenu version row: `Version 0.4.6 (32)`
+- Visible menu header: `HoverClick`
+- Version/build UI surface: `About HoverClick...`
 - Bundle short version/build version: `0.4.6` / `32`
 - Latest released version: `v0.4.6` / build `32`
 - Latest public DMG asset: `HoverClick-0.4.6.dmg`
@@ -43,7 +43,7 @@
 - `Hover` contains `Hover Click Assist`.
 - `Permissions & Startup` contains Accessibility status, Launch at Login, and `Open Accessibility Settings`.
 - `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Not Granted` is unchecked.
-- `Diagnostics` contains `Version 0.4.6 (32)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
+- `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
 - The top-level menu contains `About HoverClick...`, which shows a small native version/build/bundle ID alert and opens no browser, System Settings, or external links.
 - Technical click detection and last action details are available in the copied diagnostics summary.
 
@@ -126,9 +126,9 @@ The failed 35 ms background drag assist / activation-settle experiment must not 
 ## Version Rule
 
 - The visible menu version reads from `CFBundleShortVersionString`.
-- The header displays the version as `v<short-version>`.
-- The Diagnostics submenu displays `Version <short-version> (<build-version>)`.
-- `CFBundleVersion` is an internal build number and is not shown in the compact header.
+- `About HoverClick...` displays `Version <short-version>` and `Build <build-version>`.
+- The header, status item tooltip, and Diagnostics submenu do not show version/build.
+- `CFBundleVersion` is an internal build number outside the About alert.
 - Documentation-only tasks should not change app version fields.
 
 ## Branch Cleanup Notes
@@ -151,12 +151,12 @@ Manual Finder UI validation -- not run automatically.
 - Confirm the published GitHub v0.4.6 DMG smoke test result is recorded: downloaded `HoverClick-0.4.6.dmg`, SHA-256 `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`, launched successfully, showed version `0.4.6` / build `32`, reported correct Accessibility status, passed left-click focus, passed right-click focus when enabled, copied diagnostics, preserved Finder context-menu follow-up left-click behavior, preserved Bartender/menu-bar overlay pass-through, and quit through the menu/Cmd+Q.
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
-- Confirm the status menu shows `HoverClick` and `v0.4.6` on the same header row.
+- Confirm the status menu shows `HoverClick` in the header row without version/build.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
 - Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.
 - Confirm `Hover` contains `Hover Click Assist`.
-- Confirm `Diagnostics` contains `Version 0.4.6 (32)`, `Verbose Diagnostics`, and `Copy Diagnostics Summary`.
+- Confirm `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.6, Build 32, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Confirm `Open Accessibility Settings` uses its action symbol and exactly 1 ASCII space of title padding.
