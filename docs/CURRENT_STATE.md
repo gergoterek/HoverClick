@@ -17,6 +17,8 @@
 - Public DMG SHA-256: `ec822fb770471be129bbfbd7167ff16c502bbf3727101a318d412d0fd8bfc2ff`
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
 - Generated bundle icon: `Resources/HoverClick.icns`
+- DMG volume icon source asset: `assets/HoverClickDMGVolumeIcon.png`
+- Generated DMG volume icon: `Resources/HoverClickDMGVolumeIcon.icns`
 
 ## Commands
 
@@ -33,7 +35,7 @@
 - The public release DMG is `HoverClick-0.5.0.dmg`; its SHA-256 is `ec822fb770471be129bbfbd7167ff16c502bbf3727101a318d412d0fd8bfc2ff`.
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a release-publishing path by itself.
-- The post-v0.5.0 DMG packaging polish batch stages `HoverClick.app`, adds an `Applications` symlink, reuses `Resources/HoverClick.icns` as `.VolumeIcon.icns`, sets and verifies the custom DMG volume icon flag with command-line tooling, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for non-GUI verification.
+- The post-v0.5.0 DMG packaging polish batch stages `HoverClick.app`, adds an `Applications` symlink, uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns`, sets and verifies the custom DMG volume icon flag with command-line tooling, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for non-GUI verification.
 - v0.6.0 / build 35 is the planned release-prep target for that packaging and DMG presentation polish milestone. It does not change runtime/event-tap, Accessibility, Launch at Login, app identity, bundle identifier, or signing behavior.
 - DMG Finder window background and icon layout are not automated. They remain future optional polish unless a deterministic non-GUI implementation is proven safe.
 - There is no Mac App Store release or signed `.pkg` installer.
@@ -43,6 +45,7 @@
 - HoverClick is a menubar-only accessory app with no Dock icon.
 - The menu bar icon uses the native template SF Symbol `cursorarrow.click`.
 - The app bundle icon is generated from the branded source image at `assets/HoverClickAppIcon-1024.png` into `Resources/HoverClick.icns`.
+- The DMG volume icon is generated from `assets/HoverClickDMGVolumeIcon.png` into `Resources/HoverClickDMGVolumeIcon.icns`; it is separate from the app bundle icon.
 - The menu header shows `HoverClick` and the visible app version.
 - `Left Click Focus` defaults on.
 - `Right Click Focus` defaults off and is independent from left-click behavior.
@@ -144,8 +147,9 @@ Included in scope:
 
 - Internal DMG staging includes `HoverClick.app`.
 - Internal DMG staging includes an `Applications` symlink to `/Applications`.
-- Internal DMG staging uses `Resources/HoverClick.icns` as `.VolumeIcon.icns`.
+- Internal DMG staging uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns`.
 - Packaging verifies the hidden `.VolumeIcon.icns` file flag and the custom DMG volume icon flag.
+- Packaging verifies `.VolumeIcon.icns` matches the dedicated DMG icon resource.
 - Packaging verifies mounted-DMG app bundle identifier, version, build, and code signature.
 - Packaging uses non-GUI `hdiutil -nobrowse -noautoopen` mounting for verification.
 - Manual internal-DMG smoke validation was completed by the user before this release-prep branch.

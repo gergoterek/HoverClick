@@ -8,7 +8,7 @@ APP_NAME="HoverClick"
 APP_PATH="$PROJECT_DIR/$APP_NAME.app"
 INFO_PLIST="$PROJECT_DIR/Info.plist"
 EXPECTED_BUNDLE_ID="com.gergoterek.HoverClick"
-VOLUME_ICON_SOURCE="$PROJECT_DIR/Resources/HoverClick.icns"
+VOLUME_ICON_SOURCE="$PROJECT_DIR/Resources/HoverClickDMGVolumeIcon.icns"
 VOLUME_ICON_NAME=".VolumeIcon.icns"
 DIST_DIR="$PROJECT_DIR/dist"
 TMP_ROOT="$PROJECT_DIR/tmp/package-dmg"
@@ -165,6 +165,10 @@ verify_mounted_dmg() {
 
   if [[ ! -s "$mount_point/$VOLUME_ICON_NAME" ]]; then
     echo "Mounted DMG does not contain $VOLUME_ICON_NAME."
+    exit 1
+  fi
+  if ! /usr/bin/cmp -s "$VOLUME_ICON_SOURCE" "$mount_point/$VOLUME_ICON_NAME"; then
+    echo "Mounted DMG volume icon does not match source: $VOLUME_ICON_SOURCE"
     exit 1
   fi
 

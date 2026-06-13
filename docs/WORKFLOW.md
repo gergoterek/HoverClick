@@ -33,9 +33,9 @@ Use the internal/test DMG package script only after build and verify are expecte
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/package-dmg.sh
 ```
 
-`scripts/package-dmg.sh` rebuilds and verifies `HoverClick.app`, stages the signed app, adds an `Applications` symlink, reuses `Resources/HoverClick.icns` as the DMG `.VolumeIcon.icns`, sets the custom volume icon flag with command-line tooling, compresses the final DMG, then mounts the final image with `hdiutil -nobrowse -noautoopen` for verification.
+`scripts/package-dmg.sh` rebuilds and verifies `HoverClick.app`, stages the signed app, adds an `Applications` symlink, copies the dedicated DMG volume icon resource `Resources/HoverClickDMGVolumeIcon.icns` as `.VolumeIcon.icns`, sets the custom volume icon flag with command-line tooling, compresses the final DMG, then mounts the final image with `hdiutil -nobrowse -noautoopen` for verification.
 
-The package verification checks that the mounted DMG contains the expected `HoverClick.app`, bundle identifier, version, build, valid code signature, `Applications` symlink target, `.VolumeIcon.icns`, hidden icon file flag, and custom volume icon flag. It does not open Finder, System Settings, browsers, or the app runtime.
+The package verification checks that the mounted DMG contains the expected `HoverClick.app`, bundle identifier, version, build, valid code signature, `Applications` symlink target, `.VolumeIcon.icns` matching `Resources/HoverClickDMGVolumeIcon.icns`, hidden icon file flag, and custom volume icon flag. It does not open Finder, System Settings, browsers, or the app runtime.
 
 Manual Finder UI validation -- not run automatically.
 
