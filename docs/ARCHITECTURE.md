@@ -75,7 +75,7 @@ Experimental Hover Click Assist is a separate feature flag under the `Hover` sub
 
 Launch at Login is a menubar-only integration that uses `SMAppService.mainAppService` on macOS 13 and newer. It registers or unregisters the main app as the login item; no helper app is bundled, and the toggle does not change event tap, focus, hover assist, Accessibility, signing, or bundle identity behavior.
 
-The status item uses a native template SF Symbol, `cursorarrow.click`, configured at 16 pt semibold/large scale inside a 23 pt `NSStatusItem`. The symbol remains vector-backed and template-tinted by AppKit for normal light/dark menu bar appearance. The implementation avoids custom status windows, event monitors, or private menu bar APIs.
+The status item uses a native template SF Symbol, `cursorarrow.click`, configured at 16 pt semibold/large scale inside a 23 pt `NSStatusItem`. The symbol remains vector-backed and template-tinted by AppKit for normal light/dark menu bar appearance. The branded app bundle icon is separate from the status item and is generated from `assets/HoverClickAppIcon-1024.png` into `Resources/HoverClick.icns`. The implementation avoids custom status windows, event monitors, or private menu bar APIs.
 
 The status menu starts with one non-clickable custom header row: `HoverClick` on the left and `v<short-version>` on the right. Both labels use a disabled text color; the custom view uses a compact 24 pt height, starts at indentation level 0, and uses a shared 14 pt horizontal padding constant so the title's left margin matches the version label's right margin. The visible header version reads from `CFBundleShortVersionString` through the runtime version helper, with a generic fallback only for malformed bundle metadata. Build number is intentionally not shown in the header or Diagnostics submenu; `About HoverClick...` remains the single UI surface for full version/build. Header and status-item tooltips use stable, release-independent wording.
 
@@ -85,7 +85,7 @@ Intentional shipped behavior or UI changes should bump `CFBundleShortVersionStri
 
 ## Distribution Packaging
 
-HoverClick is distributed from GitHub with source plus the validated public v0.4.6 asset `HoverClick-0.4.6.dmg`. The downloaded published DMG SHA-256 was user-verified as `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`, and manual DMG install/launch smoke validation passed.
+HoverClick is distributed from GitHub. The latest public release is v0.4.7 / build 33 until v0.5.0 is explicitly released.
 
 `scripts/package-dmg.sh` remains an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a polished public installer path by itself.
 
@@ -93,7 +93,9 @@ Developer ID signing, notarization, stapling, a Mac App Store release, and a sig
 
 v0.4.6 / build 32 is fully released, validated, and closed.
 
-v0.4.7 / build 33 is release prep only, not a tag, package, or GitHub release. Its scope is maintenance/UI/docs polish after v0.4.6: native `About HoverClick...` version/build/bundle ID/description, dynamic header `v<short-version>` from `Info.plist`, stable release-independent tooltip text, no separate copied-diagnostics Version line, and no separate Diagnostics submenu version/build row. This release prep does not change runtime click-focus behavior, the event tap mask, app identity, bundle identifier, or signing identity. App icon integration remains a future feature request, not part of this prep.
+v0.4.7 / build 33 is the latest public release. Its scope was maintenance/UI/docs polish after v0.4.6: native `About HoverClick...` version/build/bundle ID/description, dynamic header `v<short-version>` from `Info.plist`, stable release-independent tooltip text, no separate copied-diagnostics Version line, and no separate Diagnostics submenu version/build row. It did not change runtime click-focus behavior, the event tap mask, app identity, bundle identifier, or signing identity.
+
+v0.5.0 / build 34 is the planned next milestone, not yet released. This public-polish batch adds the branded app icon workflow without bumping `Info.plist` version/build. `CFBundleIconFile` points to `HoverClick.icns`; `scripts/build-app.sh` copies `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/` and re-signs with the same Apple Development identity after the resource copy; `scripts/verify-app.sh` verifies the icon declaration and bundled resource. Release prep, DMG packaging, tagging, and GitHub release creation require explicit release-scope confirmation.
 
 ## Trigger Scope
 

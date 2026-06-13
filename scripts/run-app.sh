@@ -15,7 +15,7 @@ if /usr/bin/pgrep -x "$PROCESS_NAME" >/dev/null; then
   done
 fi
 
-/usr/bin/make -C "$PROJECT_DIR" app
+"$PROJECT_DIR/scripts/build-app.sh"
 
 /usr/bin/open "$APP_PATH"
 

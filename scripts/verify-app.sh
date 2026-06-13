@@ -18,6 +18,20 @@ fi
 bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$INFO_PLIST")
 echo "Info.plist bundle id = $bundle_id"
 
+icon_file=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$INFO_PLIST")
+icon_path="$APP_PATH/Contents/Resources/$icon_file"
+echo "Info.plist icon file = $icon_file"
+if [[ "$icon_file" != "HoverClick.icns" ]]; then
+  echo "expected app icon file = NO"
+  exit 1
+fi
+if [[ -s "$icon_path" ]]; then
+  echo "app icon resource exists = YES"
+else
+  echo "app icon resource exists = NO"
+  exit 1
+fi
+
 echo "codesign identity:"
 /usr/bin/codesign -dvvv "$APP_PATH" 2>&1 | /usr/bin/sed -n '/^Authority=/p'
 

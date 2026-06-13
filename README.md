@@ -1,21 +1,21 @@
 # HoverClick
 
-HoverClick gives macOS a more Windows-like click-to-focus feel.
+HoverClick is a Windows-like click-focus utility for macOS.
 
-When you click a background window, HoverClick focuses that window before the original click is delivered. Mouse movement alone never focuses windows. HoverClick is not AutoRaise.
+When you click a background window, HoverClick focuses and raises that window before the original click is delivered. Mouse movement alone never focuses windows, and HoverClick is not AutoRaise.
 
 The original click event is passed through unchanged: no synthetic clicks, no cursor movement, no replacement events, and no hover-to-window-focus behavior.
 
 ## Features
 
-- `Left Click Focus`: enabled by default. Left-clicking a background window focuses it before the click continues.
-- `Right Click Focus`: disabled by default. When enabled, right-clicking a background window focuses it before the normal right-click continues.
+- `Left Click Focus`: stable and enabled by default.
+- `Right Click Focus`: available and disabled by default unless you enable it.
 - `Launch at Login`: starts HoverClick automatically after login when supported by macOS.
 - `Permissions & Startup`: shows Accessibility status, Launch at Login, and an explicit `Open Accessibility Settings` action.
 - `Diagnostics`: includes `Verbose Diagnostics` and `Copy Diagnostics Summary` for issue reports.
 - `About HoverClick...`: shows version, build, bundle ID, and a short app description.
 
-HoverClick runs from the macOS menu bar and has no Dock icon.
+HoverClick runs from the macOS menu bar, has no Dock icon, and includes a branded app icon in the app bundle.
 
 ## Requirements
 
@@ -27,9 +27,9 @@ Always launch HoverClick as `HoverClick.app`, not the raw executable inside the 
 
 ## Download And Install
 
-HoverClick is currently distributed from GitHub. The latest validated release is `v0.4.6` / build `32`, with the public asset `HoverClick-0.4.6.dmg`.
+HoverClick is currently distributed from GitHub. The latest public release is `v0.4.7` / build `33`.
 
-`v0.4.7` / build `33` is in release prep only. It is not tagged, packaged, or released yet. This prep updates release metadata for the maintenance/UI/docs polish already present after v0.4.6: the native `About HoverClick...` alert is the full version/build UI surface, the menu header shows dynamic `v<short-version>` from `Info.plist`, the tooltip remains stable and release-independent, copied diagnostics no longer duplicate a separate Version line, and the Diagnostics submenu no longer carries a separate version/build row. No event-tap or click-focus runtime behavior changes are part of this prep.
+`v0.5.0` / build `34` is the planned next milestone. It is not released, tagged, packaged, or uploaded yet.
 
 You can also build the app locally from source.
 
@@ -45,7 +45,7 @@ If the app still shows `Accessibility: Not Granted`, quit HoverClick and relaunc
 
 ## How To Use
 
-- Keep `Left Click Focus` checked for the normal Windows-like click-to-focus behavior.
+- Keep `Left Click Focus` checked for the normal Windows-like click-focus behavior.
 - Enable `Right Click Focus` if you want right-clicks on background windows to focus the target before the context menu opens.
 - Enable `Launch at Login` if you want HoverClick to start automatically.
 - Use `Diagnostics` > `Copy Diagnostics Summary` when reporting a problem.
@@ -112,15 +112,7 @@ Verify the built app:
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/verify-app.sh
 ```
 
-Create a local DMG:
-
-```sh
-/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/package-dmg.sh
-```
-
-The DMG workflow writes an ignored artifact under `dist/`. It is useful for local packaging and testing.
-
-Do not package or tag `v0.4.7` until the release-prep branch has been reviewed, merged to `main`, and manually smoke-tested if needed.
+The build script copies `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/` and signs the bundle with the configured Apple Development identity.
 
 For development workflow details, see `docs/DEVELOPMENT.md`.
 

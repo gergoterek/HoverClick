@@ -10,6 +10,8 @@
 	<string>com.gergoterek.HoverClick</string>
 	<key>CFBundleExecutable</key>
 	<string>HoverClick</string>
+	<key>CFBundleIconFile</key>
+	<string>HoverClick.icns</string>
 	<key>CFBundleVersion</key>
 	<string>33</string>
 	<key>CFBundleShortVersionString</key>
