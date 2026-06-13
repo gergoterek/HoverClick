@@ -7,10 +7,11 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick` with dynamic `v0.5.0` on the same row
+- Visible menu header: `HoverClick` with dynamic `v0.6.0` on the same row
 - Full version/build UI surface: `About HoverClick...`
-- Bundle short version/build version: `0.5.0` / `34`
+- Bundle short version/build version: `0.6.0` / `35`
 - Latest public release: `v0.5.0` / build `34`
+- Current release-prep target: `v0.6.0` / build `35`
 - Main/release commit: `v0.5.0` tag target
 - Public DMG: `HoverClick-0.5.0.dmg`
 - Public DMG SHA-256: `ec822fb770471be129bbfbd7167ff16c502bbf3727101a318d412d0fd8bfc2ff`
@@ -33,6 +34,7 @@
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a release-publishing path by itself.
 - The post-v0.5.0 DMG packaging polish batch stages `HoverClick.app`, adds an `Applications` symlink, reuses `Resources/HoverClick.icns` as `.VolumeIcon.icns`, sets and verifies the custom DMG volume icon flag with command-line tooling, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for non-GUI verification.
+- v0.6.0 / build 35 is the planned release-prep target for that packaging and DMG presentation polish milestone. It does not change runtime/event-tap, Accessibility, Launch at Login, app identity, bundle identifier, or signing behavior.
 - DMG Finder window background and icon layout are not automated. They remain future optional polish unless a deterministic non-GUI implementation is proven safe.
 - There is no Mac App Store release or signed `.pkg` installer.
 
@@ -134,6 +136,28 @@ rm -rf .icon-work
 
 Release prep, DMG packaging, tag creation, and GitHub release creation for v0.5.0 were performed only after explicit release-scope confirmation.
 
+## v0.6.0 Release Prep
+
+v0.6.0 / build 35 is the current release-prep target. It is a packaging and DMG presentation polish milestone after the post-v0.5.0 packaging polish batch was merged into main.
+
+Included in scope:
+
+- Internal DMG staging includes `HoverClick.app`.
+- Internal DMG staging includes an `Applications` symlink to `/Applications`.
+- Internal DMG staging uses `Resources/HoverClick.icns` as `.VolumeIcon.icns`.
+- Packaging verifies the hidden `.VolumeIcon.icns` file flag and the custom DMG volume icon flag.
+- Packaging verifies mounted-DMG app bundle identifier, version, build, and code signature.
+- Packaging uses non-GUI `hdiutil -nobrowse -noautoopen` mounting for verification.
+- Manual internal-DMG smoke validation was completed by the user before this release-prep branch.
+
+Not included:
+
+- No runtime/event-tap behavior changes.
+- No Accessibility, TCC, or Launch at Login behavior changes.
+- No app name, bundle identifier, signing identity, certificate, tag, GitHub release, or public asset creation changes.
+- No Finder background or icon-layout automation.
+- No synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, `mouseDragged`/`mouseUp` handling, or expanded event tap mask.
+
 ## Experimental Or Placeholder Items
 
 `Hover Click Assist` is an experimental placeholder. It defaults off, is disabled while Left Click Focus is off, and currently performs no synthetic click, cursor movement, replacement event, mouse-move focus behavior, or delayed assist behavior. Delayed verification, when present, belongs only to background-focus diagnostics after an immediate frontmost check fails.
@@ -202,7 +226,7 @@ Current safe cleanup candidates observed as merged into `main`: `batch-post-v0.4
 
 `investigate-background-click-drag` is not merged into `main` and should be treated as a failed background drag experiment branch. Do not delete it automatically, do not merge it automatically, do not continue background click-and-drag work in this task, and do not reuse its failed 35 ms activation-settle approach.
 
-Prefer larger coherent batches like this v0.5.0 public-polish batch when changes share release documentation, build verification, and public-facing context. Use smaller branches for risky runtime, signing, permission, or release creation work.
+Prefer larger coherent batches like the v0.5.0 public-polish batch and v0.6.0 packaging polish batch when changes share release documentation, build verification, and public-facing context. Use smaller branches for risky runtime, signing, permission, or release creation work.
 
 ## Development Workflow
 
@@ -215,13 +239,14 @@ Prefer larger coherent batches like this v0.5.0 public-polish batch when changes
 
 Manual Finder UI validation -- not run automatically.
 
-- For post-v0.5.0 DMG presentation smoke validation, run `scripts/package-dmg.sh`, record the generated DMG path and SHA-256, mount the DMG manually if desired, confirm `HoverClick.app` is present, confirm the `Applications` shortcut is present, confirm the volume uses the branded icon, copy the app through the shortcut, launch only the signed `.app` bundle, and confirm About/version, Accessibility status, click-focus behavior, diagnostics copy, and Quit/Cmd+Q.
+- For v0.6.0 DMG presentation smoke validation, run `scripts/package-dmg.sh`, record the generated DMG path and SHA-256, mount the DMG manually if desired, confirm `HoverClick.app` is present, confirm the `Applications` shortcut is present, confirm the volume uses the branded icon, copy the app through the shortcut, launch only the signed `.app` bundle, and confirm About/version, Accessibility status, click-focus behavior, diagnostics copy, and Quit/Cmd+Q.
 - Confirm the published GitHub v0.4.6 DMG smoke test result is recorded: downloaded `HoverClick-0.4.6.dmg`, SHA-256 `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`, launched successfully, showed version `0.4.6` / build `32`, reported correct Accessibility status, passed left-click focus, passed right-click focus when enabled, copied diagnostics, preserved Finder context-menu follow-up left-click behavior, preserved Bartender/menu-bar overlay pass-through, and quit through the menu/Cmd+Q.
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.
 - Confirm the status menu shows `HoverClick` and `v0.4.6` on the same header row.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.4.7` on the same header row after a manual relaunch.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.5.0` on the same header row after a manual relaunch.
+- Confirm the status menu shows `HoverClick` and dynamic `v0.6.0` on the same header row after a manual relaunch.
 - For v0.5.0 icon smoke validation, confirm the built `HoverClick.app` shows the branded app icon in normal macOS icon surfaces after a manual relaunch or install. Manual Finder UI validation -- not run automatically.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
@@ -231,6 +256,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.6, Build 32, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.7, Build 33, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.5.0, Build 34, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
+- Confirm `About HoverClick...` shows HoverClick, Version 0.6.0, Build 35, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Confirm `Open Accessibility Settings` uses its action symbol and exactly 1 ASCII space of title padding.
 - Confirm `Quit` uses one left-slot action symbol, exactly 1 ASCII space of title padding, and preserves Cmd+Q.

@@ -101,6 +101,8 @@ v0.4.7 / build 33 is the previous public release superseded by v0.5.0. Its scope
 
 v0.5.0 / build 34 is the latest public release. Its public-polish batch added the branded app icon workflow without runtime behavior changes. `CFBundleIconFile` points to `HoverClick.icns`; `scripts/build-app.sh` copies `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/` and re-signs with the same Apple Development identity after the resource copy; `scripts/verify-app.sh` verifies the icon declaration and bundled resource. Release prep, tagging, and GitHub release creation require explicit release-scope confirmation.
 
+v0.6.0 / build 35 is the planned release-prep target. Its scope is packaging and DMG presentation polish: the internal DMG stages `HoverClick.app`, includes an `Applications` symlink, reuses `Resources/HoverClick.icns` as `.VolumeIcon.icns`, verifies the custom volume icon metadata, and verifies mounted-DMG app metadata and signing from command-line tooling. It does not change runtime click-focus behavior, the event tap mask, Accessibility behavior, app identity, bundle identifier, or signing identity.
+
 ## Trigger Scope
 
 HoverClick currently focuses windows only from configured click-down triggers. It does not add Scroll Focus because macOS already supports background scrolling in many apps.
