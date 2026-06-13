@@ -65,7 +65,7 @@
 - Bartender/menu-bar overlay pass-through: expanded or overflow menu bar items remain protected by the menu-bar/system UI owner and compact-overlay checks.
 - Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
-- Diagnostics summary: copies app name, bundle identifier, permission, startup, click detection, feature state, Hover Click Assist setting and no-op runtime behavior, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last handled action, last focus action/skip reason, last non-menu focus action/skip, overlay/system UI skip reason, overlay candidate owner/window/layer/title/bounds plus AX role/subrole/app detail, last eligible hit-test candidate, persistent last background-focus trigger/target/frontmost-before/activation/AX-operation/immediate-frontmost/delayed-verification/result/failure details, last verified successful background focus, event tap mask, safety note, and concise known limitations. Version/build are shown by `About HoverClick...` instead of being duplicated in copied diagnostics.
+- Diagnostics summary: copies app name, bundle identifier, permission, startup, click detection, feature state, Hover Click Assist setting and no-op runtime behavior, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last handled action, last focus action/skip reason, last non-menu focus action/skip, detailed last focus decision, right-click-specific focus decision, overlay/system UI skip reason, overlay candidate owner/window/layer/title/bounds plus AX role/subrole/app detail, last eligible hit-test candidate, persistent last background-focus trigger/target/frontmost-before/activation/AX-operation/immediate-frontmost/delayed-verification/result/failure details, last verified successful background focus, event tap mask, safety note, and concise known limitations. Version/build are shown by `About HoverClick...` instead of being duplicated in copied diagnostics.
 - Diagnostics menu polish: visible runtime details stay out of the menu; `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` use left-slot action icons with exactly 1 ASCII space of title padding, and Quit preserves Cmd+Q.
 - Accessibility onboarding: available from `Permissions & Startup` > `Open Accessibility Settings`.
 
@@ -164,6 +164,17 @@ Not included:
 - No Finder background or icon-layout automation.
 - No synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, `mouseDragged`/`mouseUp` handling, or expanded event tap mask.
 
+## v0.7.0 Right-Click Stability Development Batch
+
+The first v0.7.0 development batch is focused on Right Click Focus diagnostics and stability hardening. It does not bump version/build, package a DMG, tag a release, create a GitHub release, alter signing, change the bundle identifier, or expand the event tap mask.
+
+Included in scope:
+
+- Right Click Focus remains independent and default OFF unless the user enables it.
+- Left Click Focus behavior and the stable click-focus architecture remain unchanged.
+- Copied diagnostics distinguish event tap health, last right mouse down observed, target detection, focus attempt, AX operation result, immediate verification, delayed verification, ineligible-target skips, and skips because Right Click Focus is disabled.
+- Background drag/selection and context-menu behavior remain regression-test areas only; no drag assist, synthetic click, event replay, cursor movement, `mouseDragged`, or `mouseUp` behavior is added.
+
 ## Experimental Or Placeholder Items
 
 `Hover Click Assist` is an experimental placeholder. It defaults off, is disabled while Left Click Focus is off, and currently performs no synthetic click, cursor movement, replacement event, mouse-move focus behavior, or delayed assist behavior. Delayed verification, when present, belongs only to background-focus diagnostics after an immediate frontmost check fails.
@@ -204,7 +215,7 @@ The failed 35 ms background drag assist / activation-settle experiment must not 
 - Disabled-by-timeout and disabled-by-user-input callbacks attempt to re-enable the existing tap when user intent is still enabled and the CFMachPort/run loop source are valid.
 - If re-enable fails, or if the tap port/source is missing or invalid, HoverClick removes the stale objects and recreates the same left/right mouse-down-only event tap.
 - The callback returns the incoming pseudo-event value for system tap-disabled pseudo-events, and returns `NULL` only when the incoming event is `NULL`.
-- Copied diagnostics distinguish requested state, tap object/source presence, port/source validity, believed installed/enabled state, detected enabled state when available, the last callback type, last left/right mouse-down timestamps, last recovery attempt/result, the volatile last handled action, the last non-menu focus decision, overlay/system UI skip detail, the last eligible hit-test candidate, and persistent background-focus execution fields that include frontmost-before, activation return value, AX operation results, immediate verification, delayed verification, final result, failure reason, and success state that are not erased by later menu or overlay clicks.
+- Copied diagnostics distinguish requested state, tap object/source presence, port/source validity, believed installed/enabled state, detected enabled state when available, the last callback type, last left/right mouse-down timestamps, last recovery attempt/result, the volatile last handled action, the last focus decision detail, the last right-click focus decision, the last non-menu focus decision, overlay/system UI skip detail, the last eligible hit-test candidate, and persistent background-focus execution fields that include frontmost-before, activation return value, AX operation results, immediate verification, delayed verification, final result, failure reason, and success state that are not erased by later menu or overlay clicks.
 
 ## Permission And Signing Rules
 

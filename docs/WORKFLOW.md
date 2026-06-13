@@ -25,6 +25,19 @@ This is the approved signed `.app` runtime refresh step. It relaunches `HoverCli
 
 Do not run the raw executable inside `HoverClick.app/Contents/MacOS/` for normal validation because Accessibility permission belongs to the signed app bundle identity.
 
+## Runtime Behavior Validation
+
+Runtime behavior changes require manual validation after the signed `.app` has been rebuilt and verified. Automated checks can prove syntax, signing, bundle identity, event tap mask, and static safety guardrails, but they do not prove right-click focus, context menu, double-click, or drag/selection behavior.
+
+Manual Finder UI validation -- not run automatically.
+
+For the v0.7.0 Right Click Focus stability batch, manually cover:
+
+- Left Click Focus still focuses a background window and returns the original left-click unchanged.
+- With `Right Click Focus` unchecked, right-clicking a background window does not run a HoverClick focus attempt; copied diagnostics show right mouse down observation and a disabled-setting skip.
+- With `Right Click Focus` checked, right-clicking a background Finder window from Chrome focuses/raises Finder without intentionally breaking the context menu; copied diagnostics show target app/window detection, focus attempt, AX operation result, immediate verification, delayed verification if needed, and last verified successful background focus if successful.
+- Context menu, double-click, background drag/selection, menu bar/system UI skip, and diagnostics-summary copy behavior remain unchanged except for the clearer diagnostic text.
+
 ## DMG Packaging
 
 Use the internal/test DMG package script only after build and verify are expected to pass:
