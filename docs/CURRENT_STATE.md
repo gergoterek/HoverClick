@@ -152,6 +152,7 @@ Included in scope:
 - Packaging verifies `.VolumeIcon.icns` matches the dedicated DMG icon resource.
 - Packaging verifies mounted-DMG app bundle identifier, version, build, and code signature.
 - Packaging uses non-GUI `hdiutil -nobrowse -noautoopen` mounting for verification.
+- The supported reliable icon polish is the mounted DMG volume icon, not the `.dmg` file's own pre-mount Finder icon.
 - Manual internal-DMG smoke validation was completed by the user before this release-prep branch.
 
 Not included:
@@ -159,6 +160,7 @@ Not included:
 - No runtime/event-tap behavior changes.
 - No Accessibility, TCC, or Launch at Login behavior changes.
 - No app name, bundle identifier, signing identity, certificate, tag, GitHub release, or public asset creation changes.
+- No custom `.dmg` file icon promise; local file-icon metadata such as resource forks or extended attributes is not treated as reliable after GitHub Release upload/download.
 - No Finder background or icon-layout automation.
 - No synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, `mouseDragged`/`mouseUp` handling, or expanded event tap mask.
 
@@ -243,7 +245,7 @@ Prefer larger coherent batches like the v0.5.0 public-polish batch and v0.6.0 pa
 
 Manual Finder UI validation -- not run automatically.
 
-- For v0.6.0 DMG presentation smoke validation, run `scripts/package-dmg.sh`, record the generated DMG path and SHA-256, mount the DMG manually if desired, confirm `HoverClick.app` is present, confirm the `Applications` shortcut is present, confirm the volume uses the branded icon, copy the app through the shortcut, launch only the signed `.app` bundle, and confirm About/version, Accessibility status, click-focus behavior, diagnostics copy, and Quit/Cmd+Q.
+- For v0.6.0 DMG presentation smoke validation, run `scripts/package-dmg.sh`, record the generated DMG path and SHA-256, mount the DMG manually if desired, confirm `HoverClick.app` is present, confirm the `Applications` shortcut is present, confirm the mounted volume uses the branded icon, copy the app through the shortcut, launch only the signed `.app` bundle, and confirm About/version, Accessibility status, click-focus behavior, diagnostics copy, and Quit/Cmd+Q. If Finder is configured to show hidden files, `.VolumeIcon.icns` may be visible even though command-line verification confirms its hidden flag is set.
 - Confirm the published GitHub v0.4.6 DMG smoke test result is recorded: downloaded `HoverClick-0.4.6.dmg`, SHA-256 `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`, launched successfully, showed version `0.4.6` / build `32`, reported correct Accessibility status, passed left-click focus, passed right-click focus when enabled, copied diagnostics, preserved Finder context-menu follow-up left-click behavior, preserved Bartender/menu-bar overlay pass-through, and quit through the menu/Cmd+Q.
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.

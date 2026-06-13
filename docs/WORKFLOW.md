@@ -37,9 +37,11 @@ Use the internal/test DMG package script only after build and verify are expecte
 
 The package verification checks that the mounted DMG contains the expected `HoverClick.app`, bundle identifier, version, build, valid code signature, `Applications` symlink target, `.VolumeIcon.icns` matching `Resources/HoverClickDMGVolumeIcon.icns`, hidden icon file flag, and custom volume icon flag. It does not open Finder, System Settings, browsers, or the app runtime.
 
+The reliable release packaging polish is the mounted DMG volume icon. The `.dmg` file's own Finder icon before mounting is intentionally not customized because that kind of file icon depends on local Finder metadata such as resource forks or extended attributes and is not treated as a reliable GitHub Release asset property after upload/download.
+
 Manual Finder UI validation -- not run automatically.
 
-After packaging, a manual smoke test may inspect the mounted DMG presentation in Finder, confirm the volume uses the branded icon, drag `HoverClick.app` to the `Applications` shortcut, launch the installed signed app bundle, confirm `About HoverClick...` shows the expected version/build, confirm Accessibility status, and exercise left/right click focus according to the release checklist.
+After packaging, a manual smoke test may inspect the mounted DMG presentation in Finder, confirm the mounted volume uses the dedicated branded volume icon, drag `HoverClick.app` to the `Applications` shortcut, launch the installed signed app bundle, confirm `About HoverClick...` shows the expected version/build, confirm Accessibility status, and exercise left/right click focus according to the release checklist. Users with Finder hidden files shown may also see `.VolumeIcon.icns`; that is expected as long as command-line verification reports the hidden flag is set.
 
 Finder window background and icon layout remain future optional polish. They should be added only if a deterministic non-GUI approach is proven safe; packaging automation must not rely on Finder UI scripting or manual Finder layout.
 

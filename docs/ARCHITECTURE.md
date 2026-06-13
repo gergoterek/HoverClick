@@ -91,6 +91,8 @@ HoverClick is distributed from GitHub. The latest public release is v0.5.0 / bui
 
 The DMG packaging workflow rebuilds and verifies `HoverClick.app`, stages the signed app with an `Applications` symlink, copies the dedicated DMG volume icon resource `Resources/HoverClickDMGVolumeIcon.icns` as `.VolumeIcon.icns`, sets the custom volume icon flag on an intermediate writable DMG with command-line tooling, converts the result to a compressed read-only DMG, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for verification. Verification checks the mounted app bundle identifier, version, build, code signature, `Applications` symlink target, `.VolumeIcon.icns` source match, hidden icon-file flag, and custom volume icon flag.
 
+The package does not attempt to customize the `.dmg` file's own pre-mount Finder icon. That icon would depend on local file metadata such as resource forks or extended attributes outside the disk image payload, so it is not considered a reliable distribution feature for a GitHub Release asset after upload/download. The supported icon polish is the mounted DMG volume icon.
+
 DMG Finder window background and icon layout are intentionally not part of the automated packaging architecture. They should remain future optional polish unless they can be produced deterministically without Finder UI automation, GUI scripting, browser automation, or fragile external dependencies.
 
 Developer ID signing, notarization, stapling, a Mac App Store release, and a signed `.pkg` installer are not part of the current architecture. They remain optional future distribution work.
@@ -101,7 +103,7 @@ v0.4.7 / build 33 is the previous public release superseded by v0.5.0. Its scope
 
 v0.5.0 / build 34 is the latest public release. Its public-polish batch added the branded app icon workflow without runtime behavior changes. `CFBundleIconFile` points to `HoverClick.icns`; `scripts/build-app.sh` copies `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/` and re-signs with the same Apple Development identity after the resource copy; `scripts/verify-app.sh` verifies the icon declaration and bundled resource. Release prep, tagging, and GitHub release creation require explicit release-scope confirmation.
 
-v0.6.0 / build 35 is the planned release-prep target. Its scope is packaging and DMG presentation polish: the internal DMG stages `HoverClick.app`, includes an `Applications` symlink, uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns` separate from the app icon, verifies the custom volume icon metadata, and verifies mounted-DMG app metadata and signing from command-line tooling. It does not change runtime click-focus behavior, the event tap mask, Accessibility behavior, app identity, bundle identifier, or signing identity.
+v0.6.0 / build 35 is the planned release-prep target. Its scope is packaging and DMG presentation polish: the internal DMG stages `HoverClick.app`, includes an `Applications` symlink, uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns` separate from the app icon, verifies the custom mounted-volume icon metadata, and verifies mounted-DMG app metadata and signing from command-line tooling. It does not promise a custom pre-mount `.dmg` file icon, and it does not change runtime click-focus behavior, the event tap mask, Accessibility behavior, app identity, bundle identifier, or signing identity.
 
 ## Trigger Scope
 
