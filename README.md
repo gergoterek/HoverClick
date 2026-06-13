@@ -27,9 +27,9 @@ Always launch HoverClick as `HoverClick.app`, not the raw executable inside the 
 
 ## Download And Install
 
-HoverClick is currently distributed from GitHub. The latest public release is `v0.4.7` / build `33`.
+HoverClick is currently distributed from GitHub. The latest public release is `v0.5.0` / build `34`.
 
-`v0.5.0` / build `34` is the planned next milestone. It is not released, tagged, packaged, or uploaded yet.
+`v0.5.0` adds the branded app icon, bundles `HoverClick.icns` in the signed app, and polishes the build, verify, runtime-refresh, README, and workflow documentation. It does not change runtime click-focus or event-tap behavior.
 
 You can also build the app locally from source.
 

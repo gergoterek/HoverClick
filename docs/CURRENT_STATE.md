@@ -7,11 +7,13 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick` with dynamic `v0.4.7` on the same row
+- Visible menu header: `HoverClick` with dynamic `v0.5.0` on the same row
 - Full version/build UI surface: `About HoverClick...`
-- Bundle short version/build version: `0.4.7` / `33`
-- Latest public release: `v0.4.7` / build `33`
-- Planned next milestone: `v0.5.0` / build `34`, not tagged, packaged, or released yet
+- Bundle short version/build version: `0.5.0` / `34`
+- Latest public release: `v0.5.0` / build `34`
+- Main/release commit: to be recorded after release artifact details are finalized
+- Public DMG: `HoverClick-0.5.0.dmg`
+- Public DMG SHA-256: to be recorded after packaging
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
 - Generated bundle icon: `Resources/HoverClick.icns`
 
@@ -26,8 +28,8 @@
 
 ## Current Distribution
 
-- HoverClick is distributed from GitHub. The latest public release is v0.4.7 / build 33.
-- v0.5.0 / build 34 is the planned next milestone only. Do not package a DMG, create a tag, or create/edit a GitHub release until release scope is explicitly confirmed.
+- HoverClick is distributed from GitHub. The latest public release is v0.5.0 / build 34.
+- The public release DMG is `HoverClick-0.5.0.dmg`; its SHA-256 is recorded in this document after packaging.
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a polished public installer path by itself.
 - There is no Mac App Store release or signed `.pkg` installer.
@@ -94,17 +96,20 @@ Not included:
 - No synthetic clicks, event replay, cursor movement, `CGEventPost`, `CGEventCreateMouseEvent`, `CGDisplayMoveCursorToPoint`, or `CGWarpMouseCursorPosition`.
 - No Scroll Focus, Modifier Key Focus, real Hover Click Assist, app icon integration, app rename, bundle identifier change, signing identity change, DMG packaging, tag creation, or GitHub release creation.
 
-## v0.5.0 Planned Milestone
+## v0.5.0 Public Release
 
-v0.5.0 / build 34 is planned but not released. This public-polish batch adds the branded app icon workflow and related documentation without changing `CFBundleShortVersionString` or `CFBundleVersion`.
+v0.5.0 / build 34 is the latest public release. It ships the safe public-polish batch after explicit release-scope confirmation.
 
-Included in this batch:
+Included:
 
 - Imported source icon asset: `assets/HoverClickAppIcon-1024.png`
 - Generated bundle icon: `Resources/HoverClick.icns`
 - `Info.plist` icon reference: `CFBundleIconFile = HoverClick.icns`
 - Build script bundling: `scripts/build-app.sh` copies `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/HoverClick.icns` and re-signs the app with the same Apple Development identity after the resource copy.
 - Verify script icon checks: `scripts/verify-app.sh` confirms the app bundle declares and contains `HoverClick.icns`.
+- Signed `.app` runtime-refresh workflow fix for icon resources through `scripts/run-app.sh`.
+- README, docs/WORKFLOW, and app icon smoke-test coverage polish.
+- No runtime/event-tap behavior changes.
 
 Regenerate the `.icns` from the source asset with built-in macOS tooling:
 
@@ -125,7 +130,7 @@ iconutil -c icns .icon-work/HoverClick.iconset -o Resources/HoverClick.icns
 rm -rf .icon-work
 ```
 
-Do not start release prep, create a tag, package a DMG, or create/upload a GitHub release for v0.5.0 without explicit release-scope confirmation.
+Release prep, DMG packaging, tag creation, and GitHub release creation for v0.5.0 were performed only after explicit release-scope confirmation.
 
 ## Experimental Or Placeholder Items
 
@@ -212,6 +217,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm the app appears as a menu bar status item.
 - Confirm the status menu shows `HoverClick` and `v0.4.6` on the same header row.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.4.7` on the same header row after a manual relaunch.
+- Confirm the status menu shows `HoverClick` and dynamic `v0.5.0` on the same header row after a manual relaunch.
 - For v0.5.0 icon smoke validation, confirm the built `HoverClick.app` shows the branded app icon in normal macOS icon surfaces after a manual relaunch or install. Manual Finder UI validation -- not run automatically.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
@@ -220,6 +226,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.6, Build 32, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.7, Build 33, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
+- Confirm `About HoverClick...` shows HoverClick, Version 0.5.0, Build 34, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Confirm `Open Accessibility Settings` uses its action symbol and exactly 1 ASCII space of title padding.
 - Confirm `Quit` uses one left-slot action symbol, exactly 1 ASCII space of title padding, and preserves Cmd+Q.
