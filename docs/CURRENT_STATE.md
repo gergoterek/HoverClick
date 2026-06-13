@@ -31,7 +31,9 @@
 - HoverClick is distributed from GitHub. The latest public release is v0.5.0 / build 34.
 - The public release DMG is `HoverClick-0.5.0.dmg`; its SHA-256 is `ec822fb770471be129bbfbd7167ff16c502bbf3727101a318d412d0fd8bfc2ff`.
 - Building locally from source remains supported.
-- The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a polished public installer path by itself.
+- The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a release-publishing path by itself.
+- The post-v0.5.0 DMG packaging polish batch stages `HoverClick.app`, adds an `Applications` symlink, reuses `Resources/HoverClick.icns` as `.VolumeIcon.icns`, sets and verifies the custom DMG volume icon flag with command-line tooling, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for non-GUI verification.
+- DMG Finder window background and icon layout are not automated. They remain future optional polish unless a deterministic non-GUI implementation is proven safe.
 - There is no Mac App Store release or signed `.pkg` installer.
 
 ## Current Product Behavior
@@ -78,7 +80,7 @@ The event tap mask remains left mouse down + right mouse down only. No synthetic
 
 ## v0.4.7 Public Release
 
-v0.4.7 / build 33 is the latest public release until v0.5.0 is explicitly released.
+v0.4.7 / build 33 was the latest public release until v0.5.0 was released.
 
 Included polish:
 
@@ -145,7 +147,8 @@ Release prep, DMG packaging, tag creation, and GitHub release creation for v0.5.
 - No cursor movement.
 - No window movement or resizing.
 - No Screen Recording permission.
-- Internal/test Apple Development signed DMG packaging is available for local testing only. It is not Developer ID signed, not notarized, and not a polished public installer.
+- Internal/test Apple Development signed DMG packaging is available for local testing only. It is not Developer ID signed, not notarized, and not a release-publishing workflow.
+- DMG packaging polish must not change runtime click-focus, event-tap, Accessibility, Launch at Login, app identity, bundle identifier, signing identity, or version/build behavior.
 
 HoverClick currently does not add Scroll Focus because macOS already supports background scrolling in many apps. The current event tap observes only left and right mouse-down triggers.
 
@@ -212,6 +215,7 @@ Prefer larger coherent batches like this v0.5.0 public-polish batch when changes
 
 Manual Finder UI validation -- not run automatically.
 
+- For post-v0.5.0 DMG presentation smoke validation, run `scripts/package-dmg.sh`, record the generated DMG path and SHA-256, mount the DMG manually if desired, confirm `HoverClick.app` is present, confirm the `Applications` shortcut is present, confirm the volume uses the branded icon, copy the app through the shortcut, launch only the signed `.app` bundle, and confirm About/version, Accessibility status, click-focus behavior, diagnostics copy, and Quit/Cmd+Q.
 - Confirm the published GitHub v0.4.6 DMG smoke test result is recorded: downloaded `HoverClick-0.4.6.dmg`, SHA-256 `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`, launched successfully, showed version `0.4.6` / build `32`, reported correct Accessibility status, passed left-click focus, passed right-click focus when enabled, copied diagnostics, preserved Finder context-menu follow-up left-click behavior, preserved Bartender/menu-bar overlay pass-through, and quit through the menu/Cmd+Q.
 - Launch `/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh` only when a manual UI test is intended.
 - Confirm the app appears as a menu bar status item.

@@ -85,17 +85,21 @@ Intentional shipped behavior or UI changes should bump `CFBundleShortVersionStri
 
 ## Distribution Packaging
 
-HoverClick is distributed from GitHub. The latest public release is v0.4.7 / build 33 until v0.5.0 is explicitly released.
+HoverClick is distributed from GitHub. The latest public release is v0.5.0 / build 34.
 
-`scripts/package-dmg.sh` remains an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a polished public installer path by itself.
+`scripts/package-dmg.sh` remains an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a release-publishing path by itself.
+
+The DMG packaging workflow rebuilds and verifies `HoverClick.app`, stages the signed app with an `Applications` symlink, reuses `Resources/HoverClick.icns` as `.VolumeIcon.icns`, sets the custom volume icon flag on an intermediate writable DMG with command-line tooling, converts the result to a compressed read-only DMG, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for verification. Verification checks the mounted app bundle identifier, version, build, code signature, `Applications` symlink target, `.VolumeIcon.icns`, hidden icon-file flag, and custom volume icon flag.
+
+DMG Finder window background and icon layout are intentionally not part of the automated packaging architecture. They should remain future optional polish unless they can be produced deterministically without Finder UI automation, GUI scripting, browser automation, or fragile external dependencies.
 
 Developer ID signing, notarization, stapling, a Mac App Store release, and a signed `.pkg` installer are not part of the current architecture. They remain optional future distribution work.
 
 v0.4.6 / build 32 is fully released, validated, and closed.
 
-v0.4.7 / build 33 is the latest public release. Its scope was maintenance/UI/docs polish after v0.4.6: native `About HoverClick...` version/build/bundle ID/description, dynamic header `v<short-version>` from `Info.plist`, stable release-independent tooltip text, no separate copied-diagnostics Version line, and no separate Diagnostics submenu version/build row. It did not change runtime click-focus behavior, the event tap mask, app identity, bundle identifier, or signing identity.
+v0.4.7 / build 33 is the previous public release superseded by v0.5.0. Its scope was maintenance/UI/docs polish after v0.4.6: native `About HoverClick...` version/build/bundle ID/description, dynamic header `v<short-version>` from `Info.plist`, stable release-independent tooltip text, no separate copied-diagnostics Version line, and no separate Diagnostics submenu version/build row. It did not change runtime click-focus behavior, the event tap mask, app identity, bundle identifier, or signing identity.
 
-v0.5.0 / build 34 is the planned next milestone, not yet released. This public-polish batch adds the branded app icon workflow without bumping `Info.plist` version/build. `CFBundleIconFile` points to `HoverClick.icns`; `scripts/build-app.sh` copies `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/` and re-signs with the same Apple Development identity after the resource copy; `scripts/verify-app.sh` verifies the icon declaration and bundled resource. Release prep, DMG packaging, tagging, and GitHub release creation require explicit release-scope confirmation.
+v0.5.0 / build 34 is the latest public release. Its public-polish batch added the branded app icon workflow without runtime behavior changes. `CFBundleIconFile` points to `HoverClick.icns`; `scripts/build-app.sh` copies `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/` and re-signs with the same Apple Development identity after the resource copy; `scripts/verify-app.sh` verifies the icon declaration and bundled resource. Release prep, tagging, and GitHub release creation require explicit release-scope confirmation.
 
 ## Trigger Scope
 
