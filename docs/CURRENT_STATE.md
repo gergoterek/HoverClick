@@ -11,9 +11,9 @@
 - Full version/build UI surface: `About HoverClick...`
 - Bundle short version/build version: `0.5.0` / `34`
 - Latest public release: `v0.5.0` / build `34`
-- Main/release commit: to be recorded after release artifact details are finalized
+- Main/release commit: `v0.5.0` tag target
 - Public DMG: `HoverClick-0.5.0.dmg`
-- Public DMG SHA-256: to be recorded after packaging
+- Public DMG SHA-256: `0eaa8b68ff38a7c688271bbd83537ee8d62a26d924f47538882cbbe8dc48424e`
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
 - Generated bundle icon: `Resources/HoverClick.icns`
 
@@ -29,7 +29,7 @@
 ## Current Distribution
 
 - HoverClick is distributed from GitHub. The latest public release is v0.5.0 / build 34.
-- The public release DMG is `HoverClick-0.5.0.dmg`; its SHA-256 is recorded in this document after packaging.
+- The public release DMG is `HoverClick-0.5.0.dmg`; its SHA-256 is `0eaa8b68ff38a7c688271bbd83537ee8d62a26d924f47538882cbbe8dc48424e`.
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a polished public installer path by itself.
 - There is no Mac App Store release or signed `.pkg` installer.
