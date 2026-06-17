@@ -44,6 +44,7 @@ For the long-run click-focus investigation batch, manually cover:
 - Immediate right-click background focus with `Right Click Focus` enabled.
 - Menu/status UI skip behavior.
 - `Copy Diagnostics Summary` after a menu/status click; volatile fields may show the menu interaction, but stable last real/background click fields and recent non-menu decision history should still show the meaningful click path.
+- Normal background clicks that previously showed a tiny untitled `Window Server` compact popup/menu skip should now show the Window Server surface ignored as pass-through, AX target accepted, and focus attempt started.
 - Repeated background focus attempts across Finder, Chrome, and a terminal/editor app if practical.
 - Extended idle, sleep/wake, or lock-unlock reproduction. If focus stops while mouse-down callbacks still update, copy diagnostics immediately.
 - In the failure snapshot, preserve the recent non-menu mouse-down decision history, aggregate counters, stable last real/background click fields, event tap lifecycle state, last left/right mouse-down timestamps, and background-focus AX/immediate/delayed verification fields.

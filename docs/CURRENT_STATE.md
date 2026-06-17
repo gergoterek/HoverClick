@@ -187,6 +187,12 @@ Included in scope:
 - Aggregate counters for total mouse callbacks, left/right callbacks, non-menu decisions, focus attempts, successful verifications, policy skips, overlay/system UI skips, compact-popup skips, and menu/status UI skips.
 - No event-tap mask change, no synthetic clicks, no event replay, no cursor movement, and no mouse-moved, dragged, mouse-up, scroll, key-focus, or hover-focus behavior.
 
+## Window Server Pointer-Like Surface Policy Fix
+
+The investigation diagnostics exposed a concrete overbroad skip: tiny untitled Window Server high-layer surfaces around the click point, observed around 35 x 49 px, were treated as compact interactive popup/menu windows even when AX hit-testing resolved a normal app target underneath. The focus policy now treats only that narrow cursor-sized Window Server surface shape as pass-through over a non-menu AX target.
+
+Protection remains in place for HoverClick menu/status UI, AX menu/status/popover/system roles, known menu-bar/system owners such as SystemUIServer, Control Center, Dock, Notification Center, and Bartender, target-app-owned compact non-normal popup/overlay windows, and other compact popup/menu layers. Diagnostics explicitly report when a compact Window Server pointer-like surface was ignored as pass-through.
+
 ## Experimental Or Placeholder Items
 
 `Hover Click Assist` is an experimental placeholder. It defaults off, is disabled while Left Click Focus is off, and currently performs no synthetic click, cursor movement, replacement event, mouse-move focus behavior, or delayed assist behavior. Delayed verification, when present, belongs only to background-focus diagnostics after an immediate frontmost check fails.

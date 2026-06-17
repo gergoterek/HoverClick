@@ -1970,7 +1970,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                                           targetPid:targetPid
                                                                             appName:appName
                                                                                role:role
-                                                                            subrole:subrole];
+                                                                            subrole:subrole
+                                                                              point:axPoint];
     if (nonNormalSkipReason.length > 0) {
         [self recordOverlaySkipWithReason:nonNormalSkipReason
                             topmostWindow:topmostWindowInfo
@@ -2000,6 +2001,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                    subrole:subrole
                                                    appName:appName
                                                  targetPid:targetPid
+                                                     point:axPoint
                                                 sequenceID:sequenceID
                                                    trigger:trigger];
 
@@ -2249,7 +2251,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return YES;
 }
 
-- (NSString *)nonNormalTopWindowSkipReasonForWindowInfo:(NSDictionary *)windowInfo targetPid:(pid_t)targetPid appName:(NSString *)appName role:(NSString *)role subrole:(NSString *)subrole {
+- (NSString *)nonNormalTopWindowSkipReasonForWindowInfo:(NSDictionary *)windowInfo targetPid:(pid_t)targetPid appName:(NSString *)appName role:(NSString *)role subrole:(NSString *)subrole point:(CGPoint)point {
     if ([self layerForWindowInfo:windowInfo] == 0) {
         return nil;
     }
@@ -2270,6 +2272,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (ownerPid == targetPid && [self windowInfoLooksLikeCompactOverlay:windowInfo]) {
         return @"target app owns a compact non-normal popup or overlay at the click point";
+    }
+
+    if ([self windowInfoLooksLikePassThroughWindowServerPointerSurface:windowInfo
+                                                                 point:point
+                                                               appName:appName
+                                                                  role:role
+                                                               subrole:subrole]) {
+        return nil;
     }
 
     if ([self windowInfoLooksLikePopupLayer:windowInfo] &&
@@ -2303,19 +2313,31 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateRecentDecisionForSequenceID:_clickSequence key:@"topmostCGWindow" value:_lastOverlayCandidateDescription];
 }
 
-- (void)recordNonNormalTopWindowDidNotBlockForWindowInfo:(NSDictionary *)windowInfo role:(NSString *)role subrole:(NSString *)subrole appName:(NSString *)appName targetPid:(pid_t)targetPid sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger {
+- (void)recordNonNormalTopWindowDidNotBlockForWindowInfo:(NSDictionary *)windowInfo role:(NSString *)role subrole:(NSString *)subrole appName:(NSString *)appName targetPid:(pid_t)targetPid point:(CGPoint)point sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger {
     if ([self layerForWindowInfo:windowInfo] == 0) {
         return;
     }
 
-    _lastOverlaySkipReason = @"not skipped: AX hit-test resolved a normal eligible app/window candidate";
+    BOOL passThroughWindowServerSurface = [self windowInfoLooksLikePassThroughWindowServerPointerSurface:windowInfo
+                                                                                                  point:point
+                                                                                                appName:appName
+                                                                                                   role:role
+                                                                                                subrole:subrole];
+    _lastOverlaySkipReason = passThroughWindowServerSurface ?
+        @"not skipped: compact Window Server pointer-like surface ignored as pass-through over normal AX target" :
+        @"not skipped: AX hit-test resolved a normal eligible app/window candidate";
     _lastOverlayCandidateDescription = [NSString stringWithFormat:@"%@; AX target app=%@ pid=%d role=%@ subrole=%@",
                                         [self compactWindowInfoDescription:windowInfo],
                                         appName ?: @"unknown",
                                         targetPid,
                                         role ?: @"unknown",
                                         subrole.length > 0 ? subrole : @"none"];
-    [self updateRecentDecisionForSequenceID:sequenceID key:@"overlayOrSystemUIInvolved" value:@"yes (did not block)"];
+    [self updateRecentDecisionForSequenceID:sequenceID
+                                        key:@"overlayOrSystemUIInvolved"
+                                      value:passThroughWindowServerSurface ? @"yes (Window Server pass-through surface ignored)" : @"yes (did not block)"];
+    if (passThroughWindowServerSurface) {
+        [self updateRecentDecisionForSequenceID:sequenceID key:@"compactPopupInvolved" value:@"ignored pass-through Window Server surface"];
+    }
     [self updateRecentDecisionForSequenceID:sequenceID key:@"topmostCGWindow" value:_lastOverlayCandidateDescription];
     [self diagnosticLog:"HoverClick: %s #%llu non-normal top window did not block focus candidate %s",
                         trigger,
@@ -2446,6 +2468,54 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSInteger popUpLayer = CGWindowLevelForKey(kCGPopUpMenuWindowLevelKey);
     NSInteger statusLayer = CGWindowLevelForKey(kCGStatusWindowLevelKey);
     return layer >= MIN(mainMenuLayer, MIN(popUpLayer, statusLayer));
+}
+
+- (BOOL)windowInfoLooksLikePassThroughWindowServerPointerSurface:(NSDictionary *)windowInfo point:(CGPoint)point appName:(NSString *)appName role:(NSString *)role subrole:(NSString *)subrole {
+    if (windowInfo == nil || [self layerForWindowInfo:windowInfo] == 0) {
+        return NO;
+    }
+
+    NSString *ownerName = windowInfo[(__bridge NSString *)kCGWindowOwnerName] ?: @"";
+    if (![ownerName isEqualToString:@"Window Server"]) {
+        return NO;
+    }
+
+    pid_t ownerPid = [self ownerPidForWindowInfo:windowInfo];
+    NSRunningApplication *ownerApp = ownerPid > 0 ? [NSRunningApplication runningApplicationWithProcessIdentifier:ownerPid] : nil;
+    if (ownerApp.bundleIdentifier.length > 0) {
+        return NO;
+    }
+
+    NSString *windowTitle = windowInfo[(__bridge NSString *)kCGWindowName] ?: @"";
+    if (windowTitle.length > 0 && ![windowTitle.lowercaseString isEqualToString:@"untitled"]) {
+        return NO;
+    }
+
+    if (![self windowInfoLooksLikePopupLayer:windowInfo]) {
+        return NO;
+    }
+
+    CGRect bounds = [self boundsForWindowInfo:windowInfo];
+    if (CGRectIsNull(bounds) || CGRectIsEmpty(bounds)) {
+        return NO;
+    }
+
+    CGFloat area = bounds.size.width * bounds.size.height;
+    BOOL cursorSized = bounds.size.width <= 96.0 && bounds.size.height <= 128.0 && area <= 12000.0;
+    if (!cursorSized) {
+        return NO;
+    }
+
+    CGRect tolerantBounds = CGRectInset(bounds, -8.0, -8.0);
+    if (!CGRectContainsPoint(tolerantBounds, point)) {
+        return NO;
+    }
+
+    if ([self roleLooksLikeProtectedSystemUI:role subrole:subrole appName:appName]) {
+        return NO;
+    }
+
+    return appName.length > 0 && ![appName isEqualToString:@"HoverClick"];
 }
 
 - (BOOL)shouldIgnoreRole:(NSString *)role subrole:(NSString *)subrole appName:(NSString *)appName targetPid:(pid_t)targetPid point:(CGPoint)point {
