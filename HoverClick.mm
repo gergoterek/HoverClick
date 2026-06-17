@@ -1,5 +1,6 @@
 #import <ApplicationServices/ApplicationServices.h>
 #import <Cocoa/Cocoa.h>
+#import <Sparkle/Sparkle.h>
 #import <dispatch/dispatch.h>
 #import <os/log.h>
 #if __has_include(<ServiceManagement/ServiceManagement.h>)
@@ -28,6 +29,7 @@ static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Opens the ma
 static NSString * const HoverClickLaunchAtLoginHelp = @"Starts HoverClick automatically after you log in, without changing click behavior.";
 static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
 static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the current HoverClick status summary to the clipboard.";
+static NSString * const HoverClickCheckForUpdatesHelp = @"Checks for HoverClick updates using Sparkle.";
 static NSString * const HoverClickAboutHelp = @"Shows HoverClick version and bundle identity.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static NSString * const HoverClickMenuItemTitlePadding = @" ";
@@ -288,6 +290,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 @property(nonatomic, strong) NSMenuItem *launchAtLoginItem;
 @property(nonatomic, strong) NSMenuItem *diagnosticsItem;
 @property(nonatomic, strong) NSMenuItem *verboseItem;
+@property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
 - (void)recordFocusDecisionWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID decision:(NSString *)decision detail:(NSString *)detail;
 - (void)recordBackgroundFocusAttemptWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID appName:(NSString *)appName pid:(pid_t)targetPid frontmostBefore:(NSString *)frontmostBefore;
@@ -467,6 +470,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _activeDecisionHistory = [NSMutableDictionary dictionary];
 
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    self.updaterController = [[SPUStandardUpdaterController alloc] initWithStartingUpdater:YES
+                                                                          updaterDelegate:nil
+                                                                        userDriverDelegate:nil];
     [self createStatusItem];
     [self printLaunchStatus];
     [self refreshAccessibilityStatus:nil];
@@ -627,6 +633,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check for Updates...")
+                                                                 action:@selector(checkForUpdates:)
+                                                          keyEquivalent:@""];
+    checkForUpdatesItem.target = self.updaterController;
+    checkForUpdatesItem.enabled = YES;
+    checkForUpdatesItem.indentationLevel = 0;
+    checkForUpdatesItem.state = NSControlStateValueOff;
+    checkForUpdatesItem.offStateImage = HoverClickMenuSymbolImage(@"arrow.triangle.2.circlepath", @"Check for Updates");
+    checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
+    [menu addItem:checkForUpdatesItem];
 
     NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick...")
                                                        action:@selector(showAboutHoverClick:)

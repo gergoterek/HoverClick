@@ -22,5 +22,15 @@
 	<string>12.0</string>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>HoverClick needs Accessibility access to focus windows before click delivery.</string>
+	<key>SUFeedURL</key>
+	<string>https://gergoterek.github.io/HoverClick/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
 </dict>
 </plist>

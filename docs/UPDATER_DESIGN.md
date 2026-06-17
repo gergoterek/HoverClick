@@ -182,12 +182,25 @@ Phase 1: manual updater integration.
 - Keep automatic checks and automatic background install off.
 - Verify the app still builds, signs, launches as a signed `.app`, and preserves the current click-focus/event-tap behavior.
 
+Phase 1 implementation note:
+
+- Sparkle is integrated from the official GitHub release `Sparkle-2.9.3.tar.xz`.
+- The pinned source URL is `https://github.com/sparkle-project/Sparkle/releases/download/2.9.3/Sparkle-2.9.3.tar.xz`.
+- The pinned archive SHA-256 is `74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6`.
+- `Makefile` downloads that archive into the ignored `tmp/sparkle/` cache, verifies the SHA-256, extracts `Sparkle.framework`, links with `-framework Sparkle`, embeds the framework in `HoverClick.app/Contents/Frameworks/`, and signs Sparkle's nested XPC services, updater app, helper executable, framework, and app with the existing Apple Development identity.
+- `SPUStandardUpdaterController` is kept alive by `HoverClickAppDelegate`, and the top-level `Check for Updates...` menu item targets `checkForUpdates:`.
+- `SUFeedURL` is `https://gergoterek.github.io/HoverClick/appcast.xml`. This is the planned stable GitHub Pages appcast URL; the appcast is still future release-work and may not be live during this implementation branch.
+- `SUPublicEDKey` is `093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=`.
+- The Sparkle EdDSA private key was generated with Sparkle's official `generate_keys --account com.gergoterek.HoverClick` tool and saved in the user's login Keychain. No private key file is stored in the repository.
+- `SUEnableAutomaticChecks`, `SUAutomaticallyUpdate`, and `SUAllowsAutomaticUpdates` are all set to false for the manual-only MVP.
+- This branch does not add appcasts, release assets, tags, GitHub Releases, DMGs, Developer ID/notarization changes, Accessibility/TCC changes, event-tap changes, or package workflow changes.
+
 Phase 2: appcast and signed update workflow.
 
-- Generate the Sparkle EdDSA key.
-- Store the private key outside the repository.
+- Reuse the existing Sparkle EdDSA key stored in the user's Keychain under account `com.gergoterek.HoverClick`.
+- Keep the private key outside the repository.
 - Produce the official update DMG.
-- Generate the appcast with `generate_appcast` or equivalent Sparkle tooling.
+- Generate the appcast with `generate_appcast --account com.gergoterek.HoverClick` or equivalent Sparkle tooling.
 - Publish the appcast to the chosen stable HTTPS URL.
 - Publish the DMG as an official GitHub Release asset.
 - Validate manual update from an older updater-enabled build to a newer build.

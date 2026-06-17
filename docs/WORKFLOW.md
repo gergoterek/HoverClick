@@ -11,7 +11,9 @@ Use the signed app build script for local validation:
 
 `scripts/build-app.sh` creates `HoverClick.app`, copies bundled resources such as `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/`, and signs the app with the configured Apple Development identity.
 
-`scripts/verify-app.sh` checks the bundle identifier, icon declaration, bundled icon resource, signing identity, code signature verification, and process count.
+For the v0.8.0 Phase 1 updater branch, `Makefile` also downloads the official pinned Sparkle release `Sparkle-2.9.3.tar.xz` from `https://github.com/sparkle-project/Sparkle/releases/download/2.9.3/Sparkle-2.9.3.tar.xz` into the ignored `tmp/sparkle/` cache, verifies SHA-256 `74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6`, extracts `Sparkle.framework`, links it, embeds it in `HoverClick.app/Contents/Frameworks/`, and signs Sparkle's nested helpers plus the app with the existing Apple Development identity.
+
+`scripts/verify-app.sh` checks the bundle identifier, icon declaration, bundled icon resource, Sparkle framework embedding/version/linkage/configuration/signing, signing identity, code signature verification, and process count.
 
 ## Runtime Refresh
 
@@ -68,6 +70,18 @@ Manual Finder UI validation -- not run automatically.
 After packaging, a manual smoke test may inspect the mounted DMG presentation in Finder, confirm the mounted volume uses the dedicated branded volume icon, drag `HoverClick.app` to the `Applications` shortcut, launch the installed signed app bundle, confirm `About HoverClick...` shows the expected version/build, confirm Accessibility status, and exercise left/right click focus according to the release checklist. Users with Finder hidden files shown may also see `.VolumeIcon.icns`; that is expected as long as command-line verification reports the hidden flag is set.
 
 Finder window background and icon layout remain future optional polish. They should be added only if a deterministic non-GUI approach is proven safe; packaging automation must not rely on Finder UI scripting or manual Finder layout.
+
+## Sparkle Manual Update MVP
+
+Phase 1 adds only the manual `Check for Updates...` entry point using Sparkle's standard UI.
+
+- `SUFeedURL` is `https://gergoterek.github.io/HoverClick/appcast.xml`.
+- The appcast is future release infrastructure and may not be live yet.
+- `SUPublicEDKey` is `093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=`.
+- The private EdDSA key is in the user's login Keychain under Sparkle account `com.gergoterek.HoverClick`; do not export it into the repository.
+- Automatic checks and background automatic updates stay disabled by `SUEnableAutomaticChecks = false`, `SUAutomaticallyUpdate = false`, and `SUAllowsAutomaticUpdates = false`.
+- Future appcast generation should use Sparkle tooling with the same Keychain account, for example `generate_appcast --account com.gergoterek.HoverClick`.
+- `scripts/package-dmg.sh` remains internal/test packaging and is not the appcast publishing workflow.
 
 ## Release Scope
 
