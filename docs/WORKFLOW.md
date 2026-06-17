@@ -51,6 +51,17 @@ For the long-run click-focus investigation batch, manually cover:
 - Extended idle, sleep/wake, or lock-unlock reproduction. If focus stops while mouse-down callbacks still update, copy diagnostics immediately.
 - In the failure snapshot, preserve the recent non-menu mouse-down decision history, aggregate counters, stable last real/background click fields, event tap lifecycle state, last left/right mouse-down timestamps, and background-focus AX/immediate/delayed verification fields.
 
+For the v0.8.0 first-launch permission onboarding batch, manually cover in a safe fresh-user or fresh-install scenario when available:
+
+- Launch the signed `.app` bundle with Accessibility not yet granted.
+- Confirm HoverClick requests the native Accessibility trust prompt and shows its explanatory onboarding alert without opening System Settings automatically.
+- Confirm `Left Click Focus`, `Right Click Focus`, `Hover`, and `Hover Click Assist` are disabled while Accessibility is missing.
+- Confirm `Permissions & Startup` shows `Accessibility: Required`, exposes `Check Again`, leaves `Open Accessibility Settings` as an explicit user-click action, and switches to `Accessibility: Granted` after permission is granted and refreshed.
+- Confirm Launch at Login onboarding asks once when the login item is not registered, records `launchAtLoginOnboardingPromptShown`, and enables startup only when the user chooses `Enable Launch at Login`.
+- Confirm copied diagnostics include Accessibility onboarding, trust prompt, permission-gated click focus, and Launch at Login onboarding fields.
+
+Do not use `tccutil reset` for normal onboarding validation. Do not run raw binaries. Do not automate System Settings, Finder, keyboard, mouse, or Accessibility UI interactions.
+
 ## DMG Packaging
 
 Use the internal/test DMG package script only after build and verify are expected to pass:

@@ -12,8 +12,9 @@
 - Bundle short version/build version: `0.7.0` / `36`
 - Latest fully validated public release: `v0.6.0` / build `35`
 - Current release candidate: `v0.7.0` / build `36`
-- Current updater implementation branch: `feature-v0.8.0-sparkle-manual-update`
-- Main/release-prep branch point: `ce2985206b8aab55c9f03ea98c26b7ab53593bee`
+- Current updater implementation branch: merged to `main`
+- Current implementation branch: `feature-v0.8.0-first-launch-permission-onboarding`
+- Main/release-prep branch point: `383a0480430f9e584082bbabd466808d6cd4bdae`
 - Public DMG: `HoverClick-0.6.0.dmg`
 - Public DMG SHA-256: not recorded in this state file
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
@@ -58,6 +59,16 @@
 - Automatic checks are disabled with `SUEnableAutomaticChecks = false`.
 - Automatic background download/install is disabled with `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`.
 
+## Current Permission Onboarding State
+
+- The v0.8.0 permission onboarding branch adds first-launch Accessibility guidance without changing app identity, signing, event tap inputs, Sparkle settings, updater behavior, or release packaging.
+- On launch, if Accessibility is missing, HoverClick calls `AXIsProcessTrustedWithOptions` with `kAXTrustedCheckOptionPrompt` once for that launch and shows a native onboarding alert explaining why the permission is needed.
+- Missing Accessibility keeps HoverClick open but leaves click focus inactive. `Left Click Focus`, `Right Click Focus`, `Hover`, and `Hover Click Assist` are disabled in the menu until permission is granted; their saved checked states are preserved.
+- `Permissions & Startup` now includes `Accessibility: Required` or `Accessibility: Granted`, a `Check Again` / `Refresh Permission Status` item, `Launch at Login`, and explicit `Open Accessibility Settings`.
+- `Open Accessibility Settings` remains user-initiated only. HoverClick does not automatically open System Settings.
+- If Launch at Login is not registered on macOS 13 or newer, HoverClick asks once whether to enable it. The app records the ask with `launchAtLoginOnboardingPromptShown` and only enables Launch at Login when the user chooses `Enable Launch at Login`.
+- Launch at Login onboarding does not change Accessibility permission and does not silently register the login item.
+
 ## Current Product Behavior
 
 - HoverClick is a menubar-only accessory app with no Dock icon.
@@ -68,8 +79,9 @@
 - `Left Click Focus` defaults on.
 - `Right Click Focus` defaults off and is independent from left-click behavior.
 - `Hover` contains `Hover Click Assist`.
-- `Permissions & Startup` contains Accessibility status, Launch at Login, and `Open Accessibility Settings`.
-- `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Not Granted` is unchecked.
+- `Permissions & Startup` contains Accessibility status, `Check Again`, Launch at Login, and `Open Accessibility Settings`.
+- `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Required` is unchecked.
+- If Accessibility is missing, click-focus feature toggles are disabled until the user grants permission and chooses `Check Again` or relaunches.
 - `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
 - The top-level menu contains `About HoverClick...`, which shows a small native version/build/bundle ID alert and opens no browser, System Settings, or external links.
 - Technical click detection and last action details are available in the copied diagnostics summary.
@@ -85,7 +97,7 @@
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
 - Diagnostics summary: copies app name, bundle identifier, permission, startup, click detection, feature state, Hover Click Assist setting and no-op runtime behavior, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last handled action, last focus action/skip reason, last non-menu focus action/skip, detailed last focus decision, right-click-specific focus decision, stable last real/background click decision fields that are not overwritten by HoverClick menu/status UI clicks, overlay/system UI skip reason, overlay candidate owner/window/layer/title/bounds plus AX role/subrole/app detail, last eligible hit-test candidate, persistent last background-focus trigger/target/frontmost-before/activation/AX-operation/immediate-frontmost/delayed-verification/result/failure details, recent non-menu mouse-down decision history, aggregate callback/focus/skip counters, last verified successful background focus, event tap mask, safety note, and concise known limitations. Version/build are shown by `About HoverClick...` instead of being duplicated in copied diagnostics.
 - Diagnostics menu polish: visible runtime details stay out of the menu; `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` use left-slot action icons with exactly 1 ASCII space of title padding, and Quit preserves Cmd+Q.
-- Accessibility onboarding: available from `Permissions & Startup` > `Open Accessibility Settings`.
+- Accessibility onboarding: first launch requests the native macOS Accessibility prompt when needed, shows a native explanatory alert, and keeps `Permissions & Startup` actions available for manual recovery.
 
 ## v0.4.6 Validated Release
 

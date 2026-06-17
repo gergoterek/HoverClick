@@ -20,11 +20,13 @@ static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
 static NSString * const HoverClickFallbackBuildVersion = @"unknown";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
 static NSString * const HoverClickHoverClickAssistDefaultsKey = @"hoverClickAssistEnabled";
+static NSString * const HoverClickLaunchAtLoginOnboardingPromptShownDefaultsKey = @"launchAtLoginOnboardingPromptShown";
 static NSString * const HoverClickStableHelp = @"HoverClick - Windows-like click focus for macOS.";
 static NSString * const HoverClickLeftClickFocusHelp = @"Activates a background window before passing through your original left click.";
 static NSString * const HoverClickRightClickFocusHelp = @"Activates a background window before opening its normal right-click menu.";
 static NSString * const HoverClickHoverClickAssistHelp = @"Experimental placeholder for future hover-dependent buttons; requires Left Click Focus and currently adds no cursor movement or synthetic clicks.";
 static NSString * const HoverClickAccessibilityStatusHelp = @"Shows whether macOS currently allows HoverClick to inspect and focus windows.";
+static NSString * const HoverClickRefreshAccessibilityHelp = @"Checks whether Accessibility permission is now granted and starts click focus when possible.";
 static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Opens the macOS Accessibility privacy pane so you can review HoverClick access.";
 static NSString * const HoverClickLaunchAtLoginHelp = @"Starts HoverClick automatically after you log in, without changing click behavior.";
 static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
@@ -283,6 +285,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 @interface HoverClickAppDelegate : NSObject <NSApplicationDelegate>
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) NSMenuItem *permissionItem;
+@property(nonatomic, strong) NSMenuItem *permissionRefreshItem;
 @property(nonatomic, strong) NSMenuItem *clickToFocusItem;
 @property(nonatomic, strong) NSMenuItem *rightClickFocusItem;
 @property(nonatomic, strong) NSMenuItem *hoverMenuItem;
@@ -300,6 +303,8 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
 - (BOOL)isEffectiveHoverClickAssistEnabled;
+- (void)showAccessibilityOnboardingIfNeeded;
+- (void)offerLaunchAtLoginOnboardingIfNeeded;
 - (void)showAboutHoverClick:(id)sender;
 - (void)quitApplication:(id)sender;
 @end
@@ -312,6 +317,9 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     BOOL _rightClickFocusEnabled;
     BOOL _hoverClickAssistEnabled;
     BOOL _verboseDiagnostics;
+    BOOL _accessibilityOnboardingShownThisLaunch;
+    BOOL _accessibilityTrustPromptRequestedThisLaunch;
+    BOOL _launchAtLoginOnboardingOfferedThisLaunch;
     CFMachPortRef _eventTap;
     CFRunLoopSourceRef _eventTapSource;
     CFAbsoluteTime _lastMouseDownLogTime;
@@ -364,6 +372,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     NSString *_lastOverlayCandidateDescription;
     NSString *_lastEligibleHitTestCandidateDescription;
     NSString *_lastLaunchAtLoginStatusDescription;
+    NSString *_lastLaunchAtLoginOnboardingDecision;
     NSMutableArray<NSMutableDictionary<NSString *, NSString *> *> *_recentDecisionHistory;
     NSMutableDictionary<NSNumber *, NSMutableDictionary<NSString *, NSString *> *> *_activeDecisionHistory;
 }
@@ -414,6 +423,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _rightClickFocusEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickRightClickFocusDefaultsKey];
     _hoverClickAssistEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickHoverClickAssistDefaultsKey];
     _verboseDiagnostics = YES;
+    _accessibilityOnboardingShownThisLaunch = NO;
+    _accessibilityTrustPromptRequestedThisLaunch = NO;
+    _launchAtLoginOnboardingOfferedThisLaunch = NO;
     _eventTap = NULL;
     _eventTapSource = NULL;
     _lastMouseDownLogTime = 0;
@@ -466,6 +478,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastOverlayCandidateDescription = @"none";
     _lastEligibleHitTestCandidateDescription = @"none";
     _lastLaunchAtLoginStatusDescription = nil;
+    _lastLaunchAtLoginOnboardingDecision = @"not offered";
     _recentDecisionHistory = [NSMutableArray arrayWithCapacity:HoverClickRecentDecisionHistoryLimit];
     _activeDecisionHistory = [NSMutableDictionary dictionary];
 
@@ -476,6 +489,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self createStatusItem];
     [self printLaunchStatus];
     [self refreshAccessibilityStatus:nil];
+    [self showAccessibilityOnboardingIfNeeded];
+    [self offerLaunchAtLoginOnboardingIfNeeded];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
@@ -568,7 +583,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     permissionsStartupItem.submenu = permissionsStartupMenu;
     [menu addItem:permissionsStartupItem];
 
-    self.permissionItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Accessibility: Not Granted")
+    self.permissionItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Accessibility: Required")
                                                      action:@selector(refreshAccessibilityStatus:)
                                               keyEquivalent:@""];
     self.permissionItem.target = self;
@@ -577,6 +592,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionItem.state = NSControlStateValueOff;
     self.permissionItem.toolTip = HoverClickAccessibilityStatusHelp;
     [permissionsStartupMenu addItem:self.permissionItem];
+
+    self.permissionRefreshItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check Again")
+                                                            action:@selector(refreshAccessibilityStatus:)
+                                                     keyEquivalent:@""];
+    self.permissionRefreshItem.target = self;
+    self.permissionRefreshItem.enabled = YES;
+    self.permissionRefreshItem.indentationLevel = 0;
+    self.permissionRefreshItem.state = NSControlStateValueOff;
+    self.permissionRefreshItem.offStateImage = HoverClickMenuSymbolImage(@"arrow.clockwise", @"Check Again");
+    self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
+    [permissionsStartupMenu addItem:self.permissionRefreshItem];
+
+    [permissionsStartupMenu addItem:[NSMenuItem separatorItem]];
 
     self.launchAtLoginItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Launch at Login")
                                                         action:@selector(toggleLaunchAtLogin:)
@@ -777,13 +805,51 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return AXIsProcessTrusted();
 }
 
+- (BOOL)requestAccessibilityTrustPrompt {
+    NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES};
+    BOOL trusted = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
+    _accessibilityTrustPromptRequestedThisLaunch = YES;
+    HoverClickLog("HoverClick: Accessibility trust prompt requested result=%s", trusted ? "trusted" : "not trusted");
+    return trusted;
+}
+
+- (void)showAccessibilityOnboardingIfNeeded {
+    if ([self accessibilityTrusted] || _accessibilityOnboardingShownThisLaunch) {
+        return;
+    }
+
+    _accessibilityOnboardingShownThisLaunch = YES;
+    [self requestAccessibilityTrustPrompt];
+
+    if ([self accessibilityTrusted]) {
+        [self refreshAccessibilityStatus:nil];
+        return;
+    }
+
+    [self setLastClickResult:@"Permission Missing"];
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"HoverClick Needs Accessibility Permission";
+    alert.informativeText = @"HoverClick needs Accessibility permission to focus background windows before your original click is delivered. Left Click Focus, Right Click Focus, and Hover controls stay disabled until permission is granted.\n\nUse Permissions & Startup > Open Accessibility Settings if macOS does not show the permission prompt, then choose Check Again after enabling HoverClick.";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    HoverClickLog("HoverClick: Accessibility onboarding shown while permission is missing");
+    [self updateMenuTitles];
+}
+
 - (void)refreshAccessibilityStatus:(id)sender {
-    (void)sender;
+    BOOL userInitiated = (sender != nil);
 
     BOOL trusted = [self accessibilityTrusted];
+    if (!trusted && userInitiated) {
+        [self requestAccessibilityTrustPrompt];
+        trusted = [self accessibilityTrusted];
+    }
+
     HoverClickLog("HoverClick: accessibility trusted = %s", trusted ? "YES" : "NO");
 
     if (trusted) {
+        [self setLastClickResult:@"Permission Granted"];
         if (_userWantsEventTap) {
             [self installEventTap];
         }
@@ -1324,6 +1390,70 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateMenuTitles];
 }
 
+- (void)offerLaunchAtLoginOnboardingIfNeeded {
+#if HOVERCLICK_HAS_SERVICE_MANAGEMENT
+    if (@available(macOS 13.0, *)) {
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        if ([defaults boolForKey:HoverClickLaunchAtLoginOnboardingPromptShownDefaultsKey]) {
+            _lastLaunchAtLoginOnboardingDecision = @"previously offered";
+            return;
+        }
+
+        SMAppService *service = SMAppService.mainAppService;
+        SMAppServiceStatus status = service.status;
+        NSString *statusDescription = [self launchAtLoginStatusDescription:status];
+
+        if (status == SMAppServiceStatusEnabled) {
+            _lastLaunchAtLoginOnboardingDecision = @"not offered (already enabled)";
+            return;
+        }
+
+        if (status == SMAppServiceStatusRequiresApproval) {
+            _lastLaunchAtLoginOnboardingDecision = @"not offered (requires approval)";
+            return;
+        }
+
+        if (status != SMAppServiceStatusNotRegistered && status != SMAppServiceStatusNotFound) {
+            _lastLaunchAtLoginOnboardingDecision = [NSString stringWithFormat:@"not offered (%@)", statusDescription];
+            return;
+        }
+
+        _launchAtLoginOnboardingOfferedThisLaunch = YES;
+        _lastLaunchAtLoginOnboardingDecision = @"offered";
+
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Start HoverClick at Login?";
+        alert.informativeText = @"HoverClick can start automatically after you log in, so click focus is available without launching the app manually. This only changes the login item setting.";
+        alert.alertStyle = NSAlertStyleInformational;
+        [alert addButtonWithTitle:@"Enable Launch at Login"];
+        [alert addButtonWithTitle:@"Not Now"];
+
+        NSModalResponse response = [alert runModal];
+        [defaults setBool:YES forKey:HoverClickLaunchAtLoginOnboardingPromptShownDefaultsKey];
+        [defaults synchronize];
+
+        if (response == NSAlertFirstButtonReturn) {
+            NSError *error = nil;
+            if ([service registerAndReturnError:&error]) {
+                _lastLaunchAtLoginOnboardingDecision = @"accepted (enabled)";
+                HoverClickLog("HoverClick: Launch at Login onboarding accepted; register succeeded");
+            } else {
+                _lastLaunchAtLoginOnboardingDecision = @"accepted (register failed)";
+                [self logLaunchAtLoginErrorForOperation:@"onboarding register" error:error];
+            }
+        } else {
+            _lastLaunchAtLoginOnboardingDecision = @"declined";
+            HoverClickLog("HoverClick: Launch at Login onboarding declined");
+        }
+
+        [self updateMenuTitles];
+        return;
+    }
+#endif
+
+    _lastLaunchAtLoginOnboardingDecision = @"not offered (unavailable)";
+}
+
 - (void)toggleVerboseDiagnostics:(id)sender {
     (void)sender;
     _verboseDiagnostics = !_verboseDiagnostics;
@@ -1375,6 +1505,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if ([result isEqualToString:@"Permission Missing"]) {
         return @"Accessibility permission missing";
+    }
+
+    if ([result isEqualToString:@"Permission Granted"]) {
+        return @"Accessibility permission granted";
     }
 
     if ([result isEqualToString:@"Event Tap Create Failed"]) {
@@ -1466,7 +1600,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 - (NSString *)diagnosticsSummaryText {
-    NSString *accessibilityStatus = [self accessibilityTrusted] ? @"granted" : @"not granted";
+    BOOL trusted = [self accessibilityTrusted];
+    NSString *accessibilityStatus = trusted ? @"granted" : @"missing";
+    NSString *clickFocusDisabledByPermission = trusted ? @"no" : @"yes";
     [self updateEventTapLifecycleFlags];
 
     NSString *lastAction = [self lastActionForDiagnostics];
@@ -1491,7 +1627,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "App: %@\n"
              "Bundle Identifier: %@\n"
              "Accessibility permission: %@\n"
+             "Accessibility onboarding shown this launch: %@\n"
+             "Accessibility trust prompt requested this launch: %@\n"
+             "Click focus disabled because Accessibility permission missing: %@\n"
              "Launch at Login: %@\n"
+             "Launch at Login onboarding: %@\n"
              "Click detection: %@\n"
              "Last handled action: %@\n"
              "Last focus action/skip: %@\n"
@@ -1544,7 +1684,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             HoverClickAppName(),
             HoverClickBundleIdentifier(),
             accessibilityStatus,
+            _accessibilityOnboardingShownThisLaunch ? @"yes" : @"no",
+            _accessibilityTrustPromptRequestedThisLaunch ? @"yes" : @"no",
+            clickFocusDisabledByPermission,
             [self launchAtLoginStatusForDiagnostics],
+            _lastLaunchAtLoginOnboardingDecision ?: @"not offered",
             [self clickDetectionStatusForDiagnostics],
             lastAction,
             lastAction,
@@ -1636,19 +1780,30 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (void)updateMenuTitles {
     BOOL trusted = [self accessibilityTrusted];
-    self.permissionItem.title = HoverClickMenuItemTitle(trusted ? @"Accessibility: Granted" : @"Accessibility: Not Granted");
+    self.permissionItem.title = HoverClickMenuItemTitle(trusted ? @"Accessibility: Granted" : @"Accessibility: Required");
     self.permissionItem.state = trusted ? NSControlStateValueOn : NSControlStateValueOff;
+    self.permissionItem.toolTip = trusted ? HoverClickAccessibilityStatusHelp : @"HoverClick needs Accessibility permission before click focus can work.";
+
+    self.permissionRefreshItem.title = HoverClickMenuItemTitle(trusted ? @"Refresh Permission Status" : @"Check Again");
+    self.permissionRefreshItem.enabled = YES;
+    self.permissionRefreshItem.state = NSControlStateValueOff;
+    self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
 
     self.clickToFocusItem.title = HoverClickMenuItemTitle(@"Left Click Focus");
+    self.clickToFocusItem.enabled = trusted;
     self.clickToFocusItem.state = _clickToFocusEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.clickToFocusItem.toolTip = trusted ? HoverClickLeftClickFocusHelp : @"Requires Accessibility permission.";
     self.rightClickFocusItem.title = HoverClickMenuItemTitle(@"Right Click Focus");
+    self.rightClickFocusItem.enabled = trusted;
     self.rightClickFocusItem.state = _rightClickFocusEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.rightClickFocusItem.toolTip = trusted ? HoverClickRightClickFocusHelp : @"Requires Accessibility permission.";
     self.hoverMenuItem.title = HoverClickMenuItemTitle(@"Hover");
-    self.hoverMenuItem.enabled = _clickToFocusEnabled;
+    self.hoverMenuItem.enabled = trusted && _clickToFocusEnabled;
     self.hoverMenuItem.state = NSControlStateValueOff;
     self.hoverClickAssistItem.title = HoverClickMenuItemTitle(@"Hover Click Assist");
-    self.hoverClickAssistItem.enabled = _clickToFocusEnabled;
+    self.hoverClickAssistItem.enabled = trusted && _clickToFocusEnabled;
     self.hoverClickAssistItem.state = _hoverClickAssistEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.hoverClickAssistItem.toolTip = trusted ? HoverClickHoverClickAssistHelp : @"Requires Accessibility permission.";
     [self updateLaunchAtLoginMenuItem];
     self.verboseItem.title = HoverClickMenuItemTitle(@"Verbose Diagnostics");
     self.verboseItem.state = _verboseDiagnostics ? NSControlStateValueOn : NSControlStateValueOff;
@@ -1669,6 +1824,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSSet<NSString *> *volatileMenuOrSetupResults = [NSSet setWithArray:@[
         @"Permission Missing",
+        @"Permission Granted",
         @"Event Tap Create Failed",
         @"Event Tap Source Failed",
         @"Event Tap Enable Failed",
