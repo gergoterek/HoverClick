@@ -38,6 +38,16 @@ For the v0.7.0 Right Click Focus stability batch, manually cover:
 - With `Right Click Focus` checked, right-clicking a background Finder window from Chrome focuses/raises Finder without intentionally breaking the context menu; copied diagnostics show target app/window detection, focus attempt, AX operation result, immediate verification, delayed verification if needed, and last verified successful background focus if successful.
 - Context menu, double-click, background drag/selection, menu bar/system UI skip, and diagnostics-summary copy behavior remain unchanged except for the clearer diagnostic text.
 
+For the long-run click-focus investigation batch, manually cover:
+
+- Immediate left-click background focus.
+- Immediate right-click background focus with `Right Click Focus` enabled.
+- Menu/status UI skip behavior.
+- `Copy Diagnostics Summary` after a menu/status click; volatile fields may show the menu interaction, but stable last real/background click fields and recent non-menu decision history should still show the meaningful click path.
+- Repeated background focus attempts across Finder, Chrome, and a terminal/editor app if practical.
+- Extended idle, sleep/wake, or lock-unlock reproduction. If focus stops while mouse-down callbacks still update, copy diagnostics immediately.
+- In the failure snapshot, preserve the recent non-menu mouse-down decision history, aggregate counters, stable last real/background click fields, event tap lifecycle state, last left/right mouse-down timestamps, and background-focus AX/immediate/delayed verification fields.
+
 ## DMG Packaging
 
 Use the internal/test DMG package script only after build and verify are expected to pass:

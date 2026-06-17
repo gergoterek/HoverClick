@@ -42,6 +42,7 @@ static const CGFloat HoverClickHeaderLabelHeight = 18.0;
 static const CGFloat HoverClickHeaderTitleWidth = 130.0;
 static const CGFloat HoverClickHeaderVersionWidth = 122.0;
 static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
+static const NSUInteger HoverClickRecentDecisionHistoryLimit = 10;
 
 static NSString *HoverClickDisplayVersion(void) {
     NSString *shortVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
@@ -152,6 +153,10 @@ static NSString *HoverClickFrontmostVerificationDescription(NSRunningApplication
     return [NSString stringWithFormat:@"%@ verified=%@",
                                       HoverClickRunningApplicationDescription(frontApp),
                                       verified ? @"yes" : @"no"];
+}
+
+static NSString *HoverClickPointDescription(CGPoint point) {
+    return [NSString stringWithFormat:@"x=%.1f y=%.1f", point.x, point.y];
 }
 
 static NSString *HoverClickMenuItemTitle(NSString *title) {
@@ -321,10 +326,23 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     pid_t _lastFinderRightClickPid;
     uint64_t _clickSequence;
     uint64_t _lastBackgroundFocusSequence;
+    uint64_t _totalMouseCallbacksSeen;
+    uint64_t _totalLeftMouseCallbacksSeen;
+    uint64_t _totalRightMouseCallbacksSeen;
+    uint64_t _totalNonMenuMouseCallbacks;
+    uint64_t _totalFocusAttempts;
+    uint64_t _totalSuccessfulFocusVerifications;
+    uint64_t _totalPolicySkips;
+    uint64_t _totalOverlaySystemUISkips;
+    uint64_t _totalCompactPopupSkips;
+    uint64_t _totalMenuStatusUISkips;
     NSString *_lastEventTapCallbackDescription;
     NSString *_lastEventTapRecoveryResult;
     NSString *_lastFocusDecisionDescription;
     NSString *_lastRightClickFocusDecisionDescription;
+    NSString *_lastRealBackgroundClickDecisionDescription;
+    NSString *_lastRealBackgroundClickOverlayDescription;
+    NSString *_lastRealBackgroundClickHitTestCandidateDescription;
     NSString *_lastBackgroundFocusTrigger;
     NSString *_lastBackgroundFocusTargetApp;
     NSString *_lastBackgroundFocusFrontmostBefore;
@@ -343,6 +361,8 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     NSString *_lastOverlayCandidateDescription;
     NSString *_lastEligibleHitTestCandidateDescription;
     NSString *_lastLaunchAtLoginStatusDescription;
+    NSMutableArray<NSMutableDictionary<NSString *, NSString *> *> *_recentDecisionHistory;
+    NSMutableDictionary<NSNumber *, NSMutableDictionary<NSString *, NSString *> *> *_activeDecisionHistory;
 }
 
 static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
@@ -408,10 +428,23 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastFinderRightClickPid = 0;
     _clickSequence = 0;
     _lastBackgroundFocusSequence = 0;
+    _totalMouseCallbacksSeen = 0;
+    _totalLeftMouseCallbacksSeen = 0;
+    _totalRightMouseCallbacksSeen = 0;
+    _totalNonMenuMouseCallbacks = 0;
+    _totalFocusAttempts = 0;
+    _totalSuccessfulFocusVerifications = 0;
+    _totalPolicySkips = 0;
+    _totalOverlaySystemUISkips = 0;
+    _totalCompactPopupSkips = 0;
+    _totalMenuStatusUISkips = 0;
     _lastEventTapCallbackDescription = @"none";
     _lastEventTapRecoveryResult = @"none";
     _lastFocusDecisionDescription = @"none";
     _lastRightClickFocusDecisionDescription = @"none";
+    _lastRealBackgroundClickDecisionDescription = @"none";
+    _lastRealBackgroundClickOverlayDescription = @"none";
+    _lastRealBackgroundClickHitTestCandidateDescription = @"none";
     _lastBackgroundFocusTrigger = @"none";
     _lastBackgroundFocusTargetApp = @"none";
     _lastBackgroundFocusFrontmostBefore = @"none";
@@ -430,6 +463,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastOverlayCandidateDescription = @"none";
     _lastEligibleHitTestCandidateDescription = @"none";
     _lastLaunchAtLoginStatusDescription = nil;
+    _recentDecisionHistory = [NSMutableArray arrayWithCapacity:HoverClickRecentDecisionHistoryLimit];
+    _activeDecisionHistory = [NSMutableDictionary dictionary];
 
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     [self createStatusItem];
@@ -799,8 +834,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                         proxy == NULL ? @"proxy=NULL" : @"proxy=present"];
 
     if (type == kCGEventLeftMouseDown) {
+        _totalMouseCallbacksSeen++;
+        _totalLeftMouseCallbacksSeen++;
         _lastLeftMouseDownSeenTime = now;
     } else if (type == kCGEventRightMouseDown) {
+        _totalMouseCallbacksSeen++;
+        _totalRightMouseCallbacksSeen++;
         _lastRightMouseDownSeenTime = now;
     } else if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
         _eventTapEnabled = NO;
@@ -818,6 +857,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastFocusDecisionDescription = summary;
     if ([triggerLabel isEqualToString:@"right"]) {
         _lastRightClickFocusDecisionDescription = summary;
+    }
+    if ([decision isEqualToString:@"skipped"]) {
+        _totalPolicySkips++;
+        [self updateRecentDecisionForSequenceID:sequenceID key:@"policyDecision" value:@"skip"];
+        [self updateRecentDecisionForSequenceID:sequenceID key:@"skipReason" value:detail ?: @"unknown"];
+    } else if ([decision isEqualToString:@"eligible"] || [decision isEqualToString:@"focus attempt"]) {
+        [self updateRecentDecisionForSequenceID:sequenceID key:@"policyDecision" value:@"attempt"];
+    } else if (decision.length > 0) {
+        [self updateRecentDecisionForSequenceID:sequenceID key:@"policyDecision" value:decision];
     }
 }
 
@@ -842,6 +890,156 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastBackgroundFocusResult = result ?: @"unknown";
     _lastBackgroundFocusVerification = verification ?: @"unknown";
     _lastBackgroundFocusFailureReason = failureReason ?: @"none";
+    [self updateRecentDecisionForSequenceID:_lastBackgroundFocusSequence
+                                        key:@"finalResult"
+                                      value:[NSString stringWithFormat:@"%@ verification=%@ failure=%@",
+                                             _lastBackgroundFocusResult,
+                                             _lastBackgroundFocusVerification,
+                                             _lastBackgroundFocusFailureReason]];
+}
+
+- (NSMutableDictionary<NSString *, NSString *> *)recentDecisionEntryForSequenceID:(uint64_t)sequenceID {
+    NSNumber *key = @(sequenceID);
+    NSMutableDictionary<NSString *, NSString *> *entry = _activeDecisionHistory[key];
+    if (entry != nil) {
+        return entry;
+    }
+
+    for (NSMutableDictionary<NSString *, NSString *> *candidate in _recentDecisionHistory) {
+        if ((uint64_t)[candidate[@"sequence"] longLongValue] == sequenceID) {
+            return candidate;
+        }
+    }
+
+    return nil;
+}
+
+- (void)refreshLastRealBackgroundClickDecisionFromEntry:(NSDictionary<NSString *, NSString *> *)entry {
+    if (![entry[@"includedInHistory"] isEqualToString:@"yes"]) {
+        return;
+    }
+
+    NSString *summary = [NSString stringWithFormat:@"%@ #%@ at %@ trigger=%@ click=%@ frontmostBefore=%@ AX=%@ eligible=%@ policy=%@ skip=%@ final=%@",
+                         entry[@"trigger"] ?: @"unknown",
+                         entry[@"sequence"] ?: @"0",
+                         entry[@"timestamp"] ?: @"unknown",
+                         entry[@"trigger"] ?: @"unknown",
+                         entry[@"clickLocation"] ?: @"unknown",
+                         entry[@"frontmostBefore"] ?: @"unknown",
+                         entry[@"axTarget"] ?: @"unknown",
+                         entry[@"eligibleCandidate"] ?: @"unknown",
+                         entry[@"policyDecision"] ?: @"unknown",
+                         entry[@"skipReason"] ?: @"none",
+                         entry[@"finalResult"] ?: @"unknown"];
+    _lastRealBackgroundClickDecisionDescription = summary;
+    _lastRealBackgroundClickOverlayDescription = entry[@"topmostCGWindow"] ?: @"none";
+    _lastRealBackgroundClickHitTestCandidateDescription = entry[@"eligibleCandidateDetail"] ?: @"none";
+}
+
+- (void)updateRecentDecisionForSequenceID:(uint64_t)sequenceID key:(NSString *)key value:(NSString *)value {
+    if (key.length == 0) {
+        return;
+    }
+
+    NSMutableDictionary<NSString *, NSString *> *entry = [self recentDecisionEntryForSequenceID:sequenceID];
+    if (entry == nil) {
+        return;
+    }
+
+    entry[key] = value ?: @"unknown";
+    [self refreshLastRealBackgroundClickDecisionFromEntry:entry];
+}
+
+- (void)beginRecentDecisionWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID rawPoint:(CGPoint)rawPoint axPoint:(CGPoint)axPoint {
+    NSString *triggerLabel = HoverClickFocusTriggerLabel(trigger);
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    NSRunningApplication *frontApp = [NSWorkspace sharedWorkspace].frontmostApplication;
+    NSMutableDictionary<NSString *, NSString *> *entry = [@{
+        @"sequence": [NSString stringWithFormat:@"%llu", sequenceID],
+        @"timestamp": HoverClickDiagnosticTimestamp(now),
+        @"trigger": triggerLabel ?: @"unknown",
+        @"clickLocation": [NSString stringWithFormat:@"raw=(%@) ax=(%@)",
+                           HoverClickPointDescription(rawPoint),
+                           HoverClickPointDescription(axPoint)],
+        @"frontmostBefore": HoverClickRunningApplicationDescription(frontApp),
+        @"topmostCGWindow": @"not captured",
+        @"axTarget": @"not resolved",
+        @"eligibleCandidate": @"no",
+        @"eligibleCandidateDetail": @"none",
+        @"policyDecision": @"pending",
+        @"skipReason": @"none",
+        @"overlayOrSystemUIInvolved": @"no",
+        @"compactPopupInvolved": @"no",
+        @"focusAttemptStarted": @"no",
+        @"axOperations": @"not attempted",
+        @"immediateVerification": @"not checked",
+        @"delayedVerification": @"not scheduled",
+        @"finalResult": @"pending",
+        @"includedInHistory": @"no"
+    } mutableCopy];
+    _activeDecisionHistory[@(sequenceID)] = entry;
+}
+
+- (void)includeRecentDecisionInHistoryForSequenceID:(uint64_t)sequenceID {
+    NSMutableDictionary<NSString *, NSString *> *entry = [self recentDecisionEntryForSequenceID:sequenceID];
+    if (entry == nil || [entry[@"includedInHistory"] isEqualToString:@"yes"]) {
+        return;
+    }
+
+    entry[@"includedInHistory"] = @"yes";
+    [_recentDecisionHistory addObject:entry];
+    _totalNonMenuMouseCallbacks++;
+
+    while (_recentDecisionHistory.count > HoverClickRecentDecisionHistoryLimit) {
+        [_recentDecisionHistory removeObjectAtIndex:0];
+    }
+
+    [self refreshLastRealBackgroundClickDecisionFromEntry:entry];
+}
+
+- (void)completeRecentDecisionForSequenceID:(uint64_t)sequenceID finalResult:(NSString *)finalResult keepActiveForDelayedVerification:(BOOL)keepActive {
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"finalResult" value:finalResult ?: @"unknown"];
+    if (!keepActive) {
+        [_activeDecisionHistory removeObjectForKey:@(sequenceID)];
+    }
+}
+
+- (void)recordMenuStatusDecisionForSequenceID:(uint64_t)sequenceID finalResult:(NSString *)finalResult {
+    _totalMenuStatusUISkips++;
+    [self completeRecentDecisionForSequenceID:sequenceID
+                                  finalResult:finalResult ?: @"menu/status UI skipped"
+             keepActiveForDelayedVerification:NO];
+}
+
+- (NSString *)recentDecisionHistoryDescription {
+    if (_recentDecisionHistory.count == 0) {
+        return @"none";
+    }
+
+    NSMutableArray<NSString *> *lines = [NSMutableArray arrayWithCapacity:_recentDecisionHistory.count];
+    for (NSMutableDictionary<NSString *, NSString *> *entry in [_recentDecisionHistory reverseObjectEnumerator]) {
+        NSString *line = [NSString stringWithFormat:@"%@ #%@ at %@ click=%@ frontmostBefore=%@ topmost=[%@] AX=[%@] eligible=%@ policy=%@ skip=%@ overlay/systemUI=%@ compactPopup=%@ focusAttempt=%@ AXOps=[%@] immediate=[%@] delayed=[%@] final=%@",
+                          entry[@"trigger"] ?: @"unknown",
+                          entry[@"sequence"] ?: @"0",
+                          entry[@"timestamp"] ?: @"unknown",
+                          entry[@"clickLocation"] ?: @"unknown",
+                          entry[@"frontmostBefore"] ?: @"unknown",
+                          entry[@"topmostCGWindow"] ?: @"unknown",
+                          entry[@"axTarget"] ?: @"unknown",
+                          entry[@"eligibleCandidate"] ?: @"unknown",
+                          entry[@"policyDecision"] ?: @"unknown",
+                          entry[@"skipReason"] ?: @"none",
+                          entry[@"overlayOrSystemUIInvolved"] ?: @"unknown",
+                          entry[@"compactPopupInvolved"] ?: @"unknown",
+                          entry[@"focusAttemptStarted"] ?: @"unknown",
+                          entry[@"axOperations"] ?: @"unknown",
+                          entry[@"immediateVerification"] ?: @"unknown",
+                          entry[@"delayedVerification"] ?: @"unknown",
+                          entry[@"finalResult"] ?: @"unknown"];
+        [lines addObject:line];
+    }
+
+    return [lines componentsJoinedByString:@"\n- "];
 }
 
 - (BOOL)installEventTap {
@@ -1269,6 +1467,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                          _lastSuccessfulBackgroundFocusDescription ?: @"success",
                                          HoverClickDiagnosticTimestamp(_lastSuccessfulBackgroundFocusTime)];
     }
+    NSString *recentDecisionHistory = [self recentDecisionHistoryDescription];
 
     return [NSString stringWithFormat:
             @"HoverClick diagnostics\n"
@@ -1282,6 +1481,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last non-menu focus action/skip: %@\n"
              "Last focus decision detail: %@\n"
              "Last right-click focus decision: %@\n"
+             "Last real/background click decision: %@\n"
+             "Last real/background click overlay detail: %@\n"
+             "Last real/background click eligible candidate: %@\n"
              "Last overlay/system UI skip reason: %@\n"
              "Last overlay/system UI candidate: %@\n"
              "Last eligible hit-test candidate: %@\n"
@@ -1310,6 +1512,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last right mouse down seen: %@\n"
              "Last tap recovery attempt: %@\n"
              "Last tap recovery result: %@\n"
+             "Counters: mouse callbacks=%llu left=%llu right=%llu non-menu decisions=%llu focus attempts=%llu successful verifications=%llu policy skips=%llu overlay/system UI skips=%llu compact-popup skips=%llu menu/status UI skips=%llu\n"
+             "Recent non-menu mouse-down decisions (newest first):\n- %@\n"
+             "Diagnostics copy/menu note: volatile last handled/focus fields may reflect the status/menu click used to copy diagnostics; stable real/background fields and recent non-menu history ignore HoverClick menu/status UI clicks.\n"
              "Left Click Focus: %@\n"
              "Right Click Focus: %@\n"
              "Hover Click Assist setting: %@\n"
@@ -1329,6 +1534,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             lastNonMenuAction,
             _lastFocusDecisionDescription ?: @"none",
             _lastRightClickFocusDecisionDescription ?: @"none",
+            _lastRealBackgroundClickDecisionDescription ?: @"none",
+            _lastRealBackgroundClickOverlayDescription ?: @"none",
+            _lastRealBackgroundClickHitTestCandidateDescription ?: @"none",
             _lastOverlaySkipReason ?: @"none",
             _lastOverlayCandidateDescription ?: @"none",
             _lastEligibleHitTestCandidateDescription ?: @"none",
@@ -1357,6 +1565,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             HoverClickDiagnosticTimestamp(_lastRightMouseDownSeenTime),
             HoverClickDiagnosticTimestamp(_lastEventTapRecoveryAttemptTime),
             _lastEventTapRecoveryResult ?: @"none",
+            _totalMouseCallbacksSeen,
+            _totalLeftMouseCallbacksSeen,
+            _totalRightMouseCallbacksSeen,
+            _totalNonMenuMouseCallbacks,
+            _totalFocusAttempts,
+            _totalSuccessfulFocusVerifications,
+            _totalPolicySkips,
+            _totalOverlaySystemUISkips,
+            _totalCompactPopupSkips,
+            _totalMenuStatusUISkips,
+            recentDecisionHistory,
             _clickToFocusEnabled ? @"enabled" : @"disabled",
             _rightClickFocusEnabled ? @"enabled" : @"disabled",
             _hoverClickAssistEnabled ? @"enabled" : @"disabled",
@@ -1482,6 +1701,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
+    [self beginRecentDecisionWithTrigger:"click" sequenceID:clickID rawPoint:rawPoint axPoint:axPoint];
     [self diagnosticLog:"HoverClick: click #%llu received leftClickFocus=%s experimentalHoverClickAssist=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
                         clickID,
                         _clickToFocusEnabled ? "ON" : "OFF",
@@ -1497,6 +1717,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:clickID
                                     decision:@"skipped"
                                       detail:@"Left Click Focus disabled; original event passed through unchanged"];
+        [self includeRecentDecisionInHistoryForSequenceID:clickID];
+        [self completeRecentDecisionForSequenceID:clickID
+                                      finalResult:@"skipped: Left Click Focus disabled"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"Disabled"];
         return;
     }
@@ -1507,6 +1731,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSDictionary *topmostWindowInfo = [self topmostWindowInfoAtPoint:axPoint];
     [self logTopmostWindowInfo:topmostWindowInfo atPoint:axPoint sequenceID:clickID trigger:"click"];
+    [self updateRecentDecisionForSequenceID:clickID
+                                        key:@"topmostCGWindow"
+                                      value:[self compactWindowInfoDescription:topmostWindowInfo]];
 
     AXUIElementRef element = [self copyElementAtAccessibilityPoint:axPoint];
     if (element == NULL) {
@@ -1522,6 +1749,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:clickID
                                     decision:@"skipped"
                                       detail:@"AX element not found; original event passed through unchanged"];
+        [self includeRecentDecisionInHistoryForSequenceID:clickID];
+        [self completeRecentDecisionForSequenceID:clickID
+                                      finalResult:@"skipped: AX element not found"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"No AX Element"];
         return;
     }
@@ -1541,6 +1772,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
+    [self beginRecentDecisionWithTrigger:"right-click" sequenceID:clickID rawPoint:rawPoint axPoint:axPoint];
     [self diagnosticLog:"HoverClick: right-click #%llu received rightClickFocus=%s leftClickFocus=%s experimentalHoverClickAssist=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
                         clickID,
                         _rightClickFocusEnabled ? "ON" : "OFF",
@@ -1557,6 +1789,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:clickID
                                     decision:@"skipped"
                                       detail:@"Right Click Focus disabled; right mouse down observed and original event passed through unchanged"];
+        [self includeRecentDecisionInHistoryForSequenceID:clickID];
+        [self completeRecentDecisionForSequenceID:clickID
+                                      finalResult:@"skipped: Right Click Focus disabled"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"Right Click Disabled"];
         return;
     }
@@ -1568,6 +1804,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSDictionary *topmostWindowInfo = [self topmostWindowInfoAtPoint:axPoint];
     [self logTopmostWindowInfo:topmostWindowInfo atPoint:axPoint sequenceID:clickID trigger:"right-click"];
+    [self updateRecentDecisionForSequenceID:clickID
+                                        key:@"topmostCGWindow"
+                                      value:[self compactWindowInfoDescription:topmostWindowInfo]];
 
     AXUIElementRef element = [self copyElementAtAccessibilityPoint:axPoint];
     if (element == NULL) {
@@ -1583,6 +1822,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:clickID
                                     decision:@"skipped"
                                       detail:@"AX element not found; original event passed through unchanged"];
+        [self includeRecentDecisionInHistoryForSequenceID:clickID];
+        [self completeRecentDecisionForSequenceID:clickID
+                                      finalResult:@"skipped: AX element not found"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"No AX Element"];
         return;
     }
@@ -1625,6 +1868,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:element] ?: @"unknown";
     NSString *subrole = [self stringAttribute:kAXSubroleAttribute fromElement:element] ?: @"";
     NSString *elementTitle = [self stringAttribute:kAXTitleAttribute fromElement:element] ?: @"";
+    [self updateRecentDecisionForSequenceID:sequenceID
+                                        key:@"axTarget"
+                                      value:[NSString stringWithFormat:@"elementRole=%@ elementSubrole=%@ title=%@",
+                                             role,
+                                             subrole.length > 0 ? subrole : @"none",
+                                             elementTitle.length > 0 ? elementTitle : @"untitled"]];
     [self diagnosticLog:"HoverClick: %s #%llu AX element found role=%s subrole=%s title=%s",
                         trigger,
                         sequenceID,
@@ -1641,6 +1890,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                     decision:@"skipped"
                                       detail:[NSString stringWithFormat:@"target pid unresolved error=%s; original event passed through unchanged",
                                                                         HoverClickAXErrorName(pidError)]];
+        [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"skipped: target pid unresolved"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"No Target PID"];
         return;
     }
@@ -1652,12 +1905,23 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:sequenceID
                                     decision:@"skipped"
                                       detail:[NSString stringWithFormat:@"target app unresolved pid=%d; original event passed through unchanged", targetPid]];
+        [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"skipped: target app unresolved"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"No Target App"];
         return;
     }
 
     NSString *appName = targetApp.localizedName ?: [NSString stringWithFormat:@"pid %d", targetPid];
     HoverClickLog("HoverClick: %s #%llu target pid=%d app=%s", trigger, sequenceID, targetPid, appName.UTF8String);
+    [self updateRecentDecisionForSequenceID:sequenceID
+                                        key:@"axTarget"
+                                      value:[NSString stringWithFormat:@"app=%@ pid=%d elementRole=%@ elementSubrole=%@",
+                                             appName,
+                                             targetPid,
+                                             role,
+                                             subrole.length > 0 ? subrole : @"none"]];
 
     if (targetPid == getpid()) {
         [self recordOverlaySkipWithReason:@"HoverClick status/menu UI"
@@ -1671,6 +1935,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:sequenceID
                                     decision:@"skipped"
                                       detail:@"HoverClick status/menu UI; original event passed through unchanged"];
+        [self recordMenuStatusDecisionForSequenceID:sequenceID
+                                        finalResult:@"skipped: HoverClick status/menu UI"];
         [self setLastClickResult:@"Ignored Own App"];
         return;
     }
@@ -1694,6 +1960,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                                         role,
                                                                         subrole.length > 0 ? subrole : @"none",
                                                                         appName]];
+        [self recordMenuStatusDecisionForSequenceID:sequenceID
+                                        finalResult:@"skipped: menu/status/system UI role"];
         [self setLastClickResult:@"Ignored Menu/UI"];
         return;
     }
@@ -1719,6 +1987,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                     decision:@"skipped"
                                       detail:[NSString stringWithFormat:@"%@; original event passed through before focus attempt",
                                                                         nonNormalSkipReason]];
+        [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:[NSString stringWithFormat:@"skipped: %@", nonNormalSkipReason]
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"Ignored Non-Normal UI"];
         return;
     }
@@ -1750,6 +2022,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                                         appName,
                                                                         targetPid,
                                                                         afterRecentRightClickFocus ? @"yes" : @"no"]];
+        [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"skipped: target already frontmost"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"Already Frontmost"];
         return;
     }
@@ -1763,6 +2039,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                       detail:[NSString stringWithFormat:@"AX window not found for app=%@ pid=%d; original event passed through unchanged",
                                                                         appName,
                                                                         targetPid]];
+        [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"skipped: AX window not found"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"No Target Window"];
         return;
     }
@@ -1785,6 +2065,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                       detail:[NSString stringWithFormat:@"transient window role=%@ app=%@; original event passed through unchanged",
                                                                         windowRole,
                                                                         appName]];
+        [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"skipped: transient window role"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"Ignored Transient UI"];
         CFRelease(targetWindow);
         return;
@@ -1799,6 +2083,20 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                 subrole.length > 0 ? subrole : @"none",
                                                 windowRole,
                                                 windowTitle.length > 0 ? windowTitle : @"untitled"];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"eligibleCandidate" value:@"yes"];
+    [self updateRecentDecisionForSequenceID:sequenceID
+                                        key:@"eligibleCandidateDetail"
+                                      value:_lastEligibleHitTestCandidateDescription];
+    [self updateRecentDecisionForSequenceID:sequenceID
+                                        key:@"axTarget"
+                                      value:[NSString stringWithFormat:@"app=%@ pid=%d elementRole=%@ elementSubrole=%@ windowRole=%@ windowTitle=%@",
+                                             appName,
+                                             targetPid,
+                                             role,
+                                             subrole.length > 0 ? subrole : @"none",
+                                             windowRole,
+                                             windowTitle.length > 0 ? windowTitle : @"untitled"]];
+    [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
     [self recordFocusDecisionWithTrigger:trigger
                               sequenceID:sequenceID
                                 decision:@"eligible"
@@ -1867,6 +2165,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                               sequenceID:clickID
                                 decision:@"skipped"
                                   detail:@"recent Finder right-click context menu follow-up; original left click passed through before AX lookup"];
+    [self includeRecentDecisionInHistoryForSequenceID:clickID];
+    [self completeRecentDecisionForSequenceID:clickID
+                                  finalResult:@"skipped: recent Finder right-click context menu follow-up"
+             keepActiveForDelayedVerification:NO];
     [self setLastClickResult:@"Finder Context Menu Pass Through"];
     return YES;
 }
@@ -1939,6 +2241,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                               sequenceID:sequenceID
                                 decision:@"skipped"
                                   detail:@"non-normal top window and unresolved AX hit-test; original event passed through before focus attempt"];
+    [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+    [self completeRecentDecisionForSequenceID:sequenceID
+                                  finalResult:@"skipped: non-normal top window and unresolved AX hit-test"
+             keepActiveForDelayedVerification:NO];
     [self setLastClickResult:@"Ignored Non-Normal UI"];
     return YES;
 }
@@ -1982,6 +2288,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                         targetPid,
                                         role ?: @"unknown",
                                         subrole.length > 0 ? subrole : @"none"];
+    BOOL compactInvolved = [self windowInfoLooksLikeCompactOverlay:windowInfo] ||
+                           [_lastOverlaySkipReason rangeOfString:@"compact" options:NSCaseInsensitiveSearch].location != NSNotFound ||
+                           [_lastOverlaySkipReason rangeOfString:@"popup" options:NSCaseInsensitiveSearch].location != NSNotFound;
+    BOOL hoverClickMenuStatusSkip = [_lastOverlaySkipReason isEqualToString:@"HoverClick status/menu UI"];
+    if (!hoverClickMenuStatusSkip) {
+        _totalOverlaySystemUISkips++;
+    }
+    if (!hoverClickMenuStatusSkip && compactInvolved) {
+        _totalCompactPopupSkips++;
+    }
+    [self updateRecentDecisionForSequenceID:_clickSequence key:@"overlayOrSystemUIInvolved" value:@"yes"];
+    [self updateRecentDecisionForSequenceID:_clickSequence key:@"compactPopupInvolved" value:compactInvolved ? @"yes" : @"no"];
+    [self updateRecentDecisionForSequenceID:_clickSequence key:@"topmostCGWindow" value:_lastOverlayCandidateDescription];
 }
 
 - (void)recordNonNormalTopWindowDidNotBlockForWindowInfo:(NSDictionary *)windowInfo role:(NSString *)role subrole:(NSString *)subrole appName:(NSString *)appName targetPid:(pid_t)targetPid sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger {
@@ -1996,6 +2315,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                         targetPid,
                                         role ?: @"unknown",
                                         subrole.length > 0 ? subrole : @"none"];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"overlayOrSystemUIInvolved" value:@"yes (did not block)"];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"topmostCGWindow" value:_lastOverlayCandidateDescription];
     [self diagnosticLog:"HoverClick: %s #%llu non-normal top window did not block focus candidate %s",
                         trigger,
                         sequenceID,
@@ -2156,6 +2477,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastSuccessfulBackgroundFocusDescription = successDescription;
     _lastSuccessfulFocusTime = focusTime;
     _lastSuccessfulFocusDescription = successDescription;
+    _totalSuccessfulFocusVerifications++;
     if ([triggerLabel isEqualToString:@"right"]) {
         _lastRightClickFocusPid = targetPid;
         _lastRightClickFocusTime = focusTime;
@@ -2181,6 +2503,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                             triggerLabel.UTF8String,
                             sequenceID,
                             _lastBackgroundFocusSequence];
+        [self updateRecentDecisionForSequenceID:sequenceID
+                                            key:@"delayedVerification"
+                                          value:[NSString stringWithFormat:@"skipped as stale; currentSequence=%llu",
+                                                                         _lastBackgroundFocusSequence]];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"stale: delayed verification skipped after newer attempt"
+                 keepActiveForDelayedVerification:NO];
         return;
     }
 
@@ -2191,6 +2520,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                verified ? @"passed" : @"failed",
                                                delay,
                                                frontDelayedDescription];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"delayedVerification" value:_lastBackgroundFocusDelayedVerification];
 
     HoverClickLog("HoverClick: %s #%llu delayed verify after %.2fs frontApp=%s current=%s",
                   triggerLabel.UTF8String,
@@ -2221,6 +2551,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                       appName:appName
                                                           pid:targetPid];
     }
+    [self completeRecentDecisionForSequenceID:sequenceID
+                                  finalResult:verified ? @"success: delayed verification passed" : @"failed: delayed verification failed"
+             keepActiveForDelayedVerification:NO];
 
     if ([_lastClickResult isEqualToString:@"Verify Pending"]) {
         [self setLastClickResult:verified ? @"Succeeded" : @"Verify Failed"];
@@ -2259,6 +2592,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                       detail:[NSString stringWithFormat:@"target already frontmost before focus attempt app=%@ pid=%d; original event passed through unchanged",
                                                                         appName,
                                                                         targetPid]];
+        [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"skipped: target already frontmost before focus attempt"
+                 keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"Already Frontmost"];
         return;
     }
@@ -2277,6 +2614,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                                     appName,
                                                                     targetPid,
                                                                     frontBeforeDescription]];
+    _totalFocusAttempts++;
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"focusAttemptStarted" value:@"yes"];
 
     BOOL activateAttempted = targetApp != nil;
     BOOL activateResult = NO;
@@ -2286,6 +2625,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastBackgroundFocusActivation = [NSString stringWithFormat:@"attempted=%@ returnValue=%@",
                                       activateAttempted ? @"yes" : @"no",
                                       activateAttempted ? (activateResult ? @"yes" : @"no") : @"not-applicable"];
+    [self updateRecentDecisionForSequenceID:sequenceID
+                                        key:@"finalResult"
+                                      value:[NSString stringWithFormat:@"focus attempt started; activation %@",
+                                             _lastBackgroundFocusActivation]];
     HoverClickLog("HoverClick: %s #%llu app activation attempted=%s result=%s",
                   trigger,
                   sequenceID,
@@ -2325,6 +2668,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                         HoverClickAXAttemptSummary(raiseAttempted, raiseError),
                                         HoverClickAXAttemptSummary(mainWindowAttempted, mainWindowError),
                                         HoverClickAXAttemptSummary(focusedAttrAttempted, focusedAttrError)];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"axOperations" value:_lastBackgroundFocusAXOperations];
 
     HoverClickLog("HoverClick: %s #%llu AX focusedWindow set %s", trigger, sequenceID, HoverClickAXErrorName(focusedWindowError));
     [self diagnosticLog:"HoverClick: %s #%llu AX mainWindow set %s", trigger, sequenceID, HoverClickAXErrorName(mainWindowError)];
@@ -2334,6 +2678,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     BOOL frontImmediate = (frontAfter != nil && frontAfter.processIdentifier == targetPid);
     NSString *frontAfterDescription = HoverClickRunningApplicationDescription(frontAfter);
     _lastBackgroundFocusImmediateFrontmost = HoverClickFrontmostVerificationDescription(frontAfter, targetPid);
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"immediateVerification" value:_lastBackgroundFocusImmediateFrontmost];
     HoverClickLog("HoverClick: %s #%llu %s-to-focus immediate verify frontApp=%s current=%s",
                   trigger,
                   sequenceID,
@@ -2358,10 +2703,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                    sequenceID:sequenceID
                                                       appName:appName
                                                           pid:targetPid];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"success: immediate verification passed"
+                 keepActiveForDelayedVerification:NO];
     } else {
         NSString *verificationFailureReason = [NSString stringWithFormat:@"frontmost after immediate check was %@", frontAfterDescription];
         _lastBackgroundFocusDelayedVerification = [NSString stringWithFormat:@"scheduled after %.2fs",
                                                    HoverClickDelayedVerificationDelay];
+        [self updateRecentDecisionForSequenceID:sequenceID key:@"delayedVerification" value:_lastBackgroundFocusDelayedVerification];
         [self setLastClickResult:@"Verify Pending"];
         [self recordBackgroundFocusResult:@"immediate verification failed; delayed verification pending"
                               verification:@"immediate failed; delayed pending"
@@ -2372,6 +2721,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                       detail:[NSString stringWithFormat:@"immediate verification failed; delayed check scheduled after %.2fs; %@",
                                                                         HoverClickDelayedVerificationDelay,
                                                                         verificationFailureReason]];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"pending: delayed verification scheduled"
+                 keepActiveForDelayedVerification:YES];
 
         NSDictionary *verificationContext = @{
             @"sequenceID": @(sequenceID),

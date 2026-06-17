@@ -50,7 +50,7 @@ If the app still shows `Accessibility: Not Granted`, quit HoverClick and relaunc
 - Keep `Left Click Focus` checked for the normal Windows-like click-focus behavior.
 - Enable `Right Click Focus` if you want right-clicks on background windows to focus the target before the context menu opens.
 - Enable `Launch at Login` if you want HoverClick to start automatically.
-- Use `Diagnostics` > `Copy Diagnostics Summary` when reporting a problem.
+- Use `Diagnostics` > `Copy Diagnostics Summary` when reporting a problem. It includes recent non-menu click-focus decisions and stable last real/background-click fields so menu clicks used to copy diagnostics do not hide the meaningful click path.
 
 ## Menu Overview
 
