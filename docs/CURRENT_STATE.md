@@ -7,14 +7,15 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick` with dynamic `v0.6.0` on the same row
+- Visible menu header: `HoverClick` with dynamic `v0.7.0` on the same row
 - Full version/build UI surface: `About HoverClick...`
-- Bundle short version/build version: `0.6.0` / `35`
-- Latest public release: `v0.5.0` / build `34`
-- Current release-prep target: `v0.6.0` / build `35`
-- Main/release commit: `v0.5.0` tag target
-- Public DMG: `HoverClick-0.5.0.dmg`
-- Public DMG SHA-256: `ec822fb770471be129bbfbd7167ff16c502bbf3727101a318d412d0fd8bfc2ff`
+- Bundle short version/build version: `0.7.0` / `36`
+- Latest fully validated public release: `v0.6.0` / build `35`
+- Current release candidate: `v0.7.0` / build `36`
+- Current release-prep branch: `release-v0.7.0-prep`
+- Main/release-prep branch point: `ce2985206b8aab55c9f03ea98c26b7ab53593bee`
+- Public DMG: `HoverClick-0.6.0.dmg`
+- Public DMG SHA-256: not recorded in this state file
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
 - Generated bundle icon: `Resources/HoverClick.icns`
 - DMG volume icon source asset: `assets/HoverClickDMGVolumeIcon.png`
@@ -31,12 +32,13 @@
 
 ## Current Distribution
 
-- HoverClick is distributed from GitHub. The latest public release is v0.5.0 / build 34.
-- The public release DMG is `HoverClick-0.5.0.dmg`; its SHA-256 is `ec822fb770471be129bbfbd7167ff16c502bbf3727101a318d412d0fd8bfc2ff`.
+- HoverClick is distributed from GitHub. The latest fully validated public release is v0.6.0 / build 35.
+- The public release DMG is `HoverClick-0.6.0.dmg`; its SHA-256 is not recorded in this state file.
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a release-publishing path by itself.
 - The post-v0.5.0 DMG packaging polish batch stages `HoverClick.app`, adds an `Applications` symlink, uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns`, sets and verifies the custom DMG volume icon flag with command-line tooling, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for non-GUI verification.
-- v0.6.0 / build 35 is the planned release-prep target for that packaging and DMG presentation polish milestone. It does not change runtime/event-tap, Accessibility, Launch at Login, app identity, bundle identifier, or signing behavior.
+- v0.6.0 / build 35 is the latest fully validated public release until v0.7.0 is published and the user validates the published DMG.
+- v0.7.0 / build 36 is the current release candidate on `release-v0.7.0-prep`; it is not released, tagged, packaged as a DMG, or published.
 - DMG Finder window background and icon layout are not automated. They remain future optional polish unless a deterministic non-GUI implementation is proven safe.
 - There is no Mac App Store release or signed `.pkg` installer.
 
@@ -105,7 +107,7 @@ Not included:
 
 ## v0.5.0 Public Release
 
-v0.5.0 / build 34 is the latest public release. It ships the safe public-polish batch after explicit release-scope confirmation.
+v0.5.0 / build 34 was the latest public release until v0.6.0 was released. It ships the safe public-polish batch after explicit release-scope confirmation.
 
 Included:
 
@@ -139,9 +141,9 @@ rm -rf .icon-work
 
 Release prep, DMG packaging, tag creation, and GitHub release creation for v0.5.0 were performed only after explicit release-scope confirmation.
 
-## v0.6.0 Release Prep
+## v0.6.0 Public Release
 
-v0.6.0 / build 35 is the current release-prep target. It is a packaging and DMG presentation polish milestone after the post-v0.5.0 packaging polish batch was merged into main.
+v0.6.0 / build 35 is the latest fully validated public release. It is a packaging and DMG presentation polish milestone after the post-v0.5.0 packaging polish batch was merged into main.
 
 Included in scope:
 
@@ -164,16 +166,28 @@ Not included:
 - No Finder background or icon-layout automation.
 - No synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, `mouseDragged`/`mouseUp` handling, or expanded event tap mask.
 
-## v0.7.0 Right-Click Stability Development Batch
+## v0.7.0 Release Candidate
 
-The first v0.7.0 development batch is focused on Right Click Focus diagnostics and stability hardening. It does not bump version/build, package a DMG, tag a release, create a GitHub release, alter signing, change the bundle identifier, or expand the event tap mask.
+v0.7.0 / build 36 is the current release candidate on `release-v0.7.0-prep`. This release-prep branch updates version/build metadata and release-readiness documentation only; it does not package a DMG, tag a release, create a GitHub release, alter signing, change the bundle identifier, or expand the event tap mask.
 
 Included in scope:
 
 - Right Click Focus remains independent and default OFF unless the user enables it.
 - Left Click Focus behavior and the stable click-focus architecture remain unchanged.
 - Copied diagnostics distinguish event tap health, last right mouse down observed, target detection, focus attempt, AX operation result, immediate verification, delayed verification, ineligible-target skips, and skips because Right Click Focus is disabled.
+- Long-run click-focus diagnostics keep recent non-menu decisions, stable last real/background click fields, focus-attempt details, verification state, and aggregate counters.
+- Tiny untitled no-bundle Window Server pointer-like high-layer surfaces around the click point are treated as pass-through only when AX resolves a normal non-menu app/window target underneath.
 - Background drag/selection and context-menu behavior remain regression-test areas only; no drag assist, synthetic click, event replay, cursor movement, `mouseDragged`, or `mouseUp` behavior is added.
+
+Not included:
+
+- No Key Focus / Caps Lock Focus.
+- No Hover Click Assist implementation.
+- No Click-Time Hover Assist.
+- No Excluded Apps.
+- No Scroll Focus.
+- No Finder selection hack.
+- No synthetic clicks, event replay, cursor movement, mouse-move focus, `mouseDragged`, `mouseUp`, or scroll handling.
 
 ## Long-Run Click Focus Diagnostics Batch
 
@@ -191,7 +205,7 @@ Included in scope:
 
 The investigation diagnostics exposed a concrete overbroad skip: tiny untitled Window Server high-layer surfaces around the click point, observed around 35 x 49 px, were treated as compact interactive popup/menu windows even when AX hit-testing resolved a normal app target underneath. The focus policy now treats only that narrow cursor-sized Window Server surface shape as pass-through over a non-menu AX target.
 
-Protection remains in place for HoverClick menu/status UI, AX menu/status/popover/system roles, known menu-bar/system owners such as SystemUIServer, Control Center, Dock, Notification Center, and Bartender, target-app-owned compact non-normal popup/overlay windows, and other compact popup/menu layers. Diagnostics explicitly report when a compact Window Server pointer-like surface was ignored as pass-through.
+Protection remains in place for HoverClick menu/status UI, AX menu/status/popover/system roles, known menu-bar/system owners such as SystemUIServer, Control Center, Dock, Notification Center, and Bartender, target-app-owned compact non-normal popup/overlay windows, and other compact popup/menu layers. HoverClick does not ignore all Window Server windows globally. Diagnostics explicitly report when a compact Window Server pointer-like surface was ignored as pass-through.
 
 ## Experimental Or Placeholder Items
 
@@ -282,6 +296,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.4.7` on the same header row after a manual relaunch.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.5.0` on the same header row after a manual relaunch.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.6.0` on the same header row after a manual relaunch.
+- Confirm the status menu shows `HoverClick` and dynamic `v0.7.0` on the same header row after a manual relaunch.
 - For v0.5.0 icon smoke validation, confirm the built `HoverClick.app` shows the branded app icon in normal macOS icon surfaces after a manual relaunch or install. Manual Finder UI validation -- not run automatically.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
@@ -292,6 +307,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.7, Build 33, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.5.0, Build 34, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.6.0, Build 35, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
+- Confirm `About HoverClick...` shows HoverClick, Version 0.7.0, Build 36, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Confirm `Open Accessibility Settings` uses its action symbol and exactly 1 ASCII space of title padding.
 - Confirm `Quit` uses one left-slot action symbol, exactly 1 ASCII space of title padding, and preserves Cmd+Q.
@@ -299,6 +315,9 @@ Manual Finder UI validation -- not run automatically.
 - Move the pointer over background windows without clicking; no focus change should occur.
 - With `Left Click Focus` checked, click visible background windows; target focus should occur before the original click passes through.
 - With `Right Click Focus` checked, right-click visible background windows; target focus should occur before the original right-click passes through and the normal context menu works.
+- Repeat left-click and right-click background focus for Finder and Chrome, and for PDF Expert if available.
+- For ordinary app-window clicks that previously reported a tiny untitled no-bundle Window Server high-layer surface near the click point, confirm diagnostics show `Window Server pass-through surface ignored`, `focusAttempt=yes`, and delayed verification passed when immediate verification needs the delayed check.
+- Confirm menu/status UI skip protection remains intact.
 - Click HoverClick status/menu UI and transient menu/popover UI; they should be ignored safely.
 - Drag windows, select text, and use sliders; drag behavior should remain unchanged.
 - Copy diagnostics and confirm it includes app name, bundle identifier, permission, startup, feature states, expanded event tap lifecycle state, event tap mask, the safety note, and concise known limitations. Confirm version/build are available from `About HoverClick...` instead.

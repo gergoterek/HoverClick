@@ -15,7 +15,7 @@ Use the signed app build script for local validation:
 
 ## Runtime Refresh
 
-After build and verify pass for UI, resource, icon, or version metadata changes, use:
+After build and verify pass for code, runtime, diagnostics, UI, app-resource, icon, or version-build metadata changes, use:
 
 ```sh
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh
