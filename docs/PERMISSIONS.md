@@ -60,6 +60,8 @@ The click event tap and Accessibility target resolution both require Accessibili
 
 On first launch without Accessibility permission, HoverClick asks macOS for the native Accessibility trust prompt with `AXIsProcessTrustedWithOptions` and shows a native explanatory alert. The app does not automatically open System Settings. Users can click `Open Accessibility Settings` explicitly, then click `Check Again` after enabling HoverClick.
 
+If Accessibility permission is revoked while HoverClick is already running, HoverClick must fail open. Any left/right mouse-down callback that still arrives after revocation returns the original event unchanged, records a permission-missing pass-through diagnostic, schedules stale event-tap removal, and skips AX hit-testing, focus, raise, synthetic clicks, event replay, and cursor movement.
+
 HoverClick does not require Screen Recording permission. It does not capture pixels, enumerate screen contents, record the display, send analytics, synthesize clicks, or move the cursor in the stable core.
 
 ## Menu Entries
@@ -86,6 +88,7 @@ If clicks are not focused:
 - Confirm `Right Click Focus` is enabled if testing right-click behavior.
 - If permission was just granted, choose `Permissions & Startup` > `Check Again`.
 - Use `Diagnostics` > `Copy Diagnostics Summary` and check the permission and click detection lines.
+- If Accessibility was revoked while HoverClick was running, confirm diagnostics report permission-missing pass-through/removal state and choose `Check Again` only after permission is granted again.
 
 If HoverClick does not appear in Accessibility settings:
 

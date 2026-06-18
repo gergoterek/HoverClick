@@ -12,12 +12,13 @@ Implemented a minimal listen-only `CGEventTap` proof for `kCGEventLeftMouseDown`
 
 Implemented fast click-to-focus behavior. The event tap now uses a pass-through default tap for `kCGEventLeftMouseDown` so HoverClick can attempt focus before returning the original event unchanged.
 
-The callback remains pass-through: it never returns a replacement click event and never returns `NULL` for normal clicks. `NULL` is returned only for system tap-disabled pseudo-events. HoverClick does not synthesize clicks, move the cursor, move windows, or resize windows.
+The callback remains pass-through: it never returns a replacement click event and never returns `NULL` for normal clicks. `NULL` is returned only for null event input; system tap-disabled pseudo-events return the received event after recovery handling. HoverClick does not synthesize clicks, move the cursor, move windows, or resize windows.
 
 Event tap lifecycle guards:
 
 - Installs only once and logs `event tap already installed; skipping duplicate install` when a duplicate install is requested.
 - Logs `event tap disabled by timeout` or `event tap disabled by user input` for system-disabled pseudo-events.
+- Checks Accessibility trust again inside the normal left/right mouse-down callback before entering AX hit-testing or focus logic. If permission is missing or revoked, the callback records permission-missing pass-through, schedules stale tap removal, performs no AX work, and returns the original event unchanged.
 - Tracks user intent, tap object presence, CFMachPort validity, run loop source presence, run loop source validity, believed installed state, and believed enabled state separately.
 - Re-enables the existing tap when the user still wants it enabled, the CFMachPort is valid, and the run loop source is valid, then logs `event tap re-enabled after ...`.
 - Recreates the tap when disabled-event recovery finds a missing or invalid port/source, or when `CGEventTapEnable` does not leave the tap enabled.
@@ -75,7 +76,7 @@ Experimental Hover Click Assist is a separate feature flag under the `Hover` sub
 
 Launch at Login is a menubar-only integration that uses `SMAppService.mainAppService` on macOS 13 and newer. It registers or unregisters the main app as the login item; no helper app is bundled, and the toggle does not change event tap, focus, hover assist, Accessibility, signing, or bundle identity behavior.
 
-First-launch permission onboarding is native AppKit and Accessibility API integration only. When Accessibility is missing, HoverClick calls `AXIsProcessTrustedWithOptions` with `kAXTrustedCheckOptionPrompt` once for that launch, shows a native explanatory alert, leaves click detection inactive, and disables click-focus feature toggles until permission is granted. `Permissions & Startup` exposes a `Check Again` / `Refresh Permission Status` action so the user can refresh trust state after enabling HoverClick in System Settings. `Open Accessibility Settings` remains an explicit user-click menu item; HoverClick does not open System Settings automatically during launch or validation.
+First-launch permission onboarding is native AppKit and Accessibility API integration only. When Accessibility is missing, HoverClick calls `AXIsProcessTrustedWithOptions` with `kAXTrustedCheckOptionPrompt` once for that launch, shows a native explanatory alert, leaves click detection inactive, and disables click-focus feature toggles until permission is granted. If Accessibility is revoked at runtime while a tap object still exists, the callback fails open before target resolution, returns normal mouse events unchanged, and the main queue removes the stale tap. `Permissions & Startup` exposes a `Check Again` / `Refresh Permission Status` action so the user can refresh trust state after enabling HoverClick in System Settings. `Open Accessibility Settings` remains an explicit user-click menu item; HoverClick does not open System Settings automatically during launch or validation.
 
 Launch at Login onboarding is likewise explicit consent only. On macOS 13 and newer, if the main-app login item is not registered and the prompt has not already been shown, HoverClick asks whether to enable startup and stores that ask in the `launchAtLoginOnboardingPromptShown` user default. Registration happens only when the user chooses `Enable Launch at Login`; declining does not affect Accessibility permission or click-focus settings.
 

@@ -300,6 +300,9 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)recordBackgroundFocusResult:(NSString *)result verification:(NSString *)verification failureReason:(NSString *)failureReason;
 - (void)completeDelayedBackgroundFocusVerification:(NSDictionary *)context;
 - (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable;
+- (void)recordPermissionCheckResult:(NSString *)result;
+- (void)removeEventTapDueToMissingAccessibilityWithReason:(NSString *)reason;
+- (void)handleEventTapCallbackWithMissingAccessibilityForType:(CGEventType)type;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
 - (BOOL)isEffectiveHoverClickAssistEnabled;
@@ -320,6 +323,9 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     BOOL _accessibilityOnboardingShownThisLaunch;
     BOOL _accessibilityTrustPromptRequestedThisLaunch;
     BOOL _launchAtLoginOnboardingOfferedThisLaunch;
+    BOOL _permissionMissingPassThroughActive;
+    BOOL _eventTapRemovedDueToMissingPermission;
+    BOOL _eventTapRemovalScheduledDueToMissingPermission;
     CFMachPortRef _eventTap;
     CFRunLoopSourceRef _eventTapSource;
     CFAbsoluteTime _lastMouseDownLogTime;
@@ -347,6 +353,8 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     uint64_t _totalOverlaySystemUISkips;
     uint64_t _totalCompactPopupSkips;
     uint64_t _totalMenuStatusUISkips;
+    uint64_t _eventTapPermissionMissingPassThroughCount;
+    CFAbsoluteTime _lastPermissionCheckTime;
     NSString *_lastEventTapCallbackDescription;
     NSString *_lastEventTapRecoveryResult;
     NSString *_lastFocusDecisionDescription;
@@ -373,6 +381,8 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     NSString *_lastEligibleHitTestCandidateDescription;
     NSString *_lastLaunchAtLoginStatusDescription;
     NSString *_lastLaunchAtLoginOnboardingDecision;
+    NSString *_lastPermissionCheckResult;
+    NSString *_lastPermissionMissingPassThroughDescription;
     NSMutableArray<NSMutableDictionary<NSString *, NSString *> *> *_recentDecisionHistory;
     NSMutableDictionary<NSNumber *, NSMutableDictionary<NSString *, NSString *> *> *_activeDecisionHistory;
 }
@@ -404,6 +414,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return NULL;
     }
 
+    if ((type == kCGEventLeftMouseDown || type == kCGEventRightMouseDown) &&
+        ![controller accessibilityTrusted]) {
+        [controller handleEventTapCallbackWithMissingAccessibilityForType:type];
+        return event;
+    }
+
     if (type == kCGEventLeftMouseDown) {
         [controller handleLeftMouseDown:event];
     } else if (type == kCGEventRightMouseDown) {
@@ -426,6 +442,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _accessibilityOnboardingShownThisLaunch = NO;
     _accessibilityTrustPromptRequestedThisLaunch = NO;
     _launchAtLoginOnboardingOfferedThisLaunch = NO;
+    _permissionMissingPassThroughActive = NO;
+    _eventTapRemovedDueToMissingPermission = NO;
+    _eventTapRemovalScheduledDueToMissingPermission = NO;
     _eventTap = NULL;
     _eventTapSource = NULL;
     _lastMouseDownLogTime = 0;
@@ -453,6 +472,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _totalOverlaySystemUISkips = 0;
     _totalCompactPopupSkips = 0;
     _totalMenuStatusUISkips = 0;
+    _eventTapPermissionMissingPassThroughCount = 0;
+    _lastPermissionCheckTime = 0;
     _lastEventTapCallbackDescription = @"none";
     _lastEventTapRecoveryResult = @"none";
     _lastFocusDecisionDescription = @"none";
@@ -479,6 +500,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastEligibleHitTestCandidateDescription = @"none";
     _lastLaunchAtLoginStatusDescription = nil;
     _lastLaunchAtLoginOnboardingDecision = @"not offered";
+    _lastPermissionCheckResult = @"not checked";
+    _lastPermissionMissingPassThroughDescription = @"none";
     _recentDecisionHistory = [NSMutableArray arrayWithCapacity:HoverClickRecentDecisionHistoryLimit];
     _activeDecisionHistory = [NSMutableDictionary dictionary];
 
@@ -805,6 +828,35 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return AXIsProcessTrusted();
 }
 
+- (void)recordPermissionCheckResult:(NSString *)result {
+    _lastPermissionCheckResult = [result.length > 0 ? result : @"unknown" copy];
+    _lastPermissionCheckTime = CFAbsoluteTimeGetCurrent();
+}
+
+- (void)removeEventTapDueToMissingAccessibilityWithReason:(NSString *)reason {
+    NSString *safeReason = reason.length > 0 ? reason : @"permission check";
+    BOOL hadTap = (_eventTap != NULL || _eventTapSource != NULL || _eventTapInstalled || _eventTapEnabled);
+
+    _permissionMissingPassThroughActive = YES;
+    if (hadTap) {
+        _eventTapRemovedDueToMissingPermission = YES;
+    }
+    _eventTapRemovalScheduledDueToMissingPermission = NO;
+    [self recordPermissionCheckResult:[NSString stringWithFormat:@"missing (%@)", safeReason]];
+
+    HoverClickLog("HoverClick: Accessibility missing during %s; normal clicks pass through unchanged", safeReason.UTF8String);
+    if (hadTap) {
+        [self removeEventTap];
+    } else {
+        _eventTapEnabled = NO;
+        [self updateMenuTitles];
+    }
+
+    if (_userWantsEventTap) {
+        [self setLastClickResult:@"Permission Missing"];
+    }
+}
+
 - (BOOL)requestAccessibilityTrustPrompt {
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES};
     BOOL trusted = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
@@ -849,16 +901,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickLog("HoverClick: accessibility trusted = %s", trusted ? "YES" : "NO");
 
     if (trusted) {
+        _permissionMissingPassThroughActive = NO;
+        _eventTapRemovedDueToMissingPermission = NO;
+        _eventTapRemovalScheduledDueToMissingPermission = NO;
+        [self recordPermissionCheckResult:userInitiated ? @"granted (manual refresh)" : @"granted (refresh)"];
         [self setLastClickResult:@"Permission Granted"];
         if (_userWantsEventTap) {
             [self installEventTap];
         }
     } else {
-        [self removeEventTap];
-        if (_userWantsEventTap) {
-            HoverClickLog("HoverClick: event tap permission missing. Check Accessibility permission.");
-            [self setLastClickResult:@"Permission Missing"];
-        }
+        [self removeEventTapDueToMissingAccessibilityWithReason:userInitiated ? @"manual refresh" : @"refresh"];
     }
 
     [self updateMenuTitles];
@@ -927,6 +979,47 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     } else if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
         _eventTapEnabled = NO;
     }
+}
+
+- (void)handleEventTapCallbackWithMissingAccessibilityForType:(CGEventType)type {
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    NSString *typeName = HoverClickEventTypeName(type);
+    NSString *triggerLabel = type == kCGEventRightMouseDown ? @"right" : @"left";
+
+    _permissionMissingPassThroughActive = YES;
+    _eventTapPermissionMissingPassThroughCount++;
+    _lastClickResult = @"Permission Missing Pass Through";
+    _lastFocusDecisionDescription = [NSString stringWithFormat:@"%@ pass-through: Accessibility permission missing; original event returned unchanged",
+                                                               triggerLabel];
+    if (type == kCGEventRightMouseDown) {
+        _lastRightClickFocusDecisionDescription = _lastFocusDecisionDescription;
+    }
+    _lastPermissionMissingPassThroughDescription = [NSString stringWithFormat:@"%@ at %@ count=%llu",
+                                                    typeName,
+                                                    HoverClickDiagnosticTimestamp(now),
+                                                    _eventTapPermissionMissingPassThroughCount];
+    [self recordPermissionCheckResult:@"missing (event tap callback)"];
+
+    if (_eventTapRemovalScheduledDueToMissingPermission) {
+        return;
+    }
+
+    _eventTapRemovalScheduledDueToMissingPermission = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if ([self accessibilityTrusted]) {
+            _permissionMissingPassThroughActive = NO;
+            _eventTapRemovalScheduledDueToMissingPermission = NO;
+            [self recordPermissionCheckResult:@"granted (post-callback check)"];
+            if (_userWantsEventTap) {
+                [self installEventTap];
+            } else {
+                [self updateMenuTitles];
+            }
+            return;
+        }
+
+        [self removeEventTapDueToMissingAccessibilityWithReason:@"event tap callback"];
+    });
 }
 
 - (void)recordFocusDecisionWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID decision:(NSString *)decision detail:(NSString *)detail {
@@ -1127,10 +1220,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (BOOL)installEventTap {
     if (![self accessibilityTrusted]) {
-        _eventTapEnabled = NO;
-        [self updateMenuTitles];
+        [self removeEventTapDueToMissingAccessibilityWithReason:@"install blocked"];
         return NO;
     }
+
+    _permissionMissingPassThroughActive = NO;
+    _eventTapRemovedDueToMissingPermission = NO;
+    _eventTapRemovalScheduledDueToMissingPermission = NO;
+    [self recordPermissionCheckResult:@"granted (install)"];
 
     if (_eventTap != NULL || _eventTapSource != NULL) {
         [self updateEventTapLifecycleFlags];
@@ -1257,7 +1354,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (![self accessibilityTrusted]) {
         _lastEventTapRecoveryResult = [NSString stringWithFormat:@"not re-enabled after %@: Accessibility permission missing", reason];
-        [self removeEventTap];
+        [self removeEventTapDueToMissingAccessibilityWithReason:[NSString stringWithFormat:@"tap disabled by %@", reason]];
         return;
     }
 
@@ -1309,8 +1406,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _userWantsEventTap = YES;
     if (![self accessibilityTrusted]) {
         HoverClickLog("HoverClick: event tap permission missing. Check Accessibility permission.");
-        [self setLastClickResult:@"Permission Missing"];
-        [self updateMenuTitles];
+        [self removeEventTapDueToMissingAccessibilityWithReason:@"toggle"];
         return;
     }
 
@@ -1507,6 +1603,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return @"Accessibility permission missing";
     }
 
+    if ([result isEqualToString:@"Permission Missing Pass Through"]) {
+        return @"Accessibility permission missing; click passed through unchanged";
+    }
+
     if ([result isEqualToString:@"Permission Granted"]) {
         return @"Accessibility permission granted";
     }
@@ -1630,6 +1730,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Accessibility onboarding shown this launch: %@\n"
              "Accessibility trust prompt requested this launch: %@\n"
              "Click focus disabled because Accessibility permission missing: %@\n"
+             "Permission missing pass-through active: %@\n"
+             "Event tap removed due to missing permission: %@\n"
+             "Event tap removal scheduled due to missing permission: %@\n"
+             "Event tap callback pass-through due to missing permission count: %llu\n"
+             "Last permission refresh/check result: %@\n"
+             "Last permission refresh/check time: %@\n"
+             "Last permission missing pass-through: %@\n"
              "Launch at Login: %@\n"
              "Launch at Login onboarding: %@\n"
              "Click detection: %@\n"
@@ -1687,6 +1794,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             _accessibilityOnboardingShownThisLaunch ? @"yes" : @"no",
             _accessibilityTrustPromptRequestedThisLaunch ? @"yes" : @"no",
             clickFocusDisabledByPermission,
+            _permissionMissingPassThroughActive ? @"yes" : @"no",
+            _eventTapRemovedDueToMissingPermission ? @"yes" : @"no",
+            _eventTapRemovalScheduledDueToMissingPermission ? @"yes" : @"no",
+            _eventTapPermissionMissingPassThroughCount,
+            _lastPermissionCheckResult ?: @"not checked",
+            HoverClickDiagnosticTimestamp(_lastPermissionCheckTime),
+            _lastPermissionMissingPassThroughDescription ?: @"none",
             [self launchAtLoginStatusForDiagnostics],
             _lastLaunchAtLoginOnboardingDecision ?: @"not offered",
             [self clickDetectionStatusForDiagnostics],
@@ -1824,6 +1938,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSSet<NSString *> *volatileMenuOrSetupResults = [NSSet setWithArray:@[
         @"Permission Missing",
+        @"Permission Missing Pass Through",
         @"Permission Granted",
         @"Event Tap Create Failed",
         @"Event Tap Source Failed",
