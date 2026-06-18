@@ -13,8 +13,8 @@
 - Latest fully validated public release: `v0.6.0` / build `35`
 - Current release candidate: `v0.7.0` / build `36`
 - Current updater implementation branch: merged to `main`
-- Current implementation branch: `feature-v0.8.0-first-launch-permission-onboarding`
-- Main/release-prep branch point: `383a0480430f9e584082bbabd466808d6cd4bdae`
+- Current implementation branch: `feature-v0.8.0-appcast-release-workflow`
+- Main/release-prep branch point: `74efddf5fb84939abcb9557b6f00f22d468764e1`
 - Public DMG: `HoverClick-0.6.0.dmg`
 - Public DMG SHA-256: not recorded in this state file
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
@@ -58,6 +58,15 @@
 - No Sparkle private key file, signing secret, appcast, release asset, DMG, tag, GitHub Release, Developer ID/notarization change, app name change, bundle identifier change, signing identity change, Accessibility/TCC change, event-tap change, mouse-handling change, or packaging workflow change is part of Phase 1.
 - Automatic checks are disabled with `SUEnableAutomaticChecks = false`.
 - Automatic background download/install is disabled with `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`.
+
+## Current Appcast Workflow State
+
+- Current `main` contains unreleased v0.8.0 work, but there is still no v0.8.0 tag, no v0.8.0 DMG, no v0.8.0 GitHub Release, no version/build bump for v0.8.0, and no published appcast.
+- Appcast Phase 2 planning is in progress on `feature-v0.8.0-appcast-release-workflow`.
+- Recommended hosting strategy: use a dedicated `gh-pages` branch with `appcast.xml` at the branch root so `https://gergoterek.github.io/HoverClick/appcast.xml` is stable while DMG payloads remain GitHub Release assets.
+- The repository does not contain tracked GitHub Pages configuration, so the Pages source must be confirmed before committing or publishing a real appcast.
+- `docs/APPCAST_RELEASE_WORKFLOW.md` records the future release workflow, hosting assumption, appcast safety gates, and stop conditions.
+- `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for a future real release DMG and final public DMG URL. It defaults to dry-run mode and does not package a DMG, create a tag, create a GitHub Release, upload assets, publish Pages output, or store private Sparkle key material.
 
 ## Current Permission Onboarding State
 

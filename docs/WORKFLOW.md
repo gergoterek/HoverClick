@@ -98,6 +98,17 @@ Phase 1 adds only the manual `Check for Updates...` entry point using Sparkle's 
 - Future appcast generation should use Sparkle tooling with the same Keychain account, for example `generate_appcast --account com.gergoterek.HoverClick`.
 - `scripts/package-dmg.sh` remains internal/test packaging and is not the appcast publishing workflow.
 
+## Sparkle Appcast Release Workflow
+
+Phase 2 appcast planning is documented in `docs/APPCAST_RELEASE_WORKFLOW.md`.
+
+- Recommended hosting: a dedicated `gh-pages` branch serving `appcast.xml` at the repository root for `https://gergoterek.github.io/HoverClick/appcast.xml`.
+- Current unresolved assumption: the tracked repository does not reveal the GitHub Pages source setting. Confirm Pages configuration before committing or publishing a real appcast.
+- `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for future releases. By default it performs a dry run and requires the real DMG path, final public GitHub Release asset URL, version, build, and output path.
+- The helper uses pinned Sparkle 2.9.3 tooling from `tmp/sparkle/` and the Keychain account `com.gergoterek.HoverClick`; it must not receive, print, or commit private key material.
+- Do not create or publish `appcast.xml` until a real release DMG, release URL, and Pages location exist.
+- Do not run `scripts/package-dmg.sh`, create a tag, create a GitHub Release, upload assets, or publish Pages output as part of appcast planning work.
+
 ## Release Scope
 
 Release prep, DMG packaging, tags, and GitHub releases require explicit release-scope confirmation. `scripts/run-app.sh` is for local runtime refresh after build and verify, not for packaging or publishing.

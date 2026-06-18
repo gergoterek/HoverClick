@@ -205,6 +205,8 @@ Phase 2: appcast and signed update workflow.
 - Publish the DMG as an official GitHub Release asset.
 - Validate manual update from an older updater-enabled build to a newer build.
 
+Phase 2 implementation planning now lives in `docs/APPCAST_RELEASE_WORKFLOW.md`. The recommended hosting strategy is a dedicated `gh-pages` branch serving `appcast.xml` at the repository root, while DMG payloads remain immutable GitHub Release assets. The current repository does not expose GitHub Pages configuration in tracked files, so no real `appcast.xml` is committed until the Pages source is confirmed. `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for a future release; it requires a real DMG, final public DMG URL, version, build, and explicit output path, and it defaults to dry-run mode.
+
 Phase 3: automatic periodic checks.
 
 - Enable or offer periodic checks only after manual checks work across real release artifacts.
@@ -225,7 +227,7 @@ Future implementation will likely touch:
 - `Info.plist` for Sparkle keys such as `SUFeedURL`, `SUPublicEDKey`, and automatic-check settings.
 - `Makefile` for Sparkle framework include/link/embed/sign steps if the project remains non-Xcode.
 - `scripts/package-dmg.sh` only if it stays internal/test and needs compatibility adjustments; otherwise prefer a new updater/release script.
-- a new script such as `scripts/generate-appcast.sh` or a separate release packaging script.
+- a helper such as `scripts/prepare-appcast.sh` and, if needed later, a separate release packaging script.
 - docs covering release, workflow, test matrix, and current state.
 - possibly release workflow docs or a GitHub Pages branch/configuration.
 
