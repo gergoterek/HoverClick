@@ -13,6 +13,8 @@
 - Latest fully validated baseline before v0.8.0 local DMG validation: `v0.7.0` / build `36`
 - Current release candidate: none
 - Current updater implementation branch: merged to `main`
+- Current v0.9.0 planning branch: `design-v0.9.0-updater-completion-plan`
+- Current v0.9.0 planning doc: `docs/V0.9.0_UPDATER_COMPLETION_PLAN.md`
 - Current implementation branch: `investigate-gdocs-background-click-miss`
 - Main/release-prep branch point: `74efddf5fb84939abcb9557b6f00f22d468764e1`
 - Public DMG: `HoverClick-0.8.0.dmg`
@@ -67,6 +69,20 @@
 - `docs/APPCAST_RELEASE_WORKFLOW.md` records the release workflow, hosting strategy, appcast safety gates, and stop conditions.
 - `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for a real release DMG and final public DMG URL. It defaults to dry-run mode and writes an appcast only when `--write` is passed. It does not package a DMG, create a tag, create a GitHub Release, upload assets, publish Pages output, or store private Sparkle key material.
 
+## v0.9.0 Planning State
+
+- v0.9.0 is planned as `Complete Updater & 1.0 Readiness`.
+- The recommended v0.9.0 updater UX is conservative: keep manual `Check for Updates...`, offer user-consented automatic checks only if they are explicit and reversible, and keep silent/background install disabled.
+- Do not set unconditional automatic update checks as the default.
+- Do not enable automatic download/install before v1.0.
+- Keep the GitHub Release DMG plus GitHub Pages appcast workflow.
+- Keep private Sparkle key handling unchanged and outside the repository.
+- Do not change the app name, bundle identifier, signing identity, or Sparkle public key as part of v0.9.0 updater completion.
+- Hover Click Assist is out of scope for v0.9.0. Do not implement real Hover Click Assist, Click-Time Hover Assist, or any hover/event semantics feature.
+- The current user-facing Hover Click Assist placeholder should be removed or hidden before v1.0 unless explicitly kept and labeled unavailable.
+- Recommended next implementation branch: `feature-v0.9.0-updater-completion`.
+- If the Hover Click Assist placeholder removal grows beyond a small UI/docs cleanup, split it to `feature-v0.9.0-remove-hover-assist-placeholder`.
+
 ## Current Permission Onboarding State
 
 - The v0.8.0 permission onboarding branch adds first-launch Accessibility guidance without changing app identity, signing, event tap inputs, Sparkle settings, updater behavior, or release packaging.
@@ -90,6 +106,7 @@
 - `Left Click Focus` defaults on.
 - `Right Click Focus` defaults off and is independent from left-click behavior.
 - `Hover` contains `Hover Click Assist`.
+- `Hover Click Assist` is currently a no-op placeholder and is planned for removal or hiding before v1.0 unless explicitly kept unavailable.
 - `Permissions & Startup` contains Accessibility status, `Check Again`, Launch at Login, and `Open Accessibility Settings`.
 - `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Required` is unchecked.
 - If Accessibility is missing, click-focus feature toggles are disabled until the user grants permission and chooses `Check Again` or relaunches.
@@ -249,6 +266,8 @@ Protection remains in place for HoverClick menu/status UI, AX menu/status/popove
 ## Experimental Or Placeholder Items
 
 `Hover Click Assist` is an experimental placeholder. It defaults off, is disabled while Left Click Focus is off, and currently performs no synthetic click, cursor movement, replacement event, mouse-move focus behavior, or delayed assist behavior. Delayed verification, when present, belongs only to background-focus diagnostics after an immediate frontmost check fails.
+
+For v0.9.0 planning, Hover Click Assist is out of scope. Do not implement it, do not implement Click-Time Hover Assist, and do not add hover/event semantics. The preferred 1.0-readiness cleanup is to remove or hide the user-facing placeholder and update diagnostics/docs that describe it.
 
 ## Chrome / Google Docs Click-Through Investigation State
 

@@ -43,6 +43,21 @@ v0.8.0 contains:
 
 Release publishing uses tag `v0.8.0`, DMG asset `HoverClick-0.8.0.dmg`, and a GitHub Pages appcast item for version `0.8.0` / build `37`.
 
+## v0.9.0 Readiness Additions
+
+v0.9.0 should keep this hosting model and strengthen the release gates before v1.0.
+
+Required release-workflow properties:
+
+- The public appcast remains `https://gergoterek.github.io/HoverClick/appcast.xml`.
+- DMG payloads remain GitHub Release assets.
+- Each released version has exactly one intended public DMG asset named `HoverClick-<version>.dmg`.
+- Internal DMGs such as `HoverClick-<version>-internal.dmg` must not be referenced by the appcast.
+- The appcast item must use the final public GitHub Release URL, exact DMG length, expected version/build, and Sparkle EdDSA enclosure signature.
+- The Sparkle private key remains in the Keychain and is never passed as a file, committed, printed, or uploaded.
+- Automatic checks may be user-consented in the app, but automatic background download/install remains disabled unless a later explicit release decision changes that.
+- The release workflow must validate an updater-enabled old build to the new build before v1.0 is considered ready.
+
 ## Preflight Tool
 
 Use the non-publishing helper only after a real release DMG and public GitHub Release asset URL exist:
@@ -113,6 +128,8 @@ Stop the release workflow if any of these are true:
 - The signing identity, bundle identifier, or app name changed unexpectedly.
 - Sparkle automatic checks or background install settings changed unexpectedly.
 - Private keys, signing secrets, generated Sparkle secret files, or credentials appear in the repository.
+- An appcast item references an internal DMG, duplicate DMG asset, local file path, placeholder URL, or non-final release URL.
+- The v1.0 readiness checklist has not validated update discovery from an older updater-enabled HoverClick build.
 
 ## Non-Goals
 

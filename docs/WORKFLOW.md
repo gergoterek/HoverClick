@@ -122,6 +122,22 @@ The appcast release workflow is documented in `docs/APPCAST_RELEASE_WORKFLOW.md`
 - Create or publish `appcast.xml` only after a real release DMG, release URL, and Pages location exist.
 - Do not run `scripts/package-dmg.sh`, create a tag, create a GitHub Release, upload assets, or publish Pages output as part of appcast planning work.
 
+## v0.9.0 Updater Completion Workflow
+
+Plan v0.9.0 as the updater-completion and 1.0-readiness batch.
+
+- Use `docs/V0.9.0_UPDATER_COMPLETION_PLAN.md` as the scope reference.
+- Keep manual `Check for Updates...` as the primary update path.
+- If automatic checks are added, make them explicit, user-consented, reversible, and notification-only.
+- Keep `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`.
+- Do not package a DMG, create or move tags, create a GitHub Release, publish `gh-pages`, or modify `appcast.xml` outside an explicit release task.
+- Do not implement real Hover Click Assist, Click-Time Hover Assist, mouse-move focus, synthetic clicks, event replay, cursor movement, delayed click delivery, scroll focus, or key focus.
+- Prefer removing or hiding the current Hover Click Assist placeholder before v1.0 if that remains a small UI/docs cleanup.
+
+Automated non-UI validation for future implementation work should include `git diff --check`, `scripts/ci-safety-check.sh`, `scripts/build-app.sh`, and `scripts/verify-app.sh`.
+
+`scripts/run-app.sh` opens the signed `.app` bundle with `/usr/bin/open`, so treat it as manual signed-app runtime validation only when a manual UI test is intended.
+
 ## Release Scope
 
 Release prep, DMG packaging, tags, and GitHub releases require explicit release-scope confirmation. `scripts/run-app.sh` is for local runtime refresh after build and verify, not for packaging or publishing.
