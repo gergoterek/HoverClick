@@ -60,6 +60,8 @@ The click event tap and Accessibility target resolution both require Accessibili
 
 On first launch without Accessibility permission, HoverClick asks macOS for the native Accessibility trust prompt with `AXIsProcessTrustedWithOptions` and shows a native explanatory alert. The app does not automatically open System Settings. Users can click `Open Accessibility Settings` explicitly, then click `Check Again` after enabling HoverClick.
 
+HoverClick refreshes Accessibility trust without prompting on launch, when the app becomes active, and before the status menu opens. When a refresh sees permission granted, HoverClick dismisses the onboarding alert if it is visible, updates menu state, re-enables feature controls, and reinstalls the event tap when the user still wants click detection. `Check Again` performs the same refresh with the user-initiated native prompt path if permission is still missing.
+
 If Accessibility permission is revoked while HoverClick is already running, HoverClick must fail open. Any left/right mouse-down callback that still arrives after revocation returns the original event unchanged, records a permission-missing pass-through diagnostic, schedules stale event-tap removal, and skips AX hit-testing, focus, raise, synthetic clicks, event replay, and cursor movement.
 
 HoverClick does not require Screen Recording permission. It does not capture pixels, enumerate screen contents, record the display, send analytics, synthesize clicks, or move the cursor in the stable core.

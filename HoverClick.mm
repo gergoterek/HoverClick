@@ -282,7 +282,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     return [NSString stringWithFormat:@"attempted:%s", HoverClickAXErrorName(error)];
 }
 
-@interface HoverClickAppDelegate : NSObject <NSApplicationDelegate>
+@interface HoverClickAppDelegate : NSObject <NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate>
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) NSMenuItem *permissionItem;
 @property(nonatomic, strong) NSMenuItem *permissionRefreshItem;
@@ -294,6 +294,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 @property(nonatomic, strong) NSMenuItem *diagnosticsItem;
 @property(nonatomic, strong) NSMenuItem *verboseItem;
 @property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
+@property(nonatomic, strong) NSAlert *accessibilityOnboardingAlert;
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
 - (void)recordFocusDecisionWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID decision:(NSString *)decision detail:(NSString *)detail;
 - (void)recordBackgroundFocusAttemptWithTrigger:(const char *)trigger sequenceID:(uint64_t)sequenceID appName:(NSString *)appName pid:(pid_t)targetPid frontmostBefore:(NSString *)frontmostBefore;
@@ -302,6 +303,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable;
 - (void)recordPermissionCheckResult:(NSString *)result;
 - (void)removeEventTapDueToMissingAccessibilityWithReason:(NSString *)reason;
+- (BOOL)refreshAccessibilityStatusForReason:(NSString *)reason promptIfMissing:(BOOL)promptIfMissing updateLastAction:(BOOL)updateLastAction;
 - (void)handleEventTapCallbackWithMissingAccessibilityForType:(CGEventType)type;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
@@ -516,6 +518,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self offerLaunchAtLoginOnboardingIfNeeded];
 }
 
+- (void)applicationDidBecomeActive:(NSNotification *)notification {
+    (void)notification;
+    [self refreshAccessibilityStatusForReason:@"app became active"
+                              promptIfMissing:NO
+                             updateLastAction:NO];
+}
+
 - (void)applicationWillTerminate:(NSNotification *)notification {
     (void)notification;
     [self removeEventTap];
@@ -548,6 +557,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@"HoverClick"];
     [menu setAutoenablesItems:NO];
+    menu.delegate = self;
 
     [menu addItem:HoverClickCreateHeaderMenuItem()];
 
@@ -725,6 +735,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateMenuTitles];
 }
 
+- (void)menuWillOpen:(NSMenu *)menu {
+    if (menu != self.statusItem.menu) {
+        return;
+    }
+
+    [self refreshAccessibilityStatusForReason:@"menu open"
+                              promptIfMissing:NO
+                             updateLastAction:NO];
+}
+
 - (void)printLaunchStatus {
     BOOL trusted = [self accessibilityTrusted];
     HoverClickLog("HoverClick: bundle id = %s", HoverClickBundleID.UTF8String);
@@ -857,6 +877,65 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 }
 
+- (void)dismissAccessibilityOnboardingAlertIfNeeded {
+    if (self.accessibilityOnboardingAlert == nil) {
+        return;
+    }
+
+    NSWindow *alertWindow = self.accessibilityOnboardingAlert.window;
+    if (alertWindow.visible) {
+        [alertWindow close];
+        HoverClickLog("HoverClick: Accessibility onboarding dismissed after permission refresh");
+    }
+    self.accessibilityOnboardingAlert = nil;
+}
+
+- (void)dismissAccessibilityOnboardingAlert:(id)sender {
+    (void)sender;
+    [self dismissAccessibilityOnboardingAlertIfNeeded];
+}
+
+- (void)windowWillClose:(NSNotification *)notification {
+    if (self.accessibilityOnboardingAlert != nil &&
+        notification.object == self.accessibilityOnboardingAlert.window) {
+        self.accessibilityOnboardingAlert = nil;
+    }
+}
+
+- (BOOL)refreshAccessibilityStatusForReason:(NSString *)reason promptIfMissing:(BOOL)promptIfMissing updateLastAction:(BOOL)updateLastAction {
+    NSString *safeReason = reason.length > 0 ? reason : @"refresh";
+    BOOL trusted = [self accessibilityTrusted];
+
+    if (!trusted && promptIfMissing) {
+        [self requestAccessibilityTrustPrompt];
+        trusted = [self accessibilityTrusted];
+    }
+
+    HoverClickLog("HoverClick: accessibility trusted = %s reason=%s", trusted ? "YES" : "NO", safeReason.UTF8String);
+
+    if (trusted) {
+        _permissionMissingPassThroughActive = NO;
+        _eventTapRemovedDueToMissingPermission = NO;
+        _eventTapRemovalScheduledDueToMissingPermission = NO;
+        [self recordPermissionCheckResult:[NSString stringWithFormat:@"granted (%@)", safeReason]];
+        [self dismissAccessibilityOnboardingAlertIfNeeded];
+
+        if (updateLastAction) {
+            [self setLastClickResult:@"Permission Granted"];
+        }
+
+        if (_userWantsEventTap) {
+            [self installEventTap];
+        } else {
+            [self updateMenuTitles];
+        }
+        return YES;
+    }
+
+    [self removeEventTapDueToMissingAccessibilityWithReason:safeReason];
+    return NO;
+}
+
 - (BOOL)requestAccessibilityTrustPrompt {
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES};
     BOOL trusted = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
@@ -866,7 +945,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 - (void)showAccessibilityOnboardingIfNeeded {
-    if ([self accessibilityTrusted] || _accessibilityOnboardingShownThisLaunch) {
+    if ([self accessibilityTrusted]) {
+        [self dismissAccessibilityOnboardingAlertIfNeeded];
+        return;
+    }
+
+    if (_accessibilityOnboardingShownThisLaunch) {
+        if (self.accessibilityOnboardingAlert != nil) {
+            [self.accessibilityOnboardingAlert.window makeKeyAndOrderFront:nil];
+        }
         return;
     }
 
@@ -874,46 +961,38 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self requestAccessibilityTrustPrompt];
 
     if ([self accessibilityTrusted]) {
-        [self refreshAccessibilityStatus:nil];
+        [self refreshAccessibilityStatusForReason:@"onboarding prompt"
+                                  promptIfMissing:NO
+                                 updateLastAction:YES];
         return;
     }
 
     [self setLastClickResult:@"Permission Missing"];
+    if (self.accessibilityOnboardingAlert != nil) {
+        [self.accessibilityOnboardingAlert.window makeKeyAndOrderFront:nil];
+        return;
+    }
+
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"HoverClick Needs Accessibility Permission";
     alert.informativeText = @"HoverClick needs Accessibility permission to focus background windows before your original click is delivered. Left Click Focus, Right Click Focus, and Hover controls stay disabled until permission is granted.\n\nUse Permissions & Startup > Open Accessibility Settings if macOS does not show the permission prompt, then choose Check Again after enabling HoverClick.";
     alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    NSButton *okButton = [alert addButtonWithTitle:@"OK"];
+    okButton.target = self;
+    okButton.action = @selector(dismissAccessibilityOnboardingAlert:);
+    self.accessibilityOnboardingAlert = alert;
+    alert.window.delegate = self;
+    [alert.window setReleasedWhenClosed:NO];
+    [alert.window makeKeyAndOrderFront:nil];
     HoverClickLog("HoverClick: Accessibility onboarding shown while permission is missing");
     [self updateMenuTitles];
 }
 
 - (void)refreshAccessibilityStatus:(id)sender {
     BOOL userInitiated = (sender != nil);
-
-    BOOL trusted = [self accessibilityTrusted];
-    if (!trusted && userInitiated) {
-        [self requestAccessibilityTrustPrompt];
-        trusted = [self accessibilityTrusted];
-    }
-
-    HoverClickLog("HoverClick: accessibility trusted = %s", trusted ? "YES" : "NO");
-
-    if (trusted) {
-        _permissionMissingPassThroughActive = NO;
-        _eventTapRemovedDueToMissingPermission = NO;
-        _eventTapRemovalScheduledDueToMissingPermission = NO;
-        [self recordPermissionCheckResult:userInitiated ? @"granted (manual refresh)" : @"granted (refresh)"];
-        [self setLastClickResult:@"Permission Granted"];
-        if (_userWantsEventTap) {
-            [self installEventTap];
-        }
-    } else {
-        [self removeEventTapDueToMissingAccessibilityWithReason:userInitiated ? @"manual refresh" : @"refresh"];
-    }
-
-    [self updateMenuTitles];
+    [self refreshAccessibilityStatusForReason:userInitiated ? @"manual refresh" : @"refresh"
+                              promptIfMissing:userInitiated
+                             updateLastAction:userInitiated];
 }
 
 - (BOOL)isEventTapPortValid {

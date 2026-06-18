@@ -63,6 +63,8 @@
 
 - The v0.8.0 permission onboarding branch adds first-launch Accessibility guidance without changing app identity, signing, event tap inputs, Sparkle settings, updater behavior, or release packaging.
 - On launch, if Accessibility is missing, HoverClick calls `AXIsProcessTrustedWithOptions` with `kAXTrustedCheckOptionPrompt` once for that launch and shows a native onboarding alert explaining why the permission is needed.
+- Permission state refreshes without prompting on launch, when the app becomes active, and immediately before the status menu opens. Explicit `Check Again` still performs the user-initiated prompt-capable refresh.
+- The Accessibility onboarding alert is retained as a non-modal alert so it can be dismissed automatically when permission becomes granted; duplicate onboarding alerts are not stacked.
 - Missing Accessibility keeps HoverClick open but leaves click focus inactive. `Left Click Focus`, `Right Click Focus`, `Hover`, and `Hover Click Assist` are disabled in the menu until permission is granted; their saved checked states are preserved.
 - If Accessibility is revoked while HoverClick is already running, normal left/right mouse-down events fail open. The callback records permission-missing pass-through, returns the original event unchanged, schedules stale event-tap removal on the main queue, and performs no AX hit-testing, focus, raise, synthetic click, event replay, or cursor movement.
 - `Permissions & Startup` now includes `Accessibility: Required` or `Accessibility: Granted`, a `Check Again` / `Refresh Permission Status` item, `Launch at Login`, and explicit `Open Accessibility Settings`.

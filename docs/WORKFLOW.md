@@ -57,6 +57,8 @@ For the v0.8.0 first-launch permission onboarding batch, manually cover in a saf
 - Confirm HoverClick requests the native Accessibility trust prompt and shows its explanatory onboarding alert without opening System Settings automatically.
 - Confirm `Left Click Focus`, `Right Click Focus`, `Hover`, and `Hover Click Assist` are disabled while Accessibility is missing.
 - Confirm `Permissions & Startup` shows `Accessibility: Required`, exposes `Check Again`, leaves `Open Accessibility Settings` as an explicit user-click action, and switches to `Accessibility: Granted` after permission is granted and refreshed.
+- Confirm permission state refreshes without prompting when HoverClick becomes active and before the status menu opens.
+- Confirm `Check Again` dismisses the onboarding alert after permission is granted and does not stack duplicate onboarding alerts when permission remains missing.
 - Manually revoke Accessibility while HoverClick is running and confirm normal clicking still works immediately; HoverClick should record permission-missing pass-through/removal state, remove any stale tap, and avoid repeated alerts.
 - After granting Accessibility again, choose `Check Again` and confirm feature controls re-enable and the event tap reinstalls without relaunch if practical.
 - Confirm Launch at Login onboarding asks once when the login item is not registered, records `launchAtLoginOnboardingPromptShown`, and enables startup only when the user chooses `Enable Launch at Login`.
