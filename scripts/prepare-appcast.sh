@@ -56,6 +56,14 @@ fail() {
   exit 1
 }
 
+cleanup_work_dir() {
+  case "$work_dir" in
+    "$PROJECT_DIR"/tmp/prepare-appcast|"$PROJECT_DIR"/tmp/prepare-appcast/*)
+      /bin/rm -rf "$work_dir"
+      ;;
+  esac
+}
+
 require_value() {
   local option="$1"
   local value="${2:-}"
@@ -165,6 +173,7 @@ fi
 case "$work_dir" in
   "$PROJECT_DIR"/tmp/prepare-appcast|"$PROJECT_DIR"/tmp/prepare-appcast/*)
     /bin/rm -rf "$work_dir"
+    trap cleanup_work_dir EXIT
     ;;
   *)
     fail "Refusing to remove unexpected work dir outside tmp/prepare-appcast: $work_dir"
@@ -172,6 +181,7 @@ case "$work_dir" in
 esac
 
 archives_dir="$work_dir/archives"
+generated_appcast="$work_dir/appcast.xml"
 /bin/mkdir -p "$archives_dir" "${output_path:h}"
 /bin/cp "$release_dmg" "$archives_dir/$archive_name"
 if [[ -n "$release_notes" ]]; then
@@ -183,10 +193,9 @@ fi
   --account "$account" \
   --download-url-prefix "$download_url_prefix" \
   --maximum-versions 0 \
-  -o appcast.xml \
+  -o "$generated_appcast" \
   "$archives_dir"
 
-generated_appcast="$archives_dir/appcast.xml"
 [[ -s "$generated_appcast" ]] || fail "Sparkle did not create expected appcast: $generated_appcast"
 
 if command -v /usr/bin/xmllint >/dev/null 2>&1; then
@@ -196,8 +205,20 @@ fi
 /usr/bin/grep -F "$download_url" "$generated_appcast" >/dev/null || fail "Generated appcast does not contain the expected download URL."
 /usr/bin/grep -F "sparkle:edSignature" "$generated_appcast" >/dev/null || fail "Generated appcast is missing sparkle:edSignature."
 /usr/bin/grep -F "length=\"$size\"" "$generated_appcast" >/dev/null || fail "Generated appcast does not contain expected enclosure length."
-/usr/bin/grep -F "sparkle:version=\"$build\"" "$generated_appcast" >/dev/null || fail "Generated appcast does not contain expected build."
-/usr/bin/grep -F "$version" "$generated_appcast" >/dev/null || fail "Generated appcast does not contain expected version."
+if ! /usr/bin/grep -F "sparkle:version=\"$build\"" "$generated_appcast" >/dev/null &&
+   ! /usr/bin/grep -F "<sparkle:version>$build</sparkle:version>" "$generated_appcast" >/dev/null; then
+  fail "Generated appcast does not contain expected build."
+fi
+if ! /usr/bin/grep -F "sparkle:shortVersionString=\"$version\"" "$generated_appcast" >/dev/null &&
+   ! /usr/bin/grep -F "<sparkle:shortVersionString>$version</sparkle:shortVersionString>" "$generated_appcast" >/dev/null &&
+   ! /usr/bin/grep -F "<title>$version</title>" "$generated_appcast" >/dev/null; then
+  fail "Generated appcast does not contain expected version."
+fi
+if /usr/bin/grep -F "file://" "$generated_appcast" >/dev/null ||
+   /usr/bin/grep -E -i "private key|begin .*key|edprivate|secret" "$generated_appcast" >/dev/null ||
+   /usr/bin/grep -E -i "placeholder|example\\.com|localhost" "$generated_appcast" >/dev/null; then
+  fail "Generated appcast contains local paths, private material, or placeholders."
+fi
 
 /bin/cp "$generated_appcast" "$output_path"
 echo "appcast written = $output_path"
