@@ -1,16 +1,16 @@
 # Sparkle Appcast Release Workflow
 
-This document defines the safe future workflow for publishing HoverClick's Sparkle appcast at:
+This document defines the safe workflow for publishing HoverClick's Sparkle appcast at:
 
 ```text
 https://gergoterek.github.io/HoverClick/appcast.xml
 ```
 
-This branch does not create a v0.8.0 release. It does not create a tag, GitHub Release, DMG, appcast entry, upload, version/build bump, signing change, or runtime change.
+The v0.8.0 release uses this workflow to keep source release prep, GitHub Release assets, and `gh-pages` appcast publication separate.
 
 ## Hosting Strategy
 
-Recommended strategy: publish `appcast.xml` from a dedicated `gh-pages` branch at the repository root.
+Strategy: publish `appcast.xml` from a dedicated `gh-pages` branch at the repository root.
 
 Reasons:
 
@@ -25,11 +25,11 @@ Other options considered:
 - GitHub Pages from `docs/`: possible, but not recommended because project documentation and the public updater feed have different lifecycles.
 - Manual static HTTPS hosting: safe if configured carefully, but it adds infrastructure outside the repository.
 
-Unresolved assumption: the repository does not contain tracked GitHub Pages settings, so this branch cannot prove whether Pages is currently configured for `gh-pages`, `main`, or `docs/`. Do not commit a real `appcast.xml` location until the GitHub Pages source is confirmed in the repository settings.
+GitHub Pages is configured from the `gh-pages` branch root for `https://gergoterek.github.io/HoverClick/`.
 
 ## Current v0.8.0 State
 
-Current `main` contains unreleased v0.8.0 work:
+v0.8.0 contains:
 
 - Sparkle Phase 1 manual update MVP.
 - `Check for Updates...` menu item.
@@ -41,17 +41,11 @@ Current `main` contains unreleased v0.8.0 work:
 - First-launch Accessibility onboarding and permission refresh polish.
 - Launch at Login consent-only onboarding.
 
-Not done yet:
-
-- No v0.8.0 tag.
-- No v0.8.0 DMG.
-- No v0.8.0 GitHub Release.
-- No version/build bump for v0.8.0.
-- No published appcast.
+Release publishing uses tag `v0.8.0`, DMG asset `HoverClick-0.8.0.dmg`, and a GitHub Pages appcast item for version `0.8.0` / build `37`.
 
 ## Preflight Tool
 
-Use the non-publishing helper only after a real future release DMG and public GitHub Release asset URL exist:
+Use the non-publishing helper only after a real release DMG and public GitHub Release asset URL exist:
 
 ```zsh
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/prepare-appcast.sh \

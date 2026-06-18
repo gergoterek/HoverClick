@@ -100,7 +100,7 @@ Intentional shipped behavior or UI changes should bump `CFBundleShortVersionStri
 
 ## Distribution Packaging
 
-HoverClick is distributed from GitHub. The latest fully validated public release is v0.6.0 / build 35.
+HoverClick is distributed from GitHub. The latest release is v0.8.0 / build 37.
 
 `scripts/package-dmg.sh` remains an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a release-publishing path by itself.
 
@@ -118,9 +118,11 @@ v0.4.7 / build 33 is a previous public release superseded by v0.5.0. Its scope w
 
 v0.5.0 / build 34 added the branded app icon workflow without runtime behavior changes. `CFBundleIconFile` points to `HoverClick.icns`; `scripts/build-app.sh` copies `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/` and re-signs with the same Apple Development identity after the resource copy; `scripts/verify-app.sh` verifies the icon declaration and bundled resource. Release prep, tagging, and GitHub release creation require explicit release-scope confirmation.
 
-v0.6.0 / build 35 is the latest fully validated public release. Its scope is packaging and DMG presentation polish: the internal DMG stages `HoverClick.app`, includes an `Applications` symlink, uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns` separate from the app icon, verifies the custom mounted-volume icon metadata, and verifies mounted-DMG app metadata and signing from command-line tooling. It does not promise a custom pre-mount `.dmg` file icon, and it does not change runtime click-focus behavior, the event tap mask, Accessibility behavior, app identity, bundle identifier, or signing identity.
+v0.6.0 / build 35 is a previous packaging and DMG presentation polish release. Its scope was internal DMG staging of `HoverClick.app`, an `Applications` symlink, `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns` separate from the app icon, custom mounted-volume icon metadata verification, and mounted-DMG app metadata and signing verification from command-line tooling. It did not promise a custom pre-mount `.dmg` file icon, and it did not change runtime click-focus behavior, the event tap mask, Accessibility behavior, app identity, bundle identifier, or signing identity.
 
-v0.7.0 / build 36 is the current release candidate. Its scope is Right Click Focus diagnostics/stability hardening, long-run click-focus diagnostics, and the narrow Window Server pointer-like overlay pass-through fix. It does not include Key Focus / Caps Lock Focus, a Hover Click Assist implementation, Click-Time Hover Assist, Excluded Apps, Scroll Focus, Finder selection hacks, synthetic clicks, event replay, cursor movement, or expanded event handling.
+v0.7.0 / build 36 is superseded by v0.8.0. Its scope was Right Click Focus diagnostics/stability hardening, long-run click-focus diagnostics, and the narrow Window Server pointer-like overlay pass-through fix. It did not include Key Focus / Caps Lock Focus, a Hover Click Assist implementation, Click-Time Hover Assist, Excluded Apps, Scroll Focus, Finder selection hacks, synthetic clicks, event replay, cursor movement, or expanded event handling.
+
+v0.8.0 / build 37 is the current release. Its scope is Sparkle 2.9.3 manual `Check for Updates...`, GitHub Pages appcast publication, first-launch Accessibility onboarding, permission-gated controls, `Check Again` / `Refresh Permission Status`, runtime Accessibility revocation fail-open behavior, Launch at Login consent onboarding, and Google Docs / Chrome click-through diagnostics. Automatic Sparkle checks and background automatic install remain disabled. It does not change the event tap mask, synthesize clicks, replay events, move the cursor, change app identity, change the bundle identifier, or change the signing identity.
 
 ## Trigger Scope
 

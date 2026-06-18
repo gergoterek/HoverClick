@@ -14,7 +14,7 @@ Stable signing matters because macOS uses the app identity when deciding whether
 
 Always launch HoverClick as the signed `HoverClick.app` bundle. Do not launch `HoverClick.app/Contents/MacOS/HoverClick` directly, because the raw binary launch path can confuse identity, permission, and diagnostics.
 
-For the v0.7.0 release candidate, app identity remains unchanged: app name `HoverClick`, bundle identifier `com.gergoterek.HoverClick`, and signing identity `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`. Release prep does not change Accessibility scope, event-tap behavior, or click-focus runtime behavior.
+For the v0.8.0 release, app identity remains unchanged: app name `HoverClick`, bundle identifier `com.gergoterek.HoverClick`, and signing identity `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`. Release prep does not change Accessibility scope, event-tap behavior, or click-focus runtime behavior.
 
 ## First-Launch Setup
 

@@ -11,7 +11,8 @@ The original click event is passed through unchanged: no synthetic clicks, no cu
 - `Left Click Focus`: stable and enabled by default.
 - `Right Click Focus`: available and disabled by default unless you enable it.
 - `Launch at Login`: starts HoverClick automatically after login when supported by macOS.
-- `Permissions & Startup`: shows Accessibility status, Launch at Login, and an explicit `Open Accessibility Settings` action.
+- `Permissions & Startup`: shows Accessibility status, `Check Again` / `Refresh Permission Status`, Launch at Login, and an explicit `Open Accessibility Settings` action.
+- `Check for Updates...`: runs a manual Sparkle update check against the published appcast.
 - `Diagnostics`: includes `Verbose Diagnostics` and `Copy Diagnostics Summary` for issue reports.
 - `About HoverClick...`: shows version, build, bundle ID, and a short app description.
 
@@ -27,13 +28,15 @@ Always launch HoverClick as `HoverClick.app`, not the raw executable inside the 
 
 ## Download And Install
 
-HoverClick is currently distributed from GitHub. The latest fully validated public release is `v0.6.0` / build `35`.
+HoverClick is currently distributed from GitHub. The latest release is `v0.8.0` / build `37`.
 
 `v0.5.0` adds the branded app icon, bundles `HoverClick.icns` in the signed app, and polishes the build, verify, runtime-refresh, README, and workflow documentation. It does not change runtime click-focus or event-tap behavior.
 
 `v0.6.0` / build `35` adds packaging and DMG presentation polish. It does not change runtime click-focus or event-tap behavior.
 
-`v0.7.0` / build `36` is a release candidate, not a published release yet. It prepares Right Click Focus diagnostics/stability hardening, long-run click-focus diagnostics, and the narrow Window Server pointer-like overlay pass-through fix.
+`v0.7.0` / build `36` is the validated baseline before v0.8.0. It prepared Right Click Focus diagnostics/stability hardening, long-run click-focus diagnostics, and the narrow Window Server pointer-like overlay pass-through fix.
+
+`v0.8.0` / build `37` adds the manual Sparkle `Check for Updates...` MVP, publishes the Sparkle appcast through GitHub Pages, keeps automatic Sparkle checks and background install disabled, adds first-launch Accessibility onboarding and permission-gated controls, refreshes permission state on launch/app activation/status menu open, fails open if Accessibility is revoked at runtime, adds Launch at Login consent onboarding, and expands Google Docs / Chrome click-through diagnostics. It does not add synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, or event tap mask expansion.
 
 You can also build the app locally from source.
 
@@ -45,7 +48,7 @@ After launching HoverClick:
 4. Enable HoverClick in macOS Accessibility privacy settings.
 5. Return to the menu and confirm `Accessibility: Granted`.
 
-If the app still shows `Accessibility: Not Granted`, quit HoverClick and relaunch the signed `HoverClick.app` bundle.
+If the app still shows `Accessibility: Required`, quit HoverClick and relaunch the signed `HoverClick.app` bundle.
 
 ## How To Use
 
@@ -60,8 +63,10 @@ If the app still shows `Accessibility: Not Granted`, quit HoverClick and relaunc
 - `Right Click Focus`: toggles right-click focus behavior.
 - `Hover` > `Hover Click Assist`: experimental placeholder. It is off by default and does not add cursor movement, synthetic clicks, delayed verification, or mouse-move focus.
 - `Permissions & Startup` > `Accessibility`: shows whether macOS has granted Accessibility permission.
+- `Permissions & Startup` > `Check Again` / `Refresh Permission Status`: refreshes Accessibility permission state.
 - `Permissions & Startup` > `Launch at Login`: toggles startup registration where supported.
 - `Permissions & Startup` > `Open Accessibility Settings`: opens the macOS Accessibility privacy pane when clicked.
+- `Check for Updates...`: checks the published Sparkle appcast manually; automatic checks and background install stay disabled.
 - `Diagnostics` > `Verbose Diagnostics`: toggles extra logs.
 - `Diagnostics` > `Copy Diagnostics Summary`: copies runtime permission, startup, feature, event tap, and safety details.
 - `About HoverClick...`: shows HoverClick version, build, bundle ID, and a short description without opening external links.

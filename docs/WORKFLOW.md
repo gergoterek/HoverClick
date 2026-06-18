@@ -11,7 +11,7 @@ Use the signed app build script for local validation:
 
 `scripts/build-app.sh` creates `HoverClick.app`, copies bundled resources such as `Resources/HoverClick.icns` into `HoverClick.app/Contents/Resources/`, and signs the app with the configured Apple Development identity.
 
-For the v0.8.0 Phase 1 updater branch, `Makefile` also downloads the official pinned Sparkle release `Sparkle-2.9.3.tar.xz` from `https://github.com/sparkle-project/Sparkle/releases/download/2.9.3/Sparkle-2.9.3.tar.xz` into the ignored `tmp/sparkle/` cache, verifies SHA-256 `74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6`, extracts `Sparkle.framework`, links it, embeds it in `HoverClick.app/Contents/Frameworks/`, and signs Sparkle's nested helpers plus the app with the existing Apple Development identity.
+For the v0.8.0 updater release, `Makefile` also downloads the official pinned Sparkle release `Sparkle-2.9.3.tar.xz` from `https://github.com/sparkle-project/Sparkle/releases/download/2.9.3/Sparkle-2.9.3.tar.xz` into the ignored `tmp/sparkle/` cache, verifies SHA-256 `74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6`, extracts `Sparkle.framework`, links it, embeds it in `HoverClick.app/Contents/Frameworks/`, and signs Sparkle's nested helpers plus the app with the existing Apple Development identity.
 
 `scripts/verify-app.sh` checks the bundle identifier, icon declaration, bundled icon resource, Sparkle framework embedding/version/linkage/configuration/signing, signing identity, code signature verification, and process count.
 
@@ -104,7 +104,7 @@ Finder window background and icon layout remain future optional polish. They sho
 Phase 1 adds only the manual `Check for Updates...` entry point using Sparkle's standard UI.
 
 - `SUFeedURL` is `https://gergoterek.github.io/HoverClick/appcast.xml`.
-- The appcast is future release infrastructure and may not be live yet.
+- The appcast is published through GitHub Pages at `https://gergoterek.github.io/HoverClick/appcast.xml`.
 - `SUPublicEDKey` is `093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=`.
 - The private EdDSA key is in the user's login Keychain under Sparkle account `com.gergoterek.HoverClick`; do not export it into the repository.
 - Automatic checks and background automatic updates stay disabled by `SUEnableAutomaticChecks = false`, `SUAutomaticallyUpdate = false`, and `SUAllowsAutomaticUpdates = false`.
@@ -113,13 +113,13 @@ Phase 1 adds only the manual `Check for Updates...` entry point using Sparkle's 
 
 ## Sparkle Appcast Release Workflow
 
-Phase 2 appcast planning is documented in `docs/APPCAST_RELEASE_WORKFLOW.md`.
+The appcast release workflow is documented in `docs/APPCAST_RELEASE_WORKFLOW.md`.
 
 - Recommended hosting: a dedicated `gh-pages` branch serving `appcast.xml` at the repository root for `https://gergoterek.github.io/HoverClick/appcast.xml`.
-- Current unresolved assumption: the tracked repository does not reveal the GitHub Pages source setting. Confirm Pages configuration before committing or publishing a real appcast.
-- `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for future releases. By default it performs a dry run and requires the real DMG path, final public GitHub Release asset URL, version, build, and output path.
+- GitHub Pages is configured from `gh-pages` branch root for the release appcast.
+- `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for releases. By default it performs a dry run and requires the real DMG path, final public GitHub Release asset URL, version, build, and output path.
 - The helper uses pinned Sparkle 2.9.3 tooling from `tmp/sparkle/` and the Keychain account `com.gergoterek.HoverClick`; it must not receive, print, or commit private key material.
-- Do not create or publish `appcast.xml` until a real release DMG, release URL, and Pages location exist.
+- Create or publish `appcast.xml` only after a real release DMG, release URL, and Pages location exist.
 - Do not run `scripts/package-dmg.sh`, create a tag, create a GitHub Release, upload assets, or publish Pages output as part of appcast planning work.
 
 ## Release Scope

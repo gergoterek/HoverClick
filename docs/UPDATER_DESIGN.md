@@ -84,7 +84,7 @@ HoverClick's current app identity is:
 
 The update path must preserve app name, bundle identifier, and signing continuity unless a separate release-signing task explicitly approves a change. Accessibility permission belongs to the signed app bundle identity, so the updater plan must avoid casual changes that could cause macOS to treat the updated app as a different app.
 
-Sparkle's EdDSA update signatures should be mandatory for updater releases. The public key would later live in the app bundle, normally as `SUPublicEDKey` in `Info.plist`. The private key should not live in the repository, app bundle, appcast, release notes, GitHub Release assets, source files, docs, or logs. Prefer storing it in the release machine's Keychain as Sparkle's tooling expects, with any export handled as a separate secret-management decision.
+Sparkle's EdDSA update signatures should be mandatory for updater releases. The public key lives in the app bundle as `SUPublicEDKey` in `Info.plist`. The private key should not live in the repository, app bundle, appcast, release notes, GitHub Release assets, source files, docs, or logs. Prefer storing it in the release machine's Keychain as Sparkle's tooling expects, with any export handled as a separate secret-management decision.
 
 Raw GitHub asset download without Sparkle signature verification is not acceptable. TLS and a release-page checksum are useful distribution signals, but they are not enough for an in-app updater that can replace a local app. The updater must verify that the downloaded archive is an intended HoverClick update before installing it.
 
@@ -189,11 +189,11 @@ Phase 1 implementation note:
 - The pinned archive SHA-256 is `74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6`.
 - `Makefile` downloads that archive into the ignored `tmp/sparkle/` cache, verifies the SHA-256, extracts `Sparkle.framework`, links with `-framework Sparkle`, embeds the framework in `HoverClick.app/Contents/Frameworks/`, and signs Sparkle's nested XPC services, updater app, helper executable, framework, and app with the existing Apple Development identity.
 - `SPUStandardUpdaterController` is kept alive by `HoverClickAppDelegate`, and the top-level `Check for Updates...` menu item targets `checkForUpdates:`.
-- `SUFeedURL` is `https://gergoterek.github.io/HoverClick/appcast.xml`. This is the planned stable GitHub Pages appcast URL; the appcast is still future release-work and may not be live during this implementation branch.
+- `SUFeedURL` is `https://gergoterek.github.io/HoverClick/appcast.xml`. This is the stable GitHub Pages appcast URL for the release feed.
 - `SUPublicEDKey` is `093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=`.
 - The Sparkle EdDSA private key was generated with Sparkle's official `generate_keys --account com.gergoterek.HoverClick` tool and saved in the user's login Keychain. No private key file is stored in the repository.
 - `SUEnableAutomaticChecks`, `SUAutomaticallyUpdate`, and `SUAllowsAutomaticUpdates` are all set to false for the manual-only MVP.
-- This branch does not add appcasts, release assets, tags, GitHub Releases, DMGs, Developer ID/notarization changes, Accessibility/TCC changes, event-tap changes, or package workflow changes.
+- The Phase 1 implementation branch did not add appcasts, release assets, tags, GitHub Releases, DMGs, Developer ID/notarization changes, Accessibility/TCC changes, event-tap changes, or package workflow changes.
 
 Phase 2: appcast and signed update workflow.
 
@@ -205,7 +205,7 @@ Phase 2: appcast and signed update workflow.
 - Publish the DMG as an official GitHub Release asset.
 - Validate manual update from an older updater-enabled build to a newer build.
 
-Phase 2 implementation planning now lives in `docs/APPCAST_RELEASE_WORKFLOW.md`. The recommended hosting strategy is a dedicated `gh-pages` branch serving `appcast.xml` at the repository root, while DMG payloads remain immutable GitHub Release assets. The current repository does not expose GitHub Pages configuration in tracked files, so no real `appcast.xml` is committed until the Pages source is confirmed. `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for a future release; it requires a real DMG, final public DMG URL, version, build, and explicit output path, and it defaults to dry-run mode.
+Phase 2 release publishing lives in `docs/APPCAST_RELEASE_WORKFLOW.md`. The hosting strategy is a dedicated `gh-pages` branch serving `appcast.xml` at the repository root, while DMG payloads remain immutable GitHub Release assets. `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for a release; it requires a real DMG, final public DMG URL, version, build, and explicit output path, and it defaults to dry-run mode.
 
 Phase 3: automatic periodic checks.
 
