@@ -47,6 +47,16 @@ Diagnostics intentionally remain detailed. Logs distinguish click receipt, AX el
 
 Delayed verification is diagnostic-only and runs only after immediate frontmost verification fails. It is scheduled on the main queue after the original event has been left unmodified; it does not sleep in the event tap callback, consume the event, synthesize clicks, replay events, move the cursor, or add hover-assist-like work.
 
+## Chrome / Web Content Click-Through Diagnostics
+
+The Google Docs missed-click investigation adds diagnostics only. The focus path still observes only left and right mouse-down events, resolves the AX target, optionally focuses the target app/window, and returns the original event unchanged.
+
+Copied diagnostics now include a click-through investigation map that separates event tap health, callback observation, target detection, focus attempt, AX operation result, immediate and delayed verification, original-event pass-through, and app/web-content click handling. Recent non-menu decisions also record the source/frontmost app before the click, target bundle ID, whether the target is Chrome, target window title, already-frontmost state, explicit pass-through state, and a conservative browser/web-content note.
+
+Chrome-specific diagnostics are limited to public app and AX information, primarily bundle ID `com.google.Chrome`, AX role/subrole/title, and window title. HoverClick may report a Google Docs or browser-web-content hint when those strings or roles are visible through AX, but it does not inspect Chrome internals, web pages, DOM state, editor state, pointer state, or hover state.
+
+When diagnostics show Chrome target detection, activation and AX operations attempted, immediate or delayed frontmost verification passed, and original-event pass-through, any remaining Google Docs missed click is outside HoverClick's direct observation and is likely app/web-content-level readiness or hover/click handling for the same physical mouse-down. This branch intentionally does not implement a workaround.
+
 ## Phase 3: Hover Focus Removal
 
 The earlier optional Hover Focus experiment has been removed. HoverClick is not an AutoRaise-style app and must not focus, raise, or activate windows merely because the pointer moves over them.

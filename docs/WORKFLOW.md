@@ -51,6 +51,19 @@ For the long-run click-focus investigation batch, manually cover:
 - Extended idle, sleep/wake, or lock-unlock reproduction. If focus stops while mouse-down callbacks still update, copy diagnostics immediately.
 - In the failure snapshot, preserve the recent non-menu mouse-down decision history, aggregate counters, stable last real/background click fields, event tap lifecycle state, last left/right mouse-down timestamps, and background-focus AX/immediate/delayed verification fields.
 
+For the Chrome / Google Docs background click-through investigation, manually cover:
+
+- Finder frontmost to first click in a background Chrome Google Docs document body, then copy diagnostics immediately.
+- Finder frontmost to second click in the same Google Docs target, then copy diagnostics again.
+- Finder frontmost to first click on a Google Docs toolbar or button in background Chrome.
+- Finder frontmost to first click on a normal website link or button in background Chrome.
+- Finder frontmost to first click in the Chrome address bar or toolbar.
+- Finder frontmost to first click on a background Chrome page that is not Google Docs.
+- Repeat with Left Click Focus off if useful to compare native inactive Chrome behavior against HoverClick's focus path.
+- Repeat safe right-click checks with Right Click Focus off and on if useful to confirm right-click diagnostics remain independent.
+- In each snapshot, preserve `Last event tap callback`, last left/right mouse-down timestamps, source/frontmost app before click, target bundle ID, `targetIsChrome`, AX target/window fields, overlay/menu/system skip fields, focus attempt state, app activation, AX operations, immediate and delayed verification, original-event pass-through, permission fail-open fields, and `Last click-through investigation`.
+- Interpret successful focus verification plus original-event pass-through plus missed Google Docs handling as likely app/web-content-level behavior, not as proof of an event tap or focus-path failure.
+
 For the v0.8.0 first-launch permission onboarding batch, manually cover in a safe fresh-user or fresh-install scenario when available:
 
 - Launch the signed `.app` bundle with Accessibility not yet granted.

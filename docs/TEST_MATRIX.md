@@ -120,6 +120,22 @@
 | Multi-monitor negative coordinates | Manual Finder UI validation — not run automatically. Click windows on secondary displays that use negative coordinates, if available. | Logs show raw and converted coordinates, target lookup succeeds, and no Retina pixel conversion is needed. |
 | Focus result is not a false positive | Review logs after a background-window click. | Success is based on target resolution plus action and immediate or delayed frontmost verification logs, not only event observation. |
 
+## Chrome / Google Docs Background Click-Through Investigation
+
+Manual Finder UI validation -- not run automatically.
+
+| Test | Method | Expected Result |
+| --- | --- | --- |
+| Google Docs document body first click | With Finder frontmost and Left Click Focus enabled, click the document body in a background Chrome Google Docs window, then immediately copy diagnostics. | Diagnostics distinguish whether the event tap saw the left mouse-down, Finder was the source/frontmost app before click, Chrome was the target bundle `com.google.Chrome`, target/window AX details resolved, focus attempt started, activation and AX operations were attempted, immediate or delayed frontmost verification passed or failed, the original event was returned unchanged, and whether the remaining miss looks app/web-content-level. |
+| Google Docs document body second click | Without changing the target, click the same Google Docs body target a second time and copy diagnostics again. | Compare with the first snapshot. If the first snapshot shows successful focus/pass-through and the second click is handled by Google Docs, the difference supports a Chrome/Docs readiness or web-content click-handling interpretation rather than a HoverClick event-tap failure. |
+| Google Docs toolbar or button first click | With Finder frontmost, click a visible Google Docs toolbar control in background Chrome and copy diagnostics. | Diagnostics identify whether the target was Chrome, whether AX suggests toolbar/web content, whether the click was skipped by overlay/menu/system classification, whether focus verification passed, and whether the original event passed through unchanged. |
+| Normal website link or button first click | With Finder frontmost, click a normal website link or button in background Chrome and copy diagnostics. | Diagnostics show whether the behavior is general Chrome/web-content click handling or specific to Google Docs. A focus-success plus missed-click result points outside HoverClick's directly observable focus path. |
+| Chrome toolbar or address bar first click | With Finder frontmost, click Chrome toolbar UI or the address bar in background Chrome and copy diagnostics. | Diagnostics show Chrome target bundle/window details and whether AX role/title differs from document web content. A successful toolbar click while Google Docs content misses narrows the issue toward web-app content handling. |
+| Background Chrome non-Google Docs page | With Finder frontmost, click a background Chrome page that is not Google Docs and copy diagnostics. | Diagnostics distinguish Chrome-general behavior from Google Docs-specific behavior using target bundle, AX/window hints, focus verification, pass-through, and final click-through investigation text. |
+| Left Click Focus off comparison | Turn Left Click Focus off, repeat a Finder-to-Chrome click if useful, then copy diagnostics. | HoverClick should record that Left Click Focus was disabled, perform no target focus attempt, and pass the original event unchanged. This separates native Chrome inactive-window behavior from HoverClick's focus path. |
+| Right Click Focus comparisons | With Right Click Focus off and on, repeat safe background Chrome right-click checks if useful. | Right-click diagnostics should remain independent from left-click behavior and should continue to show observation, disabled-setting skips or focus attempts, AX results, verification, and pass-through. |
+| Failure classification | Review first-click and second-click diagnostics side by side. | The snapshots should classify the miss as one of: focus failure, focus success but app/web-content click not handled, overlay/menu/system UI skip, stale permission fail-open, Chrome/Google Docs-specific behavior, or general browser behavior. |
+
 ## Stable Checkpoint Manual Validation
 
 Manual Finder UI validation -- not run automatically.

@@ -13,7 +13,7 @@
 - Latest fully validated public release: `v0.6.0` / build `35`
 - Current release candidate: `v0.7.0` / build `36`
 - Current updater implementation branch: merged to `main`
-- Current implementation branch: `feature-v0.8.0-appcast-release-workflow`
+- Current implementation branch: `investigate-gdocs-background-click-miss`
 - Main/release-prep branch point: `74efddf5fb84939abcb9557b6f00f22d468764e1`
 - Public DMG: `HoverClick-0.6.0.dmg`
 - Public DMG SHA-256: not recorded in this state file
@@ -250,6 +250,14 @@ Protection remains in place for HoverClick menu/status UI, AX menu/status/popove
 ## Experimental Or Placeholder Items
 
 `Hover Click Assist` is an experimental placeholder. It defaults off, is disabled while Left Click Focus is off, and currently performs no synthetic click, cursor movement, replacement event, mouse-move focus behavior, or delayed assist behavior. Delayed verification, when present, belongs only to background-focus diagnostics after an immediate frontmost check fails.
+
+## Chrome / Google Docs Click-Through Investigation State
+
+- The current investigation branch is diagnostics-only for intermittent Finder-to-background-Chrome Google Docs missed clicks.
+- Hover Click Assist remains a no-op placeholder. Enabling it does not move the cursor, post events, replay clicks, delay clicks, refresh hover state, alter mouse-down delivery, or change focus behavior.
+- Copied diagnostics now distinguish event tap health, callback observation, source/frontmost app before click, target bundle ID, whether the target is Google Chrome, AX target/window details, target already-frontmost state, activation attempt, AX operation results, immediate and delayed frontmost verification, original-event pass-through, permission fail-open, overlay/menu/system skips, and a Chrome/web-content observation note.
+- If diagnostics show Chrome target detection plus successful immediate or delayed frontmost verification and `original event returned unchanged`, but Google Docs still missed the first click, the strongest current interpretation is app/web-content-level click handling after activation. HoverClick can verify app focus and pass-through, but it cannot observe Google Docs DOM, editor readiness, or pointer/hover handling directly.
+- This investigation does not implement Click-Time Hover Assist and does not add synthetic clicks, event replay, cursor movement, delayed click delivery, mouse-move focus, scroll focus, mouse-dragged handling, or mouse-up handling.
 
 ## Non-Goals In The Current Build
 

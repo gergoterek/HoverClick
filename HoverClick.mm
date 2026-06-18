@@ -16,6 +16,7 @@
 
 static NSString * const HoverClickBundleID = @"com.gergoterek.HoverClick";
 static NSString * const HoverClickFinderBundleID = @"com.apple.finder";
+static NSString * const HoverClickChromeBundleID = @"com.google.Chrome";
 static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
 static NSString * const HoverClickFallbackBuildVersion = @"unknown";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
@@ -163,6 +164,30 @@ static NSString *HoverClickPointDescription(CGPoint point) {
     return [NSString stringWithFormat:@"x=%.1f y=%.1f", point.x, point.y];
 }
 
+static NSString *HoverClickDiagnosticValue(NSString *value, NSString *fallback) {
+    if (value.length == 0) {
+        return fallback ?: @"unknown";
+    }
+
+    return value;
+}
+
+static NSString *HoverClickTruncatedDiagnosticString(NSString *value, NSUInteger maxLength) {
+    if (value.length == 0 || value.length <= maxLength || maxLength <= 3) {
+        return value ?: @"";
+    }
+
+    return [[value substringToIndex:maxLength - 3] stringByAppendingString:@"..."];
+}
+
+static BOOL HoverClickStringContainsCaseInsensitive(NSString *value, NSString *needle) {
+    if (value.length == 0 || needle.length == 0) {
+        return NO;
+    }
+
+    return [value rangeOfString:needle options:NSCaseInsensitiveSearch].location != NSNotFound;
+}
+
 static NSString *HoverClickMenuItemTitle(NSString *title) {
     // Match the Quit row's state-slot icon spacing for plain, checked, icon, and submenu rows.
     return [HoverClickMenuItemTitlePadding stringByAppendingString:title];
@@ -308,6 +333,18 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
 - (BOOL)isEffectiveHoverClickAssistEnabled;
+- (BOOL)isChromeApplication:(NSRunningApplication *)app;
+- (NSString *)browserContentDiagnosticNoteForTargetApp:(NSRunningApplication *)targetApp
+                                               appName:(NSString *)appName
+                                                  role:(NSString *)role
+                                               subrole:(NSString *)subrole
+                                          elementTitle:(NSString *)elementTitle
+                                            windowRole:(NSString *)windowRole
+                                           windowTitle:(NSString *)windowTitle
+                                           focusStatus:(NSString *)focusStatus;
+- (void)recordClickThroughInvestigationForSequenceID:(uint64_t)sequenceID
+                                         focusStatus:(NSString *)focusStatus
+                                           finalNote:(NSString *)finalNote;
 - (void)showAccessibilityOnboardingIfNeeded;
 - (void)offerLaunchAtLoginOnboardingIfNeeded;
 - (void)showAboutHoverClick:(id)sender;
@@ -378,6 +415,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     NSString *_lastSuccessfulFocusDescription;
     NSString *_lastClickResult;
     NSString *_lastNonMenuClickResult;
+    NSString *_lastClickThroughInvestigationDescription;
     NSString *_lastOverlaySkipReason;
     NSString *_lastOverlayCandidateDescription;
     NSString *_lastEligibleHitTestCandidateDescription;
@@ -497,6 +535,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastSuccessfulFocusDescription = @"never";
     _lastClickResult = @"None";
     _lastNonMenuClickResult = @"None";
+    _lastClickThroughInvestigationDescription = @"none";
     _lastOverlaySkipReason = @"none";
     _lastOverlayCandidateDescription = @"none";
     _lastEligibleHitTestCandidateDescription = @"none";
@@ -1041,11 +1080,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     _lastEventTapCallbackTime = now;
-    _lastEventTapCallbackDescription = [NSString stringWithFormat:@"%@ at %@ (%@, %@)",
+    NSString *returnPolicy = event == NULL ?
+        @"returnPolicy=NULL only because event input is NULL" :
+        @"returnPolicy=original event unchanged for normal left/right mouse-down";
+    _lastEventTapCallbackDescription = [NSString stringWithFormat:@"%@ at %@ (%@, %@, %@)",
                                         HoverClickEventTypeName(type),
                                         HoverClickDiagnosticTimestamp(now),
                                         event == NULL ? @"event=NULL" : @"event=present",
-                                        proxy == NULL ? @"proxy=NULL" : @"proxy=present"];
+                                        proxy == NULL ? @"proxy=NULL" : @"proxy=present",
+                                        returnPolicy];
 
     if (type == kCGEventLeftMouseDown) {
         _totalMouseCallbacksSeen++;
@@ -1073,6 +1116,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (type == kCGEventRightMouseDown) {
         _lastRightClickFocusDecisionDescription = _lastFocusDecisionDescription;
     }
+    _lastClickThroughInvestigationDescription = [NSString stringWithFormat:@"%@ pass-through: Accessibility permission missing; no AX target/focus attempt; original event returned unchanged; swallowed=no",
+                                                                           triggerLabel];
     _lastPermissionMissingPassThroughDescription = [NSString stringWithFormat:@"%@ at %@ count=%llu",
                                                     typeName,
                                                     HoverClickDiagnosticTimestamp(now),
@@ -1174,17 +1219,22 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
-    NSString *summary = [NSString stringWithFormat:@"%@ #%@ at %@ trigger=%@ click=%@ frontmostBefore=%@ AX=%@ eligible=%@ policy=%@ skip=%@ final=%@",
+    NSString *summary = [NSString stringWithFormat:@"%@ #%@ at %@ trigger=%@ click=%@ sourceAppBefore=%@ frontmostBefore=%@ targetBundle=%@ targetIsChrome=%@ AX=%@ eligible=%@ policy=%@ skip=%@ passThrough=%@ browser=%@ final=%@",
                          entry[@"trigger"] ?: @"unknown",
                          entry[@"sequence"] ?: @"0",
                          entry[@"timestamp"] ?: @"unknown",
                          entry[@"trigger"] ?: @"unknown",
                          entry[@"clickLocation"] ?: @"unknown",
+                         entry[@"sourceAppBefore"] ?: @"unknown",
                          entry[@"frontmostBefore"] ?: @"unknown",
+                         entry[@"targetBundleID"] ?: @"unknown",
+                         entry[@"targetIsChrome"] ?: @"unknown",
                          entry[@"axTarget"] ?: @"unknown",
                          entry[@"eligibleCandidate"] ?: @"unknown",
                          entry[@"policyDecision"] ?: @"unknown",
                          entry[@"skipReason"] ?: @"none",
+                         entry[@"eventPassThrough"] ?: @"unknown",
+                         entry[@"browserContentNote"] ?: @"not evaluated",
                          entry[@"finalResult"] ?: @"unknown"];
     _lastRealBackgroundClickDecisionDescription = summary;
     _lastRealBackgroundClickOverlayDescription = entry[@"topmostCGWindow"] ?: @"none";
@@ -1209,6 +1259,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSString *triggerLabel = HoverClickFocusTriggerLabel(trigger);
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     NSRunningApplication *frontApp = [NSWorkspace sharedWorkspace].frontmostApplication;
+    NSString *frontAppDescription = HoverClickRunningApplicationDescription(frontApp);
     NSMutableDictionary<NSString *, NSString *> *entry = [@{
         @"sequence": [NSString stringWithFormat:@"%llu", sequenceID],
         @"timestamp": HoverClickDiagnosticTimestamp(now),
@@ -1216,9 +1267,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         @"clickLocation": [NSString stringWithFormat:@"raw=(%@) ax=(%@)",
                            HoverClickPointDescription(rawPoint),
                            HoverClickPointDescription(axPoint)],
-        @"frontmostBefore": HoverClickRunningApplicationDescription(frontApp),
+        @"sourceAppBefore": frontAppDescription,
+        @"frontmostBefore": frontAppDescription,
         @"topmostCGWindow": @"not captured",
         @"axTarget": @"not resolved",
+        @"targetBundleID": @"not resolved",
+        @"targetIsChrome": @"not resolved",
+        @"targetWindowTitle": @"not resolved",
+        @"targetAlreadyFrontmost": @"not checked",
         @"eligibleCandidate": @"no",
         @"eligibleCandidateDetail": @"none",
         @"policyDecision": @"pending",
@@ -1229,10 +1285,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         @"axOperations": @"not attempted",
         @"immediateVerification": @"not checked",
         @"delayedVerification": @"not scheduled",
+        @"eventPassThrough": @"original event expected to be returned unchanged; swallowed=no",
+        @"browserContentBaseNote": @"not evaluated",
+        @"browserContentNote": @"not evaluated",
         @"finalResult": @"pending",
         @"includedInHistory": @"no"
     } mutableCopy];
     _activeDecisionHistory[@(sequenceID)] = entry;
+    _lastClickThroughInvestigationDescription = [NSString stringWithFormat:@"%@ #%llu event tap saw mouseDown; sourceAppBefore=%@; target detection pending; original event expected to be returned unchanged",
+                                                                           triggerLabel ?: @"unknown",
+                                                                           sequenceID,
+                                                                           frontAppDescription];
 }
 
 - (void)includeRecentDecisionInHistoryForSequenceID:(uint64_t)sequenceID {
@@ -1273,14 +1336,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSMutableArray<NSString *> *lines = [NSMutableArray arrayWithCapacity:_recentDecisionHistory.count];
     for (NSMutableDictionary<NSString *, NSString *> *entry in [_recentDecisionHistory reverseObjectEnumerator]) {
-        NSString *line = [NSString stringWithFormat:@"%@ #%@ at %@ click=%@ frontmostBefore=%@ topmost=[%@] AX=[%@] eligible=%@ policy=%@ skip=%@ overlay/systemUI=%@ compactPopup=%@ focusAttempt=%@ AXOps=[%@] immediate=[%@] delayed=[%@] final=%@",
+        NSString *line = [NSString stringWithFormat:@"%@ #%@ at %@ click=%@ sourceAppBefore=%@ frontmostBefore=%@ topmost=[%@] AX=[%@] targetBundle=%@ targetIsChrome=%@ targetWindowTitle=%@ alreadyFrontmost=%@ eligible=%@ policy=%@ skip=%@ overlay/systemUI=%@ compactPopup=%@ focusAttempt=%@ AXOps=[%@] immediate=[%@] delayed=[%@] passThrough=[%@] browser=[%@] final=%@",
                           entry[@"trigger"] ?: @"unknown",
                           entry[@"sequence"] ?: @"0",
                           entry[@"timestamp"] ?: @"unknown",
                           entry[@"clickLocation"] ?: @"unknown",
+                          entry[@"sourceAppBefore"] ?: @"unknown",
                           entry[@"frontmostBefore"] ?: @"unknown",
                           entry[@"topmostCGWindow"] ?: @"unknown",
                           entry[@"axTarget"] ?: @"unknown",
+                          entry[@"targetBundleID"] ?: @"unknown",
+                          entry[@"targetIsChrome"] ?: @"unknown",
+                          entry[@"targetWindowTitle"] ?: @"unknown",
+                          entry[@"targetAlreadyFrontmost"] ?: @"unknown",
                           entry[@"eligibleCandidate"] ?: @"unknown",
                           entry[@"policyDecision"] ?: @"unknown",
                           entry[@"skipReason"] ?: @"none",
@@ -1290,6 +1358,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                           entry[@"axOperations"] ?: @"unknown",
                           entry[@"immediateVerification"] ?: @"unknown",
                           entry[@"delayedVerification"] ?: @"unknown",
+                          entry[@"eventPassThrough"] ?: @"unknown",
+                          entry[@"browserContentNote"] ?: @"not evaluated",
                           entry[@"finalResult"] ?: @"unknown"];
         [lines addObject:line];
     }
@@ -1842,6 +1912,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last background focus verification: %@\n"
              "Last background focus failure reason: %@\n"
              "Last verified successful background focus: %@\n"
+             "Click-through investigation map: A event tap health=Event tap requested/object/source/enabled rows; B callback observation=Last event tap callback and mouse-down rows; C target detection=Recent AX/target rows; D focus attempt=Last background focus attempt/focusAttempt rows; E AX result=Last background focus AX operations; F verification=immediate/delayed/result rows; G pass-through=Original event pass-through row; H app/web-content handling=Last click-through investigation row\n"
+             "Original event pass-through: normal left/right mouse-down events return the original event unchanged; swallowed=no; NULL only for null event input\n"
+             "Last click-through investigation: %@\n"
              "Event tap requested: %@\n"
              "Event tap object exists: %@\n"
              "Event tap port valid: %@\n"
@@ -1906,6 +1979,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             _lastBackgroundFocusVerification ?: @"not applicable",
             _lastBackgroundFocusFailureReason ?: @"none",
             lastSuccessfulBackgroundFocus,
+            _lastClickThroughInvestigationDescription ?: @"none",
             _userWantsEventTap ? @"enabled" : @"disabled",
             _eventTap != NULL ? @"yes" : @"no",
             [self eventTapPortValidityDescription],
@@ -2057,6 +2131,81 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return _clickToFocusEnabled && _hoverClickAssistEnabled;
 }
 
+- (BOOL)isChromeApplication:(NSRunningApplication *)app {
+    return [app.bundleIdentifier isEqualToString:HoverClickChromeBundleID];
+}
+
+- (NSString *)browserContentDiagnosticNoteForTargetApp:(NSRunningApplication *)targetApp
+                                               appName:(NSString *)appName
+                                                  role:(NSString *)role
+                                               subrole:(NSString *)subrole
+                                          elementTitle:(NSString *)elementTitle
+                                            windowRole:(NSString *)windowRole
+                                           windowTitle:(NSString *)windowTitle
+                                           focusStatus:(NSString *)focusStatus {
+    NSString *bundleID = targetApp.bundleIdentifier ?: @"unknown";
+    BOOL isChrome = [self isChromeApplication:targetApp];
+    NSString *safeRole = HoverClickDiagnosticValue(role, @"unknown");
+    NSString *safeSubrole = HoverClickDiagnosticValue(subrole, @"none");
+    NSString *safeElementTitle = HoverClickTruncatedDiagnosticString(HoverClickDiagnosticValue(elementTitle, @"untitled"), 120);
+    NSString *safeWindowRole = HoverClickDiagnosticValue(windowRole, @"unknown");
+    NSString *safeWindowTitle = HoverClickTruncatedDiagnosticString(HoverClickDiagnosticValue(windowTitle, @"untitled"), 160);
+    NSString *safeFocusStatus = HoverClickDiagnosticValue(focusStatus, @"not checked");
+
+    if (!isChrome) {
+        return [NSString stringWithFormat:@"targetIsChrome=no bundleID=%@; focusStatus=%@; app/web-content click handling not Chrome-specific",
+                                          bundleID,
+                                          safeFocusStatus];
+    }
+
+    NSString *combinedAXText = [NSString stringWithFormat:@"%@ %@ %@ %@",
+                                safeRole,
+                                safeSubrole,
+                                safeElementTitle,
+                                safeWindowTitle];
+    BOOL googleDocsHint = HoverClickStringContainsCaseInsensitive(combinedAXText, @"Google Docs") ||
+                          HoverClickStringContainsCaseInsensitive(combinedAXText, @"docs.google");
+    BOOL browserWebContentHint = HoverClickStringContainsCaseInsensitive(safeRole, @"web") ||
+                                 HoverClickStringContainsCaseInsensitive(safeSubrole, @"web") ||
+                                 googleDocsHint;
+
+    return [NSString stringWithFormat:@"targetIsChrome=yes bundleID=%@ googleDocsHint=%@ browserWebContentHint=%@ AX role=%@ subrole=%@ elementTitle=%@ windowRole=%@ windowTitle=%@; focusStatus=%@; HoverClick can verify app focus and original-event pass-through, not DOM/web-app click or hover handling",
+                                      bundleID,
+                                      googleDocsHint ? @"yes" : @"no",
+                                      browserWebContentHint ? @"yes" : @"no",
+                                      safeRole,
+                                      safeSubrole,
+                                      safeElementTitle,
+                                      safeWindowRole,
+                                      safeWindowTitle,
+                                      safeFocusStatus];
+}
+
+- (void)recordClickThroughInvestigationForSequenceID:(uint64_t)sequenceID
+                                         focusStatus:(NSString *)focusStatus
+                                           finalNote:(NSString *)finalNote {
+    NSMutableDictionary<NSString *, NSString *> *entry = [self recentDecisionEntryForSequenceID:sequenceID];
+    NSString *browserNote = entry[@"browserContentBaseNote"] ?: entry[@"browserContentNote"] ?: @"not evaluated";
+    NSString *passThrough = entry[@"eventPassThrough"] ?: @"original event returned unchanged; swallowed=no";
+    NSString *targetBundleID = entry[@"targetBundleID"] ?: @"unknown";
+    NSString *targetIsChrome = entry[@"targetIsChrome"] ?: @"unknown";
+    NSString *alreadyFrontmost = entry[@"targetAlreadyFrontmost"] ?: @"unknown";
+    NSString *safeFocusStatus = focusStatus ?: @"not checked";
+
+    NSString *summary = [NSString stringWithFormat:@"sequence=%llu focusStatus=%@ targetBundle=%@ targetIsChrome=%@ targetAlreadyFrontmost=%@ passThrough=%@; %@%@%@",
+                         sequenceID,
+                         safeFocusStatus,
+                         targetBundleID,
+                         targetIsChrome,
+                         alreadyFrontmost,
+                         passThrough,
+                         browserNote,
+                         finalNote.length > 0 ? @"; " : @"",
+                         finalNote.length > 0 ? finalNote : @""];
+    _lastClickThroughInvestigationDescription = summary;
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"browserContentNote" value:summary];
+}
+
 - (void)handleLeftMouseDown:(CGEventRef)event {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     if (now - _lastMouseDownLogTime < 0.02) {
@@ -2084,6 +2233,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:clickID
                                     decision:@"skipped"
                                       detail:@"Left Click Focus disabled; original event passed through unchanged"];
+        [self recordClickThroughInvestigationForSequenceID:clickID
+                                               focusStatus:@"skipped before target detection: Left Click Focus disabled"
+                                                 finalNote:@"original left mouse-down returned unchanged; swallowed=no"];
         [self includeRecentDecisionInHistoryForSequenceID:clickID];
         [self completeRecentDecisionForSequenceID:clickID
                                       finalResult:@"skipped: Left Click Focus disabled"
@@ -2116,6 +2268,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:clickID
                                     decision:@"skipped"
                                       detail:@"AX element not found; original event passed through unchanged"];
+        [self recordClickThroughInvestigationForSequenceID:clickID
+                                               focusStatus:@"target detection failed: AX element not found"
+                                                 finalNote:@"original left mouse-down returned unchanged; swallowed=no"];
         [self includeRecentDecisionInHistoryForSequenceID:clickID];
         [self completeRecentDecisionForSequenceID:clickID
                                       finalResult:@"skipped: AX element not found"
@@ -2156,6 +2311,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:clickID
                                     decision:@"skipped"
                                       detail:@"Right Click Focus disabled; right mouse down observed and original event passed through unchanged"];
+        [self recordClickThroughInvestigationForSequenceID:clickID
+                                               focusStatus:@"skipped before target detection: Right Click Focus disabled"
+                                                 finalNote:@"original right mouse-down returned unchanged; swallowed=no"];
         [self includeRecentDecisionInHistoryForSequenceID:clickID];
         [self completeRecentDecisionForSequenceID:clickID
                                       finalResult:@"skipped: Right Click Focus disabled"
@@ -2189,6 +2347,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:clickID
                                     decision:@"skipped"
                                       detail:@"AX element not found; original event passed through unchanged"];
+        [self recordClickThroughInvestigationForSequenceID:clickID
+                                               focusStatus:@"target detection failed: AX element not found"
+                                                 finalNote:@"original right mouse-down returned unchanged; swallowed=no"];
         [self includeRecentDecisionInHistoryForSequenceID:clickID];
         [self completeRecentDecisionForSequenceID:clickID
                                       finalResult:@"skipped: AX element not found"
@@ -2257,6 +2418,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                     decision:@"skipped"
                                       detail:[NSString stringWithFormat:@"target pid unresolved error=%s; original event passed through unchanged",
                                                                         HoverClickAXErrorName(pidError)]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"target detection failed: target pid unresolved"
+                                                 finalNote:@"original event passed through before focus attempt"];
         [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"skipped: target pid unresolved"
@@ -2272,6 +2436,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:sequenceID
                                     decision:@"skipped"
                                       detail:[NSString stringWithFormat:@"target app unresolved pid=%d; original event passed through unchanged", targetPid]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"target detection failed: target app unresolved"
+                                                 finalNote:@"original event passed through before focus attempt"];
         [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"skipped: target app unresolved"
@@ -2281,14 +2448,35 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     NSString *appName = targetApp.localizedName ?: [NSString stringWithFormat:@"pid %d", targetPid];
+    NSString *targetBundleID = targetApp.bundleIdentifier ?: @"unknown";
+    BOOL targetIsChrome = [self isChromeApplication:targetApp];
     HoverClickLog("HoverClick: %s #%llu target pid=%d app=%s", trigger, sequenceID, targetPid, appName.UTF8String);
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"targetBundleID" value:targetBundleID];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"targetIsChrome" value:targetIsChrome ? @"yes" : @"no"];
+    [self updateRecentDecisionForSequenceID:sequenceID
+                                        key:@"eventPassThrough"
+                                      value:@"original event returned unchanged by callback; swallowed=no"];
     [self updateRecentDecisionForSequenceID:sequenceID
                                         key:@"axTarget"
-                                      value:[NSString stringWithFormat:@"app=%@ pid=%d elementRole=%@ elementSubrole=%@",
+                                      value:[NSString stringWithFormat:@"app=%@ pid=%d bundleID=%@ elementRole=%@ elementSubrole=%@",
                                              appName,
                                              targetPid,
+                                             targetBundleID,
                                              role,
                                              subrole.length > 0 ? subrole : @"none"]];
+    NSString *initialBrowserNote = [self browserContentDiagnosticNoteForTargetApp:targetApp
+                                                                          appName:appName
+                                                                             role:role
+                                                                          subrole:subrole
+                                                                     elementTitle:elementTitle
+                                                                       windowRole:@"not resolved"
+                                                                      windowTitle:@"not resolved"
+                                                                      focusStatus:@"target app resolved; target window pending"];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"browserContentBaseNote" value:initialBrowserNote];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"browserContentNote" value:initialBrowserNote];
+    [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                           focusStatus:@"target app resolved; target window pending"
+                                             finalNote:nil];
 
     if (targetPid == getpid()) {
         [self recordOverlaySkipWithReason:@"HoverClick status/menu UI"
@@ -2302,6 +2490,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   sequenceID:sequenceID
                                     decision:@"skipped"
                                       detail:@"HoverClick status/menu UI; original event passed through unchanged"];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"skipped before focus attempt: HoverClick status/menu UI"
+                                                 finalNote:@"original event passed through unchanged"];
         [self recordMenuStatusDecisionForSequenceID:sequenceID
                                         finalResult:@"skipped: HoverClick status/menu UI"];
         [self setLastClickResult:@"Ignored Own App"];
@@ -2327,6 +2518,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                                         role,
                                                                         subrole.length > 0 ? subrole : @"none",
                                                                         appName]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"skipped before focus attempt: menu/status/system UI role"
+                                                 finalNote:@"overlay/menu/system UI classification passed the original event through"];
         [self recordMenuStatusDecisionForSequenceID:sequenceID
                                         finalResult:@"skipped: menu/status/system UI role"];
         [self setLastClickResult:@"Ignored Menu/UI"];
@@ -2355,6 +2549,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                     decision:@"skipped"
                                       detail:[NSString stringWithFormat:@"%@; original event passed through before focus attempt",
                                                                         nonNormalSkipReason]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"skipped before focus attempt: non-normal top window"
+                                                 finalNote:nonNormalSkipReason];
         [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:[NSString stringWithFormat:@"skipped: %@", nonNormalSkipReason]
@@ -2374,6 +2571,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSRunningApplication *frontApp = [NSWorkspace sharedWorkspace].frontmostApplication;
     BOOL targetIsFrontmost = frontApp != nil && frontApp.processIdentifier == targetPid;
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"targetAlreadyFrontmost" value:targetIsFrontmost ? @"yes" : @"no"];
     if (targetIsFrontmost) {
         BOOL afterRecentRightClickFocus = (strcmp(trigger, "click") == 0 &&
                                            _lastRightClickFocusPid == targetPid &&
@@ -2391,6 +2589,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                                         appName,
                                                                         targetPid,
                                                                         afterRecentRightClickFocus ? @"yes" : @"no"]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"target already frontmost; no background focus attempt needed"
+                                                 finalNote:@"if Chrome or Google Docs missed the click here, HoverClick only observed pass-through and cannot observe DOM/web-app handling"];
         [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"skipped: target already frontmost"
@@ -2408,6 +2609,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                       detail:[NSString stringWithFormat:@"AX window not found for app=%@ pid=%d; original event passed through unchanged",
                                                                         appName,
                                                                         targetPid]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"target detection failed: AX window not found"
+                                                 finalNote:@"original event passed through before focus attempt"];
         [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"skipped: AX window not found"
@@ -2419,6 +2623,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSString *windowRole = [self stringAttribute:kAXRoleAttribute fromElement:targetWindow] ?: @"unknown";
     NSString *windowTitle = [self stringAttribute:kAXTitleAttribute fromElement:targetWindow] ?: @"";
     HoverClickLog("HoverClick: %s #%llu target window role=%s title=%s", trigger, sequenceID, windowRole.UTF8String, windowTitle.UTF8String);
+    [self updateRecentDecisionForSequenceID:sequenceID
+                                        key:@"targetWindowTitle"
+                                      value:HoverClickTruncatedDiagnosticString(HoverClickDiagnosticValue(windowTitle, @"untitled"), 160)];
+    NSString *resolvedBrowserNote = [self browserContentDiagnosticNoteForTargetApp:targetApp
+                                                                           appName:appName
+                                                                              role:role
+                                                                           subrole:subrole
+                                                                      elementTitle:elementTitle
+                                                                        windowRole:windowRole
+                                                                       windowTitle:windowTitle
+                                                                       focusStatus:@"target window resolved; policy checks pending"];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"browserContentBaseNote" value:resolvedBrowserNote];
+    [self updateRecentDecisionForSequenceID:sequenceID key:@"browserContentNote" value:resolvedBrowserNote];
 
     if ([self shouldIgnoreWindowRole:windowRole targetPid:targetPid]) {
         [self recordOverlaySkipWithReason:@"AX window role is transient UI for the current front app"
@@ -2434,6 +2651,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                       detail:[NSString stringWithFormat:@"transient window role=%@ app=%@; original event passed through unchanged",
                                                                         windowRole,
                                                                         appName]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"skipped before focus attempt: transient window role"
+                                                 finalNote:@"overlay/menu/system UI classification passed the original event through"];
         [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"skipped: transient window role"
@@ -2458,9 +2678,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                       value:_lastEligibleHitTestCandidateDescription];
     [self updateRecentDecisionForSequenceID:sequenceID
                                         key:@"axTarget"
-                                      value:[NSString stringWithFormat:@"app=%@ pid=%d elementRole=%@ elementSubrole=%@ windowRole=%@ windowTitle=%@",
+                                      value:[NSString stringWithFormat:@"app=%@ pid=%d bundleID=%@ elementRole=%@ elementSubrole=%@ windowRole=%@ windowTitle=%@",
                                              appName,
                                              targetPid,
+                                             targetBundleID,
                                              role,
                                              subrole.length > 0 ? subrole : @"none",
                                              windowRole,
@@ -2473,6 +2694,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                                     appName,
                                                                     targetPid,
                                                                     windowRole]];
+    [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                           focusStatus:@"eligible target resolved; starting background focus attempt"
+                                             finalNote:nil];
 
     [self focusTargetApp:targetApp
                      pid:targetPid
@@ -2534,6 +2758,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                               sequenceID:clickID
                                 decision:@"skipped"
                                   detail:@"recent Finder right-click context menu follow-up; original left click passed through before AX lookup"];
+    [self recordClickThroughInvestigationForSequenceID:clickID
+                                           focusStatus:@"skipped before AX lookup: recent Finder right-click context menu follow-up"
+                                             finalNote:@"original left mouse-down returned unchanged; swallowed=no"];
     [self includeRecentDecisionInHistoryForSequenceID:clickID];
     [self completeRecentDecisionForSequenceID:clickID
                                   finalResult:@"skipped: recent Finder right-click context menu follow-up"
@@ -2944,6 +3171,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                             key:@"delayedVerification"
                                           value:[NSString stringWithFormat:@"skipped as stale; currentSequence=%llu",
                                                                          _lastBackgroundFocusSequence]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"delayed verification skipped as stale"
+                                                 finalNote:@"a newer focus attempt replaced this diagnostic context"];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"stale: delayed verification skipped after newer attempt"
                  keepActiveForDelayedVerification:NO];
@@ -2988,6 +3218,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                       appName:appName
                                                           pid:targetPid];
     }
+    [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                           focusStatus:verified ? @"delayed verification passed" : @"delayed verification failed"
+                                             finalNote:verified ? @"focus succeeded; any remaining missed click is likely app/web-content-level and outside HoverClick observation" : @"focus verification failed; investigate focus path before app/web-content handling"];
     [self completeRecentDecisionForSequenceID:sequenceID
                                   finalResult:verified ? @"success: delayed verification passed" : @"failed: delayed verification failed"
              keepActiveForDelayedVerification:NO];
@@ -3029,6 +3262,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                       detail:[NSString stringWithFormat:@"target already frontmost before focus attempt app=%@ pid=%d; original event passed through unchanged",
                                                                         appName,
                                                                         targetPid]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"target already frontmost before focus attempt"
+                                                 finalNote:@"if Chrome or Google Docs missed the click here, HoverClick only observed pass-through and cannot observe DOM/web-app handling"];
         [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"skipped: target already frontmost before focus attempt"
@@ -3053,6 +3289,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                                     frontBeforeDescription]];
     _totalFocusAttempts++;
     [self updateRecentDecisionForSequenceID:sequenceID key:@"focusAttemptStarted" value:@"yes"];
+    [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                           focusStatus:@"background focus attempt started"
+                                             finalNote:nil];
 
     BOOL activateAttempted = targetApp != nil;
     BOOL activateResult = NO;
@@ -3106,6 +3345,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                         HoverClickAXAttemptSummary(mainWindowAttempted, mainWindowError),
                                         HoverClickAXAttemptSummary(focusedAttrAttempted, focusedAttrError)];
     [self updateRecentDecisionForSequenceID:sequenceID key:@"axOperations" value:_lastBackgroundFocusAXOperations];
+    [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                           focusStatus:@"AX operations attempted"
+                                             finalNote:_lastBackgroundFocusAXOperations];
 
     HoverClickLog("HoverClick: %s #%llu AX focusedWindow set %s", trigger, sequenceID, HoverClickAXErrorName(focusedWindowError));
     [self diagnosticLog:"HoverClick: %s #%llu AX mainWindow set %s", trigger, sequenceID, HoverClickAXErrorName(mainWindowError)];
@@ -3140,6 +3382,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                    sequenceID:sequenceID
                                                       appName:appName
                                                           pid:targetPid];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"immediate verification passed"
+                                                 finalNote:@"focus succeeded; any remaining missed click is likely app/web-content-level and outside HoverClick observation"];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"success: immediate verification passed"
                  keepActiveForDelayedVerification:NO];
@@ -3161,6 +3406,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"pending: delayed verification scheduled"
                  keepActiveForDelayedVerification:YES];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"immediate verification failed; delayed verification scheduled"
+                                                 finalNote:verificationFailureReason];
 
         NSDictionary *verificationContext = @{
             @"sequenceID": @(sequenceID),
