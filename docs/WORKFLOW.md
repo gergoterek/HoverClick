@@ -164,6 +164,28 @@ Implement v0.9.0 as the updater-completion and 1.0-readiness batch.
 
 Implementation validation should include `git diff --check`, `scripts/ci-safety-check.sh`, `scripts/build-app.sh`, `scripts/verify-app.sh`, `scripts/run-app.sh`, and a final `scripts/verify-app.sh`. `scripts/run-app.sh` is the approved signed `.app` runtime refresh for this branch; do not run the raw binary directly.
 
+## v1.0 Readiness Planning
+
+Use `docs/V1.0_READINESS_PLAN.md` as the scope reference for the v1.0 readiness phase.
+
+v1.0 should be a conservative polish/readiness release:
+
+- keep runtime click-focus behavior unchanged;
+- keep the event tap mask limited to left and right mouse down;
+- keep manual `Check for Updates...`;
+- keep optional automatic checks user-controlled and default off;
+- keep automatic download/install disabled;
+- keep Hover Click Assist, Click-Time Hover Assist, Scroll Focus, Key Focus, Excluded Apps, Finder selection hacks, background drag fixes, synthetic clicks, event replay, delayed click delivery, and cursor movement out of v1.0.
+
+Docs-only v1.0 planning validation should use:
+
+```zsh
+git diff --check
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/ci-safety-check.sh
+```
+
+Do not run build, verify, runtime refresh, package, appcast publication, tag, or release commands for docs-only planning. Manual Finder UI validation remains optional and must not be automated.
+
 ## Release Scope
 
 Release prep, DMG packaging, tags, and GitHub releases require explicit release-scope confirmation. `scripts/run-app.sh` is for local runtime refresh after build and verify, not for packaging or publishing.

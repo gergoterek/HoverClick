@@ -15,10 +15,12 @@
 - Current updater implementation branch: merged to `main`
 - Current v0.9.0 planning branch: `design-v0.9.0-updater-completion-plan`
 - Current v0.9.0 planning doc: `docs/V0.9.0_UPDATER_COMPLETION_PLAN.md`
+- Current v1.0 readiness planning branch: `design-v1.0-readiness-plan`
+- Current v1.0 readiness planning doc: `docs/V1.0_READINESS_PLAN.md`
 - Current implementation branch: `feature-v0.9.0-updater-completion`
 - Main/release-prep branch point: `b35cd70e9f147f992dc6cade0e225d143c70c7b8`
 - Public DMG: `HoverClick-0.9.0.dmg`
-- Public DMG SHA-256: recorded during the v0.9.0 release workflow after packaging
+- Public DMG SHA-256: `ef4bda4ceb762189647170de87b6bc712c226440b0e9628f5629b67857cd5b4c`
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
 - Generated bundle icon: `Resources/HoverClick.icns`
 - DMG volume icon source asset: `assets/HoverClickDMGVolumeIcon.png`
@@ -67,6 +69,7 @@
 ## Current Appcast Workflow State
 
 - v0.9.0 release publishing uses tag `v0.9.0`, DMG asset `HoverClick-0.9.0.dmg`, and a GitHub Pages appcast item for version `0.9.0` / build `38`.
+- The live appcast has been verified for version `0.9.0` / build `38`, the exact GitHub Release DMG URL, and Sparkle signature/enclosure metadata.
 - GitHub Pages is configured from the `gh-pages` branch root.
 - Recommended hosting strategy: use a dedicated `gh-pages` branch with `appcast.xml` at the branch root so `https://gergoterek.github.io/HoverClick/appcast.xml` is stable while DMG payloads remain GitHub Release assets.
 - `docs/APPCAST_RELEASE_WORKFLOW.md` records the release workflow, hosting strategy, appcast safety gates, and stop conditions.
@@ -75,6 +78,7 @@
 ## v0.9.0 Updater Completion State
 
 - v0.9.0 is implemented as `Complete Updater & 1.0 Readiness` on `feature-v0.9.0-updater-completion`.
+- v0.9.0 / build 38 is the current public release baseline for v1.0 readiness planning.
 - Release prep sets `CFBundleShortVersionString = 0.9.0` and `CFBundleVersion = 38`.
 - The v0.9.0 updater UX is conservative: keep manual `Check for Updates...`, add explicit user-controlled automatic checks, and keep silent/background install disabled.
 - Do not set unconditional automatic update checks as the default.
@@ -85,6 +89,15 @@
 - Hover Click Assist is out of scope for v0.9.0. The user-facing `Hover > Hover Click Assist` placeholder is removed from the menu and diagnostics instead of becoming a real feature.
 - No real Hover Click Assist, Click-Time Hover Assist, or hover/event semantics feature is implemented.
 - Release, tag, DMG, appcast publication, and GitHub Release work are performed only by the explicit v0.9.0 release workflow after release-prep validation and merge.
+
+## v1.0 Readiness Planning State
+
+- v1.0 should be a stable, shippable, low-surprise release.
+- The current recommendation is to treat v1.0 as a conservative polish/readiness release, not a feature-heavy release.
+- The v1.0 readiness plan is `docs/V1.0_READINESS_PLAN.md`.
+- Known hard blockers found during planning: none.
+- Remaining v1.0 work should focus on manual validation, README/GitHub/user-facing wording polish, diagnostics sanity review, update-path validation planning, Accessibility fresh-flow checklist planning, and release wording.
+- Risky event/input features remain deferred until after v1.0 unless the user explicitly reprioritizes them on a separate branch.
 
 ## Current Permission Onboarding State
 
