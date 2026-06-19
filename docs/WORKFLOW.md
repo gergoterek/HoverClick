@@ -15,7 +15,7 @@ For the v0.8.0 updater release, `Makefile` also downloads the official pinned Sp
 
 `scripts/verify-app.sh` checks the bundle identifier, icon declaration, bundled icon resource, Sparkle framework embedding/version/linkage/configuration/signing, signing identity, code signature verification, and process count.
 
-For the v0.9.0 updater-completion branch, validation should include:
+For release-prep branches that bump version/build metadata, validation should include:
 
 ```sh
 git diff --check
@@ -26,7 +26,7 @@ git diff --check
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/verify-app.sh
 ```
 
-Do not run `scripts/package-dmg.sh` for updater-completion implementation work.
+Do not run `scripts/package-dmg.sh` for updater-completion implementation work. For an explicit release workflow, run packaging only after release prep is merged to `main`, post-merge validation passes, and `main` has been pushed.
 
 ## Runtime Refresh
 
@@ -147,7 +147,7 @@ The appcast release workflow is documented in `docs/APPCAST_RELEASE_WORKFLOW.md`
 - `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for releases. By default it performs a dry run and requires the real DMG path, final public GitHub Release asset URL, version, build, and output path.
 - The helper uses pinned Sparkle 2.9.3 tooling from `tmp/sparkle/` and the Keychain account `com.gergoterek.HoverClick`; it must not receive, print, or commit private key material.
 - Create or publish `appcast.xml` only after a real release DMG, release URL, and Pages location exist.
-- For v0.9.0, the public DMG is `HoverClick-0.9.0.dmg`, the final release URL is `https://github.com/gergoterek/HoverClick/releases/download/v0.9.0/HoverClick-0.9.0.dmg`, and the appcast item must use version `0.9.0` / build `38`.
+- For v1.0.0, the public DMG is `HoverClick-1.0.0.dmg`, the final release URL is `https://github.com/gergoterek/HoverClick/releases/download/v1.0.0/HoverClick-1.0.0.dmg`, and the appcast item must use version `1.0.0` / build `39`.
 - Do not run `scripts/package-dmg.sh`, create a tag, create a GitHub Release, upload assets, or publish Pages output as part of appcast planning work.
 
 ## v0.9.0 Updater Completion Workflow
@@ -194,7 +194,7 @@ Manual v1.0 release-readiness validation, when the user intentionally performs i
 
 Release prep, DMG packaging, tags, and GitHub releases require explicit release-scope confirmation. `scripts/run-app.sh` is for local runtime refresh after build and verify, not for packaging or publishing.
 
-After v1.0 readiness polish is reviewed and any needed manual validation is complete, the user must explicitly confirm release scope before version/build bump, tag, GitHub Release, appcast update, `scripts/package-dmg.sh`, release asset upload, or appcast publication work begins.
+After v1.0 readiness polish is reviewed and any needed manual validation is complete, an explicit release workflow may perform the version/build bump, tag, GitHub Release, appcast update, `scripts/package-dmg.sh`, release asset upload, and appcast publication in the required order.
 
 Future releases should preferably be completed in one or two consolidated automation/agent chats when safely possible:
 

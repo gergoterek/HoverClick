@@ -7,21 +7,21 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick` with dynamic `v0.9.0` on the same row
+- Visible menu header: `HoverClick` with dynamic `v1.0.0` on the same row
 - Full version/build UI surface: `About HoverClick...`
-- Bundle short version/build version: `0.9.0` / `38`
+- Bundle short version/build version: `1.0.0` / `39`
 - Latest fully validated baseline before v0.8.0 local DMG validation: `v0.7.0` / build `36`
-- Latest public release: `v0.9.0` / build `38`
+- Latest public release: `v1.0.0` / build `39`
 - Current v1.0 direction: conservative readiness polish, not a risky runtime feature release
 - Current updater implementation branch: merged to `main`
 - Current v0.9.0 planning branch: `design-v0.9.0-updater-completion-plan`
 - Current v0.9.0 planning doc: `docs/V0.9.0_UPDATER_COMPLETION_PLAN.md`
 - Current v1.0 readiness planning branch: `design-v1.0-readiness-plan`
 - Current v1.0 readiness planning doc: `docs/V1.0_READINESS_PLAN.md`
-- Current implementation branch: `feature-v1.0-readiness-polish`
-- Main/origin-main v1.0 readiness baseline: `9fb684878bcbde4981ce503649b69a5590092a9c`
-- Public DMG: `HoverClick-0.9.0.dmg`
-- Public DMG SHA-256: `ef4bda4ceb762189647170de87b6bc712c226440b0e9628f5629b67857cd5b4c`
+- Current release-prep branch: `release-v1.0.0-prep`
+- Main/origin-main v1.0 release baseline: `446478237ca32cfb1a4316f9f6f2931c6e56946f`
+- Public DMG: `HoverClick-1.0.0.dmg`
+- Public DMG SHA-256: computed during the v1.0.0 release workflow after `HoverClick-1.0.0.dmg` is packaged.
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
 - Generated bundle icon: `Resources/HoverClick.icns`
 - DMG volume icon source asset: `assets/HoverClickDMGVolumeIcon.png`
@@ -38,15 +38,16 @@
 
 ## Current Distribution
 
-- HoverClick is distributed from GitHub. The latest public release is `v0.9.0` / build `38`.
-- The current public release DMG is `HoverClick-0.9.0.dmg`.
+- HoverClick is distributed from GitHub. The latest public release is `v1.0.0` / build `39`.
+- The current public release DMG is `HoverClick-1.0.0.dmg`.
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a release-publishing path by itself.
 - The post-v0.5.0 DMG packaging polish batch stages `HoverClick.app`, adds an `Applications` symlink, uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns`, sets and verifies the custom DMG volume icon flag with command-line tooling, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for non-GUI verification.
 - v0.7.0 / build 36 is superseded by v0.8.0 / build 37.
 - v0.8.0 / build 37 is the previous public release before v0.9.0.
-- v0.9.0 / build 38 is the latest public release and the baseline for v1.0 readiness.
-- The v0.9.0 DMG and appcast are published and manually validated.
+- v0.9.0 / build 38 is the previous public release before v1.0.0.
+- v1.0.0 / build 39 is the stable public 1.0 release.
+- The v0.9.0 DMG and appcast were published and manually validated.
 - DMG Finder window background and icon layout are not automated. They remain future optional polish unless a deterministic non-GUI implementation is proven safe.
 - There is no Mac App Store release or signed `.pkg` installer.
 
@@ -70,9 +71,9 @@
 
 ## Current Appcast Workflow State
 
-- v0.9.0 release publishing uses tag `v0.9.0`, DMG asset `HoverClick-0.9.0.dmg`, and a GitHub Pages appcast item for version `0.9.0` / build `38`.
-- The live appcast has been verified for version `0.9.0` / build `38`, the exact GitHub Release DMG URL, and Sparkle signature/enclosure metadata.
-- The v0.9.0 public DMG and appcast have been manually validated and are the current released updater baseline.
+- v1.0.0 release publishing uses tag `v1.0.0`, DMG asset `HoverClick-1.0.0.dmg`, and a GitHub Pages appcast item for version `1.0.0` / build `39`.
+- The live appcast is verified during the v1.0.0 release workflow for version `1.0.0` / build `39`, the exact GitHub Release DMG URL, and Sparkle signature/enclosure metadata.
+- The v1.0.0 public DMG and appcast are the current released updater baseline after release workflow publication.
 - GitHub Pages is configured from the `gh-pages` branch root.
 - Recommended hosting strategy: use a dedicated `gh-pages` branch with `appcast.xml` at the branch root so `https://gergoterek.github.io/HoverClick/appcast.xml` is stable while DMG payloads remain GitHub Release assets.
 - `docs/APPCAST_RELEASE_WORKFLOW.md` records the release workflow, hosting strategy, appcast safety gates, and stop conditions.
@@ -81,7 +82,7 @@
 ## v0.9.0 Updater Completion State
 
 - v0.9.0 is implemented as `Complete Updater & 1.0 Readiness` on `feature-v0.9.0-updater-completion`.
-- v0.9.0 / build 38 is the current public release baseline for v1.0 readiness planning.
+- v0.9.0 / build 38 was the public release baseline for v1.0 readiness planning.
 - Release prep sets `CFBundleShortVersionString = 0.9.0` and `CFBundleVersion = 38`.
 - The v0.9.0 updater UX is conservative: keep manual `Check for Updates...`, add explicit user-controlled automatic checks, and keep silent/background install disabled.
 - Do not set unconditional automatic update checks as the default.
@@ -92,6 +93,14 @@
 - Hover Click Assist is out of scope for v0.9.0. The user-facing `Hover > Hover Click Assist` placeholder is removed from the menu and diagnostics instead of becoming a real feature.
 - No real Hover Click Assist, Click-Time Hover Assist, or hover/event semantics feature is implemented.
 - Release, tag, DMG, appcast publication, and GitHub Release work are performed only by the explicit v0.9.0 release workflow after release-prep validation and merge.
+
+## v1.0.0 Release State
+
+- v1.0.0 / build 39 is the stable 1.0 release target prepared on `release-v1.0.0-prep`.
+- Release prep sets `CFBundleShortVersionString = 1.0.0` and `CFBundleVersion = 39`.
+- The v1.0.0 release preserves v0.9.0 runtime, updater, Accessibility, diagnostics, event-tap, app identity, signing identity, bundle identifier, and Sparkle key behavior.
+- Public release publishing uses tag `v1.0.0`, DMG asset `HoverClick-1.0.0.dmg`, and a GitHub Pages appcast item for version `1.0.0` / build `39`.
+- No Hover Click Assist, Click-Time Hover Assist, Scroll Focus, Key Focus, mouse-move focus, synthetic click, event replay, delayed click delivery, cursor movement, app identity change, bundle identifier change, signing identity change, or Sparkle key change is part of v1.0.0.
 
 ## v1.0 Readiness Planning State
 
@@ -322,7 +331,7 @@ Not included:
 
 ## v0.9.0 Public Release
 
-v0.9.0 / build 38 is the current public release and v1.0 readiness baseline. It keeps the manual Sparkle update path, adds the explicit `Automatically Check for Updates` toggle, keeps automatic checks default off, keeps automatic download/install disabled, and removes the visible Hover Click Assist placeholder from the current product surface.
+v0.9.0 / build 38 is the previous public release and v1.0 readiness baseline. It keeps the manual Sparkle update path, adds the explicit `Automatically Check for Updates` toggle, keeps automatic checks default off, keeps automatic download/install disabled, and removes the visible Hover Click Assist placeholder from the product surface.
 
 Release workflow expectations:
 
@@ -436,13 +445,13 @@ Manual Finder UI validation -- not run automatically.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.6.0` on the same header row after a manual relaunch.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.7.0` on the same header row after a manual relaunch of that release.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.8.0` on the same header row after a manual relaunch.
-- Confirm the status menu shows `HoverClick` and dynamic `v0.9.0` on the same header row after a manual relaunch.
+- Confirm the status menu shows `HoverClick` and dynamic `v1.0.0` on the same header row after a manual relaunch.
 - For v1.0 readiness, confirm the signed `.app` launches, Accessibility permission remains stable, the menu opens and items work, mouse movement over background windows does not focus them, left-click focus works, right-click focus works when enabled and context menus remain normal, `Check for Updates...` works without a 404, `Automatically Check for Updates` persists, no silent/background automatic install occurs, diagnostics copy works and reports updater automatic-check/download/install state, no Hover Click Assist UI remains visible, and event semantics are unchanged.
 - For v0.5.0 icon smoke validation, confirm the built `HoverClick.app` shows the branded app icon in normal macOS icon surfaces after a manual relaunch or install. Manual Finder UI validation -- not run automatically.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
 - Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.
-- Confirm no `Hover` submenu or `Hover Click Assist` placeholder is visible in the current v0.9.0 product surface.
+- Confirm no `Hover` submenu or `Hover Click Assist` placeholder is visible in the current v1.0.0 product surface.
 - Confirm `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.6, Build 32, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.7, Build 33, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
@@ -450,7 +459,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.6.0, Build 35, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.7.0, Build 36, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI for that release.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.8.0, Build 37, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
-- Confirm `About HoverClick...` shows HoverClick, Version 0.9.0, Build 38, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
+- Confirm `About HoverClick...` shows HoverClick, Version 1.0.0, Build 39, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `Copy Diagnostics Summary` uses a copy-style action symbol and does not show a checkmark.
 - Confirm `Open Accessibility Settings` uses its action symbol and exactly 1 ASCII space of title padding.
 - Confirm `Quit` uses one left-slot action symbol, exactly 1 ASCII space of title padding, and preserves Cmd+Q.

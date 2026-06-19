@@ -29,7 +29,7 @@ Always launch HoverClick as `HoverClick.app`, not the raw executable inside the 
 
 ## Download And Install
 
-HoverClick is currently distributed from GitHub. The latest public release is `v0.9.0` / build `38`.
+HoverClick is currently distributed from GitHub. The latest public release is `v1.0.0` / build `39`.
 
 `v0.5.0` adds the branded app icon, bundles `HoverClick.icns` in the signed app, and polishes the build, verify, runtime-refresh, README, and workflow documentation. It does not change runtime click-focus or event-tap behavior.
 
@@ -40,6 +40,8 @@ HoverClick is currently distributed from GitHub. The latest public release is `v
 `v0.8.0` / build `37` adds the manual Sparkle `Check for Updates...` MVP, publishes the Sparkle appcast through GitHub Pages, keeps automatic Sparkle checks and background install disabled, adds first-launch Accessibility onboarding and permission-gated controls, refreshes permission state on launch/app activation/status menu open, fails open if Accessibility is revoked at runtime, adds Launch at Login consent onboarding, and expands Google Docs / Chrome click-through diagnostics. It does not add synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, or event tap mask expansion.
 
 `v0.9.0` / build `38` keeps manual `Check for Updates...`, adds a user-controlled `Automatically Check for Updates` toggle that defaults off, keeps automatic download/install disabled, removes the old no-op Hover Click Assist placeholder from the menu and diagnostics, and publishes the v0.9.0 DMG and appcast. It does not change click/event semantics.
+
+`v1.0.0` / build `39` is the stable 1.0 release. It keeps the v0.9.0 click-focus, updater, Accessibility, diagnostics, and safety behavior unchanged, preserves conservative update settings, and publishes the public `HoverClick-1.0.0.dmg` release asset and appcast item.
 
 You can also build the app locally from source.
 

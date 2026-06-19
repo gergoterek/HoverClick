@@ -100,7 +100,7 @@ Intentional shipped behavior or UI changes should bump `CFBundleShortVersionStri
 
 ## Distribution Packaging
 
-HoverClick is distributed from GitHub. The latest public release is v0.9.0 / build 38, and v1.0 is currently planned as a conservative readiness/polish release rather than a runtime feature release.
+HoverClick is distributed from GitHub. The latest public release is v1.0.0 / build 39, a conservative stable release rather than a runtime feature release.
 
 `scripts/package-dmg.sh` remains an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a release-publishing path by itself.
 
@@ -124,9 +124,9 @@ v0.7.0 / build 36 is superseded by v0.8.0. Its scope was Right Click Focus diagn
 
 v0.8.0 / build 37 is superseded by v0.9.0. Its scope is Sparkle 2.9.3 manual `Check for Updates...`, GitHub Pages appcast publication, first-launch Accessibility onboarding, permission-gated controls, `Check Again` / `Refresh Permission Status`, runtime Accessibility revocation fail-open behavior, Launch at Login consent onboarding, and Google Docs / Chrome click-through diagnostics. Automatic Sparkle checks and background automatic install remain disabled. It does not change the event tap mask, synthesize clicks, replay events, move the cursor, change app identity, change the bundle identifier, or change the signing identity.
 
-v0.9.0 / build 38 is the current public release and v1.0 readiness baseline. Its scope keeps manual `Check for Updates...`, adds a user-controlled `Automatically Check for Updates` toggle that defaults off through `SUEnableAutomaticChecks = false`, keeps automatic download/install disabled through `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`, publishes the public DMG as `HoverClick-0.9.0.dmg`, and updates the GitHub Pages appcast to version `0.9.0` / build `38` only after the GitHub Release asset exists. It removes the visible Hover Click Assist placeholder but does not add hover focus, mouse movement observation, synthetic clicks, event replay, delayed click delivery, cursor movement, scroll focus, app identity changes, bundle identifier changes, signing identity changes, or event tap mask changes.
+v0.9.0 / build 38 is superseded by v1.0.0. Its scope keeps manual `Check for Updates...`, adds a user-controlled `Automatically Check for Updates` toggle that defaults off through `SUEnableAutomaticChecks = false`, keeps automatic download/install disabled through `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`, publishes the public DMG as `HoverClick-0.9.0.dmg`, and updates the GitHub Pages appcast to version `0.9.0` / build `38` only after the GitHub Release asset exists. It removes the visible Hover Click Assist placeholder but does not add hover focus, mouse movement observation, synthetic clicks, event replay, delayed click delivery, cursor movement, scroll focus, app identity changes, bundle identifier changes, signing identity changes, or event tap mask changes.
 
-v1.0 readiness polish is documentation and release-readiness work only unless a later explicit scope says otherwise. It should not change runtime code, event semantics, signing, app identity, version/build metadata, appcast publication, package workflow, tags, or GitHub Release assets.
+v1.0.0 / build 39 is the stable 1.0 release. It preserves the v0.9.0 runtime, updater, Accessibility, diagnostics, event-tap, app identity, signing identity, bundle identifier, and Sparkle key behavior; publishes the public DMG as `HoverClick-1.0.0.dmg`; and updates the GitHub Pages appcast to version `1.0.0` / build `39` only after the GitHub Release asset exists.
 
 ## Trigger Scope
 
