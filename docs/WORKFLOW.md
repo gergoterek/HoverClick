@@ -189,3 +189,12 @@ Do not run build, verify, runtime refresh, package, appcast publication, tag, or
 ## Release Scope
 
 Release prep, DMG packaging, tags, and GitHub releases require explicit release-scope confirmation. `scripts/run-app.sh` is for local runtime refresh after build and verify, not for packaging or publishing.
+
+Future releases should preferably be completed in one or two consolidated automation/agent chats when safely possible:
+
+1. One release-readiness or scope-confirmation prompt if needed.
+2. One combined release workflow prompt covering main preflight, release-prep branch, version/build bump, validation, merge to main, packaging, tag creation, GitHub Release creation, appcast/publish work if relevant, final verification, and final report.
+
+Do not split release prep, merge, package, tag, GitHub Release, and appcast publication into many tiny separate chats unless a failure, ambiguity, or safety stop requires it. Do not combine feature implementation with release work. Consolidate release steps only after the user explicitly confirms that the current batch is enough for release.
+
+Combined release prompts must still include strict stop gates, exact expected HEADs, allowed and disallowed files, validation commands, artifact rules, tag/release existence checks, appcast and private-key safety rules, and complete final report requirements.
