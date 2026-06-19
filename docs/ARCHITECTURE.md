@@ -100,7 +100,7 @@ Intentional shipped behavior or UI changes should bump `CFBundleShortVersionStri
 
 ## Distribution Packaging
 
-HoverClick is distributed from GitHub. The latest release is v0.8.0 / build 37.
+HoverClick is distributed from GitHub. The current release-prep target is v0.9.0 / build 38.
 
 `scripts/package-dmg.sh` remains an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a release-publishing path by itself.
 
@@ -122,7 +122,9 @@ v0.6.0 / build 35 is a previous packaging and DMG presentation polish release. I
 
 v0.7.0 / build 36 is superseded by v0.8.0. Its scope was Right Click Focus diagnostics/stability hardening, long-run click-focus diagnostics, and the narrow Window Server pointer-like overlay pass-through fix. It did not include Key Focus / Caps Lock Focus, a Hover Click Assist implementation, Click-Time Hover Assist, Excluded Apps, Scroll Focus, Finder selection hacks, synthetic clicks, event replay, cursor movement, or expanded event handling.
 
-v0.8.0 / build 37 is the current release. Its scope is Sparkle 2.9.3 manual `Check for Updates...`, GitHub Pages appcast publication, first-launch Accessibility onboarding, permission-gated controls, `Check Again` / `Refresh Permission Status`, runtime Accessibility revocation fail-open behavior, Launch at Login consent onboarding, and Google Docs / Chrome click-through diagnostics. Automatic Sparkle checks and background automatic install remain disabled. It does not change the event tap mask, synthesize clicks, replay events, move the cursor, change app identity, change the bundle identifier, or change the signing identity.
+v0.8.0 / build 37 is the previous public release. Its scope is Sparkle 2.9.3 manual `Check for Updates...`, GitHub Pages appcast publication, first-launch Accessibility onboarding, permission-gated controls, `Check Again` / `Refresh Permission Status`, runtime Accessibility revocation fail-open behavior, Launch at Login consent onboarding, and Google Docs / Chrome click-through diagnostics. Automatic Sparkle checks and background automatic install remain disabled. It does not change the event tap mask, synthesize clicks, replay events, move the cursor, change app identity, change the bundle identifier, or change the signing identity.
+
+v0.9.0 / build 38 is the updater-completion release-prep target. Its scope keeps manual `Check for Updates...`, adds a user-controlled `Automatically Check for Updates` toggle that defaults off through `SUEnableAutomaticChecks = false`, keeps automatic download/install disabled through `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`, publishes the public DMG as `HoverClick-0.9.0.dmg`, and updates the GitHub Pages appcast to version `0.9.0` / build `38` only after the GitHub Release asset exists. It removes the visible Hover Click Assist placeholder but does not add hover focus, mouse movement observation, synthetic clicks, event replay, delayed click delivery, cursor movement, scroll focus, app identity changes, bundle identifier changes, signing identity changes, or event tap mask changes.
 
 ## Trigger Scope
 

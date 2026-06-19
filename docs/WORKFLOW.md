@@ -136,6 +136,7 @@ The v0.9.0 updater-completion branch keeps the manual update action and adds one
 - Toggling automatic checks reasserts `automaticallyDownloadsUpdates = NO`.
 - Copied diagnostics report automatic update checks, automatic download/install, and whether automatic download/install is allowed.
 - No appcast, release, DMG, tag, signing, bundle ID, app name, event tap, or mouse semantics work is part of this branch.
+- Release prep for v0.9.0 sets `CFBundleShortVersionString = 0.9.0` and `CFBundleVersion = 38`; packaging, tag creation, GitHub Release asset upload, and appcast publication remain explicit release workflow steps after merge to `main`.
 
 ## Sparkle Appcast Release Workflow
 
@@ -146,6 +147,7 @@ The appcast release workflow is documented in `docs/APPCAST_RELEASE_WORKFLOW.md`
 - `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for releases. By default it performs a dry run and requires the real DMG path, final public GitHub Release asset URL, version, build, and output path.
 - The helper uses pinned Sparkle 2.9.3 tooling from `tmp/sparkle/` and the Keychain account `com.gergoterek.HoverClick`; it must not receive, print, or commit private key material.
 - Create or publish `appcast.xml` only after a real release DMG, release URL, and Pages location exist.
+- For v0.9.0, the public DMG is `HoverClick-0.9.0.dmg`, the final release URL is `https://github.com/gergoterek/HoverClick/releases/download/v0.9.0/HoverClick-0.9.0.dmg`, and the appcast item must use version `0.9.0` / build `38`.
 - Do not run `scripts/package-dmg.sh`, create a tag, create a GitHub Release, upload assets, or publish Pages output as part of appcast planning work.
 
 ## v0.9.0 Updater Completion Workflow

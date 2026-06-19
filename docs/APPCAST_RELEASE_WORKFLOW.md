@@ -6,7 +6,7 @@ This document defines the safe workflow for publishing HoverClick's Sparkle appc
 https://gergoterek.github.io/HoverClick/appcast.xml
 ```
 
-The v0.8.0 release uses this workflow to keep source release prep, GitHub Release assets, and `gh-pages` appcast publication separate.
+The v0.9.0 release uses this workflow to keep source release prep, GitHub Release assets, and `gh-pages` appcast publication separate.
 
 ## Hosting Strategy
 
@@ -45,7 +45,7 @@ Release publishing uses tag `v0.8.0`, DMG asset `HoverClick-0.8.0.dmg`, and a Gi
 
 ## v0.9.0 Readiness Additions
 
-v0.9.0 should keep this hosting model and strengthen the release gates before v1.0.
+v0.9.0 keeps this hosting model and strengthens the release gates before v1.0.
 
 Required release-workflow properties:
 
@@ -57,6 +57,8 @@ Required release-workflow properties:
 - The Sparkle private key remains in the Keychain and is never passed as a file, committed, printed, or uploaded.
 - Automatic checks may be user-consented in the app, but automatic background download/install remains disabled unless a later explicit release decision changes that.
 - The release workflow must validate an updater-enabled old build to the new build before v1.0 is considered ready.
+- The v0.9.0 public asset is `HoverClick-0.9.0.dmg`.
+- The v0.9.0 appcast item uses version `0.9.0`, build `38`, and `https://github.com/gergoterek/HoverClick/releases/download/v0.9.0/HoverClick-0.9.0.dmg`.
 
 ## Preflight Tool
 
@@ -64,10 +66,10 @@ Use the non-publishing helper only after a real release DMG and public GitHub Re
 
 ```zsh
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/prepare-appcast.sh \
-  --release-dmg /path/to/HoverClick-0.8.0.dmg \
-  --download-url https://github.com/gergoterek/HoverClick/releases/download/v0.8.0/HoverClick-0.8.0.dmg \
-  --version 0.8.0 \
-  --build 37 \
+  --release-dmg /path/to/HoverClick-0.9.0.dmg \
+  --download-url https://github.com/gergoterek/HoverClick/releases/download/v0.9.0/HoverClick-0.9.0.dmg \
+  --version 0.9.0 \
+  --build 38 \
   --output /path/to/gh-pages-checkout/appcast.xml
 ```
 
@@ -77,10 +79,10 @@ To generate a local appcast file after the real release DMG exists:
 
 ```zsh
 /Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/prepare-appcast.sh \
-  --release-dmg /path/to/HoverClick-0.8.0.dmg \
-  --download-url https://github.com/gergoterek/HoverClick/releases/download/v0.8.0/HoverClick-0.8.0.dmg \
-  --version 0.8.0 \
-  --build 37 \
+  --release-dmg /path/to/HoverClick-0.9.0.dmg \
+  --download-url https://github.com/gergoterek/HoverClick/releases/download/v0.9.0/HoverClick-0.9.0.dmg \
+  --version 0.9.0 \
+  --build 38 \
   --output /path/to/gh-pages-checkout/appcast.xml \
   --write
 ```
