@@ -8,6 +8,8 @@ https://gergoterek.github.io/HoverClick/appcast.xml
 
 The v0.9.0 release uses this workflow to keep source release prep, GitHub Release assets, and `gh-pages` appcast publication separate.
 
+For v1.0 readiness polish, this document is reference-only. Readiness polish must not publish or modify `appcast.xml`, run `scripts/package-dmg.sh`, create a tag, create a GitHub Release, upload assets, or change version/build metadata. Those steps require a later explicit release-scope confirmation.
+
 ## Hosting Strategy
 
 Strategy: publish `appcast.xml` from a dedicated `gh-pages` branch at the repository root.
@@ -59,6 +61,17 @@ Required release-workflow properties:
 - The release workflow must validate an updater-enabled old build to the new build before v1.0 is considered ready.
 - The v0.9.0 public asset is `HoverClick-0.9.0.dmg`.
 - The v0.9.0 appcast item uses version `0.9.0`, build `38`, and `https://github.com/gergoterek/HoverClick/releases/download/v0.9.0/HoverClick-0.9.0.dmg`.
+
+## v1.0 Readiness Gates
+
+Before v1.0 release work starts, docs and manual validation should confirm:
+
+- `SUFeedURL` remains `https://gergoterek.github.io/HoverClick/appcast.xml`.
+- `SUPublicEDKey` remains `093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=`.
+- Manual `Check for Updates...` still works against the live appcast and does not produce a 404.
+- `Automatically Check for Updates` persists as a user-controlled automatic-check setting and defaults off.
+- Automatic download/install remains disabled.
+- The appcast publish/update step remains part of explicit release workflow only.
 
 ## Preflight Tool
 

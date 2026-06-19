@@ -177,7 +177,9 @@ v1.0 should be a conservative polish/readiness release:
 - keep automatic download/install disabled;
 - keep Hover Click Assist, Click-Time Hover Assist, Scroll Focus, Key Focus, Excluded Apps, Finder selection hacks, background drag fixes, synthetic clicks, event replay, delayed click delivery, and cursor movement out of v1.0.
 
-Docs-only v1.0 planning validation should use:
+The v1.0 readiness polish branch is not release work. It must not bump version/build, create a tag, create a GitHub Release, run `scripts/package-dmg.sh`, publish or modify `appcast.xml`, upload release assets, or change `Info.plist`, scripts, source, signing, bundle ID, app name, Accessibility/TCC, event tap, or runtime behavior.
+
+Docs-only v1.0 planning and readiness-polish validation should use:
 
 ```zsh
 git diff --check
@@ -186,9 +188,13 @@ git diff --check
 
 Do not run build, verify, runtime refresh, package, appcast publication, tag, or release commands for docs-only planning. Manual Finder UI validation remains optional and must not be automated.
 
+Manual v1.0 release-readiness validation, when the user intentionally performs it, should confirm the signed `.app` launches, Accessibility permission remains stable, menu items work, mouse movement over background windows does not focus them, left-click focus works, right-click focus works when enabled with normal context menus, `Check for Updates...` reaches the live appcast without a 404, `Automatically Check for Updates` persists without enabling automatic download/install, diagnostics report updater automatic-check/download/install state, no Hover Click Assist UI remains, and event semantics remain unchanged.
+
 ## Release Scope
 
 Release prep, DMG packaging, tags, and GitHub releases require explicit release-scope confirmation. `scripts/run-app.sh` is for local runtime refresh after build and verify, not for packaging or publishing.
+
+After v1.0 readiness polish is reviewed and any needed manual validation is complete, the user must explicitly confirm release scope before version/build bump, tag, GitHub Release, appcast update, `scripts/package-dmg.sh`, release asset upload, or appcast publication work begins.
 
 Future releases should preferably be completed in one or two consolidated automation/agent chats when safely possible:
 

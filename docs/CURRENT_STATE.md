@@ -11,14 +11,15 @@
 - Full version/build UI surface: `About HoverClick...`
 - Bundle short version/build version: `0.9.0` / `38`
 - Latest fully validated baseline before v0.8.0 local DMG validation: `v0.7.0` / build `36`
-- Current release-prep target: `v0.9.0` / build `38`
+- Latest public release: `v0.9.0` / build `38`
+- Current v1.0 direction: conservative readiness polish, not a risky runtime feature release
 - Current updater implementation branch: merged to `main`
 - Current v0.9.0 planning branch: `design-v0.9.0-updater-completion-plan`
 - Current v0.9.0 planning doc: `docs/V0.9.0_UPDATER_COMPLETION_PLAN.md`
 - Current v1.0 readiness planning branch: `design-v1.0-readiness-plan`
 - Current v1.0 readiness planning doc: `docs/V1.0_READINESS_PLAN.md`
-- Current implementation branch: `feature-v0.9.0-updater-completion`
-- Main/release-prep branch point: `b35cd70e9f147f992dc6cade0e225d143c70c7b8`
+- Current implementation branch: `feature-v1.0-readiness-polish`
+- Main/origin-main v1.0 readiness baseline: `9fb684878bcbde4981ce503649b69a5590092a9c`
 - Public DMG: `HoverClick-0.9.0.dmg`
 - Public DMG SHA-256: `ef4bda4ceb762189647170de87b6bc712c226440b0e9628f5629b67857cd5b4c`
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
@@ -37,14 +38,15 @@
 
 ## Current Distribution
 
-- HoverClick is distributed from GitHub. The v0.9.0 release-prep target is `0.9.0` / build `38`.
-- The intended public release DMG is `HoverClick-0.9.0.dmg`.
+- HoverClick is distributed from GitHub. The latest public release is `v0.9.0` / build `38`.
+- The current public release DMG is `HoverClick-0.9.0.dmg`.
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a release-publishing path by itself.
 - The post-v0.5.0 DMG packaging polish batch stages `HoverClick.app`, adds an `Applications` symlink, uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns`, sets and verifies the custom DMG volume icon flag with command-line tooling, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for non-GUI verification.
 - v0.7.0 / build 36 is superseded by v0.8.0 / build 37.
 - v0.8.0 / build 37 is the previous public release before v0.9.0.
-- v0.9.0 / build 38 is the current release-prep target.
+- v0.9.0 / build 38 is the latest public release and the baseline for v1.0 readiness.
+- The v0.9.0 DMG and appcast are published and manually validated.
 - DMG Finder window background and icon layout are not automated. They remain future optional polish unless a deterministic non-GUI implementation is proven safe.
 - There is no Mac App Store release or signed `.pkg` installer.
 
@@ -70,6 +72,7 @@
 
 - v0.9.0 release publishing uses tag `v0.9.0`, DMG asset `HoverClick-0.9.0.dmg`, and a GitHub Pages appcast item for version `0.9.0` / build `38`.
 - The live appcast has been verified for version `0.9.0` / build `38`, the exact GitHub Release DMG URL, and Sparkle signature/enclosure metadata.
+- The v0.9.0 public DMG and appcast have been manually validated and are the current released updater baseline.
 - GitHub Pages is configured from the `gh-pages` branch root.
 - Recommended hosting strategy: use a dedicated `gh-pages` branch with `appcast.xml` at the branch root so `https://gergoterek.github.io/HoverClick/appcast.xml` is stable while DMG payloads remain GitHub Release assets.
 - `docs/APPCAST_RELEASE_WORKFLOW.md` records the release workflow, hosting strategy, appcast safety gates, and stop conditions.
@@ -95,8 +98,10 @@
 - v1.0 should be a stable, shippable, low-surprise release.
 - The current recommendation is to treat v1.0 as a conservative polish/readiness release, not a feature-heavy release.
 - The v1.0 readiness plan is `docs/V1.0_READINESS_PLAN.md`.
+- Main and origin/main baseline for this polish batch: `9fb684878bcbde4981ce503649b69a5590092a9c`.
 - Known hard blockers found during planning: none.
 - Remaining v1.0 work should focus on manual validation, README/GitHub/user-facing wording polish, diagnostics sanity review, update-path validation planning, Accessibility fresh-flow checklist planning, and release wording.
+- This polish batch is not the v1.0 release. It must not bump version/build, create a tag, create a GitHub Release, run `scripts/package-dmg.sh`, publish or modify `appcast.xml`, or change runtime/event semantics.
 - Risky event/input features remain deferred until after v1.0 unless the user explicitly reprioritizes them on a separate branch.
 
 ## Current Permission Onboarding State
@@ -315,9 +320,9 @@ Not included:
 - No Click-Time Hover Assist, Key Focus / Caps Lock Focus, Excluded Apps, Scroll Focus, Finder selection hack, Developer ID/notarization transition, signing identity change, bundle ID change, or app name change.
 - No event tap mask change, synthetic clicks, event replay, cursor movement, mouse-move focus, mouse-dragged handling, mouse-up handling, or scroll event tap.
 
-## v0.9.0 Release Prep
+## v0.9.0 Public Release
 
-v0.9.0 / build 38 is the updater-completion release-prep target. It keeps the manual Sparkle update path, adds the explicit `Automatically Check for Updates` toggle, keeps automatic checks default off, keeps automatic download/install disabled, and removes the visible Hover Click Assist placeholder from the current product surface.
+v0.9.0 / build 38 is the current public release and v1.0 readiness baseline. It keeps the manual Sparkle update path, adds the explicit `Automatically Check for Updates` toggle, keeps automatic checks default off, keeps automatic download/install disabled, and removes the visible Hover Click Assist placeholder from the current product surface.
 
 Release workflow expectations:
 
@@ -328,6 +333,7 @@ Release workflow expectations:
 - The appcast item must use version `0.9.0`, build `38`, the final GitHub Release DMG URL, the exact DMG length, and a Sparkle EdDSA enclosure signature.
 - `appcast.xml` is published from `gh-pages`, not committed to `main`.
 - No Sparkle private key material, signing secret, internal DMG, duplicate DMG asset, local path, or placeholder URL is part of the release.
+- The public DMG and live appcast have been manually validated.
 
 Not included:
 
@@ -396,6 +402,13 @@ The failed 35 ms background drag assist / activation-settle experiment must not 
 
 Branch cleanup candidates exist after v0.4.6, but deletion requires explicit user approval. Do not delete local or remote branches automatically.
 
+| Candidate Type | Examples | Required Approval Gate |
+| --- | --- | --- |
+| Already-merged historical branches | older `release-*`, `design-*`, or `feature-*` branches after merge verification | Present exact branch names and merge status; delete only after explicit user approval for that exact list. |
+| Release/history branches | release-prep branches whose tags and docs are preserved | Keep unless the user confirms they are no longer needed. |
+| Active or unknown branches | any branch with unmerged commits or unclear purpose | Do not delete during cleanup planning. |
+| Protected branches | `main`, `origin/main`, `gh-pages`, current task branches | Do not delete. |
+
 Current safe cleanup candidates observed as merged into `main`: `batch-post-v0.4.6-maintenance-ui-docs`, `release-v0.4.7-prep`, `docs-post-v0.4.5-accessibility-flow-checklist`, `stabilize-overlay-hit-test-skip`, and `release-v0.4.6-prep`. Deleting them still requires explicit user approval.
 
 `investigate-background-click-drag` is not merged into `main` and should be treated as a failed background drag experiment branch. Do not delete it automatically, do not merge it automatically, do not continue background click-and-drag work in this task, and do not reuse its failed 35 ms activation-settle approach.
@@ -424,6 +437,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.7.0` on the same header row after a manual relaunch of that release.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.8.0` on the same header row after a manual relaunch.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.9.0` on the same header row after a manual relaunch.
+- For v1.0 readiness, confirm the signed `.app` launches, Accessibility permission remains stable, the menu opens and items work, mouse movement over background windows does not focus them, left-click focus works, right-click focus works when enabled and context menus remain normal, `Check for Updates...` works without a 404, `Automatically Check for Updates` persists, no silent/background automatic install occurs, diagnostics copy works and reports updater automatic-check/download/install state, no Hover Click Assist UI remains visible, and event semantics are unchanged.
 - For v0.5.0 icon smoke validation, confirm the built `HoverClick.app` shows the branded app icon in normal macOS icon surfaces after a manual relaunch or install. Manual Finder UI validation -- not run automatically.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.

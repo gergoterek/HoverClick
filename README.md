@@ -1,8 +1,8 @@
 # HoverClick
 
-HoverClick is a Windows-like click-focus utility for macOS.
+HoverClick is a small click-to-focus utility for macOS.
 
-When you click a background window, HoverClick focuses and raises that window before the original click is delivered. Mouse movement alone never focuses windows, and HoverClick is not AutoRaise.
+When you click a background window, HoverClick can focus and raise that window before the original click is delivered. Mouse movement alone never focuses windows. HoverClick is not AutoRaise and does not focus windows just because the pointer passes over them.
 
 The original click event is passed through unchanged: no synthetic clicks, no cursor movement, no replacement events, and no hover-to-window-focus behavior.
 
@@ -13,6 +13,7 @@ The original click event is passed through unchanged: no synthetic clicks, no cu
 - `Launch at Login`: starts HoverClick automatically after login when supported by macOS.
 - `Permissions & Startup`: shows Accessibility status, `Check Again` / `Refresh Permission Status`, Launch at Login, and an explicit `Open Accessibility Settings` action.
 - `Check for Updates...`: runs a manual Sparkle update check against the published appcast.
+- `Automatically Check for Updates`: optional periodic Sparkle checks. It is off by default and does not enable automatic download or install.
 - `Diagnostics`: includes `Verbose Diagnostics` and `Copy Diagnostics Summary` for issue reports.
 - `About HoverClick...`: shows version, build, bundle ID, and a short app description.
 
@@ -28,7 +29,7 @@ Always launch HoverClick as `HoverClick.app`, not the raw executable inside the 
 
 ## Download And Install
 
-HoverClick is currently distributed from GitHub. The latest release is `v0.8.0` / build `37`.
+HoverClick is currently distributed from GitHub. The latest public release is `v0.9.0` / build `38`.
 
 `v0.5.0` adds the branded app icon, bundles `HoverClick.icns` in the signed app, and polishes the build, verify, runtime-refresh, README, and workflow documentation. It does not change runtime click-focus or event-tap behavior.
 
@@ -37,6 +38,8 @@ HoverClick is currently distributed from GitHub. The latest release is `v0.8.0` 
 `v0.7.0` / build `36` is the validated baseline before v0.8.0. It prepared Right Click Focus diagnostics/stability hardening, long-run click-focus diagnostics, and the narrow Window Server pointer-like overlay pass-through fix.
 
 `v0.8.0` / build `37` adds the manual Sparkle `Check for Updates...` MVP, publishes the Sparkle appcast through GitHub Pages, keeps automatic Sparkle checks and background install disabled, adds first-launch Accessibility onboarding and permission-gated controls, refreshes permission state on launch/app activation/status menu open, fails open if Accessibility is revoked at runtime, adds Launch at Login consent onboarding, and expands Google Docs / Chrome click-through diagnostics. It does not add synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, or event tap mask expansion.
+
+`v0.9.0` / build `38` keeps manual `Check for Updates...`, adds a user-controlled `Automatically Check for Updates` toggle that defaults off, keeps automatic download/install disabled, removes the old no-op Hover Click Assist placeholder from the menu and diagnostics, and publishes the v0.9.0 DMG and appcast. It does not change click/event semantics.
 
 You can also build the app locally from source.
 
@@ -55,18 +58,19 @@ If the app still shows `Accessibility: Required`, quit HoverClick and relaunch t
 - Keep `Left Click Focus` checked for the normal Windows-like click-focus behavior.
 - Enable `Right Click Focus` if you want right-clicks on background windows to focus the target before the context menu opens.
 - Enable `Launch at Login` if you want HoverClick to start automatically.
+- Enable `Automatically Check for Updates` only if you want Sparkle to check periodically. Updates still use Sparkle's visible update flow; HoverClick does not silently install updates in the background.
 - Use `Diagnostics` > `Copy Diagnostics Summary` when reporting a problem. It includes recent non-menu click-focus decisions and stable last real/background-click fields so menu clicks used to copy diagnostics do not hide the meaningful click path.
 
 ## Menu Overview
 
 - `Left Click Focus`: toggles left-click focus behavior.
 - `Right Click Focus`: toggles right-click focus behavior.
-- `Hover` > `Hover Click Assist`: experimental placeholder. It is off by default and does not add cursor movement, synthetic clicks, delayed verification, or mouse-move focus.
 - `Permissions & Startup` > `Accessibility`: shows whether macOS has granted Accessibility permission.
 - `Permissions & Startup` > `Check Again` / `Refresh Permission Status`: refreshes Accessibility permission state.
 - `Permissions & Startup` > `Launch at Login`: toggles startup registration where supported.
 - `Permissions & Startup` > `Open Accessibility Settings`: opens the macOS Accessibility privacy pane when clicked.
 - `Check for Updates...`: checks the published Sparkle appcast manually; automatic checks and background install stay disabled.
+- `Automatically Check for Updates`: toggles Sparkle automatic checks only; automatic download/install stay disabled.
 - `Diagnostics` > `Verbose Diagnostics`: toggles extra logs.
 - `Diagnostics` > `Copy Diagnostics Summary`: copies runtime permission, startup, feature, event tap, and safety details.
 - `About HoverClick...`: shows HoverClick version, build, bundle ID, and a short description without opening external links.

@@ -240,6 +240,19 @@ Complete updater for v1.0 means the user has a clear manual check path, an optio
 
 Hover Click Assist is not part of the v0.9.0 updater-completion scope. The visible no-op placeholder is removed instead of becoming a real feature, and no Click-Time Hover Assist, mouse-move handling, synthetic click, event replay, cursor movement, or delayed assist path is added.
 
+## v1.0 Readiness Notes
+
+v1.0 readiness polish should confirm the updater design rather than expand it.
+
+- Keep `SUFeedURL` unchanged: `https://gergoterek.github.io/HoverClick/appcast.xml`.
+- Keep Sparkle public key unchanged: `093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=`.
+- Keep automatic checks default off through `SUEnableAutomaticChecks = false`.
+- Keep manual `Check for Updates...` available.
+- Keep automatic download/install disabled through `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`.
+- Keep `Automatically Check for Updates` as a user-controlled automatic-check toggle only.
+- Treat appcast publish/update as release workflow only, not v1.0 readiness polish.
+- Do not bump version/build, create a tag, create a GitHub Release, run `scripts/package-dmg.sh`, publish Pages output, change signing, or touch private Sparkle key material during readiness polish.
+
 ## Files Likely To Change Later
 
 Future implementation will likely touch:
@@ -288,6 +301,8 @@ Manual validation for the first updater implementation:
 - no Finder UI validation is run automatically.
 
 Manual Finder UI validation -- not run automatically.
+
+Manual validation for v1.0 readiness should additionally confirm `Check for Updates...` reaches the live appcast without a 404, `Automatically Check for Updates` persists across relaunch, copied diagnostics report automatic-check/download/install state, and no silent/background automatic install occurs.
 
 ## Risks And Stop Gates
 
