@@ -15,7 +15,7 @@
 - Current updater implementation branch: merged to `main`
 - Current v0.9.0 planning branch: `design-v0.9.0-updater-completion-plan`
 - Current v0.9.0 planning doc: `docs/V0.9.0_UPDATER_COMPLETION_PLAN.md`
-- Current implementation branch: `investigate-gdocs-background-click-miss`
+- Current implementation branch: `feature-v0.9.0-updater-completion`
 - Main/release-prep branch point: `74efddf5fb84939abcb9557b6f00f22d468764e1`
 - Public DMG: `HoverClick-0.8.0.dmg`
 - Public DMG SHA-256: recorded in the v0.8.0 release report
@@ -60,6 +60,8 @@
 - No Sparkle private key file, signing secret, Developer ID/notarization change, app name change, bundle identifier change, signing identity change, Accessibility/TCC database change, event-tap change, mouse-handling change, automatic Sparkle checks, or background automatic install is part of v0.8.0.
 - Automatic checks are disabled with `SUEnableAutomaticChecks = false`.
 - Automatic background download/install is disabled with `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`.
+- On the v0.9.0 updater-completion branch, the menu adds an explicit `Automatically Check for Updates` toggle backed by Sparkle's `automaticallyChecksForUpdates` setting. The default remains off from `SUEnableAutomaticChecks = false`, and user changes are persisted by Sparkle rather than a HoverClick-specific user default.
+- Automatic download/install remains disabled. `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false` remain unchanged, and toggling automatic checks reasserts `automaticallyDownloadsUpdates = NO`.
 
 ## Current Appcast Workflow State
 
@@ -69,19 +71,18 @@
 - `docs/APPCAST_RELEASE_WORKFLOW.md` records the release workflow, hosting strategy, appcast safety gates, and stop conditions.
 - `scripts/prepare-appcast.sh` is a non-publishing preflight/generation helper for a real release DMG and final public DMG URL. It defaults to dry-run mode and writes an appcast only when `--write` is passed. It does not package a DMG, create a tag, create a GitHub Release, upload assets, publish Pages output, or store private Sparkle key material.
 
-## v0.9.0 Planning State
+## v0.9.0 Updater Completion State
 
-- v0.9.0 is planned as `Complete Updater & 1.0 Readiness`.
-- The recommended v0.9.0 updater UX is conservative: keep manual `Check for Updates...`, offer user-consented automatic checks only if they are explicit and reversible, and keep silent/background install disabled.
+- v0.9.0 is implemented as `Complete Updater & 1.0 Readiness` on `feature-v0.9.0-updater-completion`.
+- The v0.9.0 updater UX is conservative: keep manual `Check for Updates...`, add explicit user-controlled automatic checks, and keep silent/background install disabled.
 - Do not set unconditional automatic update checks as the default.
 - Do not enable automatic download/install before v1.0.
 - Keep the GitHub Release DMG plus GitHub Pages appcast workflow.
 - Keep private Sparkle key handling unchanged and outside the repository.
 - Do not change the app name, bundle identifier, signing identity, or Sparkle public key as part of v0.9.0 updater completion.
-- Hover Click Assist is out of scope for v0.9.0. Do not implement real Hover Click Assist, Click-Time Hover Assist, or any hover/event semantics feature.
-- The current user-facing Hover Click Assist placeholder should be removed or hidden before v1.0 unless explicitly kept and labeled unavailable.
-- Recommended next implementation branch: `feature-v0.9.0-updater-completion`.
-- If the Hover Click Assist placeholder removal grows beyond a small UI/docs cleanup, split it to `feature-v0.9.0-remove-hover-assist-placeholder`.
+- Hover Click Assist is out of scope for v0.9.0. The user-facing `Hover > Hover Click Assist` placeholder is removed from the menu and diagnostics instead of becoming a real feature.
+- No real Hover Click Assist, Click-Time Hover Assist, or hover/event semantics feature is implemented.
+- No release, tag, DMG, appcast publication, or GitHub Release work is part of this implementation branch.
 
 ## Current Permission Onboarding State
 
@@ -89,7 +90,7 @@
 - On launch, if Accessibility is missing, HoverClick calls `AXIsProcessTrustedWithOptions` with `kAXTrustedCheckOptionPrompt` once for that launch and shows a native onboarding alert explaining why the permission is needed.
 - Permission state refreshes without prompting on launch, when the app becomes active, and immediately before the status menu opens. Explicit `Check Again` still performs the user-initiated prompt-capable refresh.
 - The Accessibility onboarding alert is retained as a non-modal alert so it can be dismissed automatically when permission becomes granted; duplicate onboarding alerts are not stacked.
-- Missing Accessibility keeps HoverClick open but leaves click focus inactive. `Left Click Focus`, `Right Click Focus`, `Hover`, and `Hover Click Assist` are disabled in the menu until permission is granted; their saved checked states are preserved.
+- Missing Accessibility keeps HoverClick open but leaves click focus inactive. `Left Click Focus` and `Right Click Focus` are disabled in the menu until permission is granted; saved checked states are preserved.
 - If Accessibility is revoked while HoverClick is already running, normal left/right mouse-down events fail open. The callback records permission-missing pass-through, returns the original event unchanged, schedules stale event-tap removal on the main queue, and performs no AX hit-testing, focus, raise, synthetic click, event replay, or cursor movement.
 - `Permissions & Startup` now includes `Accessibility: Required` or `Accessibility: Granted`, a `Check Again` / `Refresh Permission Status` item, `Launch at Login`, and explicit `Open Accessibility Settings`.
 - `Open Accessibility Settings` remains user-initiated only. HoverClick does not automatically open System Settings.
@@ -105,12 +106,12 @@
 - The menu header shows `HoverClick` and the visible app version.
 - `Left Click Focus` defaults on.
 - `Right Click Focus` defaults off and is independent from left-click behavior.
-- `Hover` contains `Hover Click Assist`.
-- `Hover Click Assist` is currently a no-op placeholder and is planned for removal or hiding before v1.0 unless explicitly kept unavailable.
 - `Permissions & Startup` contains Accessibility status, `Check Again`, Launch at Login, and `Open Accessibility Settings`.
 - `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Required` is unchecked.
 - If Accessibility is missing, click-focus feature toggles are disabled until the user grants permission and chooses `Check Again` or relaunches.
 - `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
+- `Check for Updates...` remains a top-level action.
+- `Automatically Check for Updates` is a top-level native checkmark toggle. It controls Sparkle's automatic update checks only and does not enable automatic download/install.
 - The top-level menu contains `About HoverClick...`, which shows a small native version/build/bundle ID alert and opens no browser, System Settings, or external links.
 - Technical click detection and last action details are available in the copied diagnostics summary.
 
@@ -123,7 +124,7 @@
 - Bartender/menu-bar overlay pass-through: expanded or overflow menu bar items remain protected by the menu-bar/system UI owner and compact-overlay checks.
 - Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
-- Diagnostics summary: copies app name, bundle identifier, permission, permission onboarding, permission-missing pass-through/removal state, last permission refresh/check result, startup, click detection, feature state, Hover Click Assist setting and no-op runtime behavior, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last handled action, last focus action/skip reason, last non-menu focus action/skip, detailed last focus decision, right-click-specific focus decision, stable last real/background click decision fields that are not overwritten by HoverClick menu/status UI clicks, overlay/system UI skip reason, overlay candidate owner/window/layer/title/bounds plus AX role/subrole/app detail, last eligible hit-test candidate, persistent last background-focus trigger/target/frontmost-before/activation/AX-operation/immediate-frontmost/delayed-verification/result/failure details, recent non-menu mouse-down decision history, aggregate callback/focus/skip counters, last verified successful background focus, event tap mask, safety note, and concise known limitations. Version/build are shown by `About HoverClick...` instead of being duplicated in copied diagnostics.
+- Diagnostics summary: copies app name, bundle identifier, permission, permission onboarding, permission-missing pass-through/removal state, last permission refresh/check result, startup, automatic update check state, automatic download/install state, click detection, feature state, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last handled action, last focus action/skip reason, last non-menu focus action/skip, detailed last focus decision, right-click-specific focus decision, stable last real/background click decision fields that are not overwritten by HoverClick menu/status UI clicks, overlay/system UI skip reason, overlay candidate owner/window/layer/title/bounds plus AX role/subrole/app detail, last eligible hit-test candidate, persistent last background-focus trigger/target/frontmost-before/activation/AX-operation/immediate-frontmost/delayed-verification/result/failure details, recent non-menu mouse-down decision history, aggregate callback/focus/skip counters, last verified successful background focus, event tap mask, safety note, and concise known limitations. Version/build are shown by `About HoverClick...` instead of being duplicated in copied diagnostics.
 - Diagnostics menu polish: visible runtime details stay out of the menu; `Copy Diagnostics Summary`, `Open Accessibility Settings`, and `Quit` use left-slot action icons with exactly 1 ASCII space of title padding, and Quit preserves Cmd+Q.
 - Accessibility onboarding: first launch requests the native macOS Accessibility prompt when needed, shows a native explanatory alert, and keeps `Permissions & Startup` actions available for manual recovery.
 
@@ -139,7 +140,7 @@ Post-release published DMG manual smoke validation passed for the GitHub v0.4.6 
 
 v0.4.7 later shipped from the validated post-v0.4.6 maintenance/UI/docs polish state.
 
-The event tap mask remains left mouse down + right mouse down only. No synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, `mouseDragged`/`mouseUp` handling, or `CGEventPost` were added. Hover Click Assist remains a no-op placeholder, not a real runtime feature.
+The event tap mask remains left mouse down + right mouse down only. No synthetic clicks, event replay, cursor movement, mouse-move focus, scroll focus, `mouseDragged`/`mouseUp` handling, or `CGEventPost` were added. The user-facing Hover Click Assist placeholder is removed and no replacement hover runtime feature is added.
 
 ## v0.4.7 Public Release
 
@@ -265,14 +266,12 @@ Protection remains in place for HoverClick menu/status UI, AX menu/status/popove
 
 ## Experimental Or Placeholder Items
 
-`Hover Click Assist` is an experimental placeholder. It defaults off, is disabled while Left Click Focus is off, and currently performs no synthetic click, cursor movement, replacement event, mouse-move focus behavior, or delayed assist behavior. Delayed verification, when present, belongs only to background-focus diagnostics after an immediate frontmost check fails.
-
-For v0.9.0 planning, Hover Click Assist is out of scope. Do not implement it, do not implement Click-Time Hover Assist, and do not add hover/event semantics. The preferred 1.0-readiness cleanup is to remove or hide the user-facing placeholder and update diagnostics/docs that describe it.
+The user-facing `Hover > Hover Click Assist` placeholder is removed in the v0.9.0 updater-completion branch. HoverClick does not implement real Hover Click Assist, Click-Time Hover Assist, synthetic click, cursor movement, replacement event, mouse-move focus behavior, or delayed assist behavior. Delayed verification, when present, belongs only to background-focus diagnostics after an immediate frontmost check fails.
 
 ## Chrome / Google Docs Click-Through Investigation State
 
 - The Google Docs click-through investigation diagnostics are included in v0.8.0 for intermittent Finder-to-background-Chrome Google Docs missed clicks.
-- Hover Click Assist remains a no-op placeholder. Enabling it does not move the cursor, post events, replay clicks, delay clicks, refresh hover state, alter mouse-down delivery, or change focus behavior.
+- Hover Click Assist remains out of scope. The v0.9.0 updater-completion branch removes the visible no-op placeholder instead of adding any hover or click-time assist behavior.
 - Copied diagnostics now distinguish event tap health, callback observation, source/frontmost app before click, target bundle ID, whether the target is Google Chrome, AX target/window details, target already-frontmost state, activation attempt, AX operation results, immediate and delayed frontmost verification, original-event pass-through, permission fail-open, overlay/menu/system skips, and a Chrome/web-content observation note.
 - If diagnostics show Chrome target detection plus successful immediate or delayed frontmost verification and `original event returned unchanged`, but Google Docs still missed the first click, the strongest current interpretation is app/web-content-level click handling after activation. HoverClick can verify app focus and pass-through, but it cannot observe Google Docs DOM, editor readiness, or pointer/hover handling directly.
 - This investigation does not implement Click-Time Hover Assist and does not add synthetic clicks, event replay, cursor movement, delayed click delivery, mouse-move focus, scroll focus, mouse-dragged handling, or mouse-up handling.
@@ -305,6 +304,7 @@ Not included:
 
 - No AutoRaise-style hover-to-focus behavior.
 - No mouse-move focus event tap.
+- No Hover Click Assist or Click-Time Hover Assist runtime feature.
 - No Scroll Focus.
 - No synthetic clicks.
 - No cursor movement.
@@ -392,7 +392,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
 - Confirm `Permissions & Startup` contains Accessibility status, Launch at Login, and Open Accessibility Settings.
-- Confirm `Hover` contains `Hover Click Assist`.
+- Confirm no `Hover` submenu or `Hover Click Assist` placeholder is visible in the current v0.9.0 product surface.
 - Confirm `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.6, Build 32, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.7, Build 33, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.

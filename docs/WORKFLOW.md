@@ -15,6 +15,19 @@ For the v0.8.0 updater release, `Makefile` also downloads the official pinned Sp
 
 `scripts/verify-app.sh` checks the bundle identifier, icon declaration, bundled icon resource, Sparkle framework embedding/version/linkage/configuration/signing, signing identity, code signature verification, and process count.
 
+For the v0.9.0 updater-completion branch, validation should include:
+
+```sh
+git diff --check
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/ci-safety-check.sh
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/build-app.sh
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/verify-app.sh
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/run-app.sh
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/verify-app.sh
+```
+
+Do not run `scripts/package-dmg.sh` for updater-completion implementation work.
+
 ## Runtime Refresh
 
 After build and verify pass for code, runtime, diagnostics, UI, app-resource, icon, or version-build metadata changes, use:
@@ -68,7 +81,7 @@ For the v0.8.0 first-launch permission onboarding batch, manually cover in a saf
 
 - Launch the signed `.app` bundle with Accessibility not yet granted.
 - Confirm HoverClick requests the native Accessibility trust prompt and shows its explanatory onboarding alert without opening System Settings automatically.
-- Confirm `Left Click Focus`, `Right Click Focus`, `Hover`, and `Hover Click Assist` are disabled while Accessibility is missing.
+- Confirm `Left Click Focus` and `Right Click Focus` are disabled while Accessibility is missing.
 - Confirm `Permissions & Startup` shows `Accessibility: Required`, exposes `Check Again`, leaves `Open Accessibility Settings` as an explicit user-click action, and switches to `Accessibility: Granted` after permission is granted and refreshed.
 - Confirm permission state refreshes without prompting when HoverClick becomes active and before the status menu opens.
 - Confirm `Check Again` dismisses the onboarding alert after permission is granted and does not stack duplicate onboarding alerts when permission remains missing.
@@ -111,6 +124,19 @@ Phase 1 adds only the manual `Check for Updates...` entry point using Sparkle's 
 - Future appcast generation should use Sparkle tooling with the same Keychain account, for example `generate_appcast --account com.gergoterek.HoverClick`.
 - `scripts/package-dmg.sh` remains internal/test packaging and is not the appcast publishing workflow.
 
+## Sparkle v0.9.0 Updater Completion
+
+The v0.9.0 updater-completion branch keeps the manual update action and adds one user-controlled automatic-check preference.
+
+- `Check for Updates...` remains the manual Sparkle update action.
+- `Automatically Check for Updates` is a top-level native checkmark toggle.
+- The toggle writes through Sparkle's `automaticallyChecksForUpdates` property and does not use a HoverClick-specific defaults key.
+- `SUEnableAutomaticChecks` remains false, so the default state is off and Sparkle's automatic-check permission prompt is not introduced accidentally.
+- `SUAutomaticallyUpdate` and `SUAllowsAutomaticUpdates` remain false.
+- Toggling automatic checks reasserts `automaticallyDownloadsUpdates = NO`.
+- Copied diagnostics report automatic update checks, automatic download/install, and whether automatic download/install is allowed.
+- No appcast, release, DMG, tag, signing, bundle ID, app name, event tap, or mouse semantics work is part of this branch.
+
 ## Sparkle Appcast Release Workflow
 
 The appcast release workflow is documented in `docs/APPCAST_RELEASE_WORKFLOW.md`.
@@ -124,19 +150,17 @@ The appcast release workflow is documented in `docs/APPCAST_RELEASE_WORKFLOW.md`
 
 ## v0.9.0 Updater Completion Workflow
 
-Plan v0.9.0 as the updater-completion and 1.0-readiness batch.
+Implement v0.9.0 as the updater-completion and 1.0-readiness batch.
 
 - Use `docs/V0.9.0_UPDATER_COMPLETION_PLAN.md` as the scope reference.
 - Keep manual `Check for Updates...` as the primary update path.
-- If automatic checks are added, make them explicit, user-consented, reversible, and notification-only.
+- Automatic checks are explicit, user-controlled, reversible, and notification-only.
 - Keep `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`.
 - Do not package a DMG, create or move tags, create a GitHub Release, publish `gh-pages`, or modify `appcast.xml` outside an explicit release task.
 - Do not implement real Hover Click Assist, Click-Time Hover Assist, mouse-move focus, synthetic clicks, event replay, cursor movement, delayed click delivery, scroll focus, or key focus.
-- Prefer removing or hiding the current Hover Click Assist placeholder before v1.0 if that remains a small UI/docs cleanup.
+- Remove the visible Hover Click Assist placeholder rather than shipping a no-op user-facing feature.
 
-Automated non-UI validation for future implementation work should include `git diff --check`, `scripts/ci-safety-check.sh`, `scripts/build-app.sh`, and `scripts/verify-app.sh`.
-
-`scripts/run-app.sh` opens the signed `.app` bundle with `/usr/bin/open`, so treat it as manual signed-app runtime validation only when a manual UI test is intended.
+Implementation validation should include `git diff --check`, `scripts/ci-safety-check.sh`, `scripts/build-app.sh`, `scripts/verify-app.sh`, `scripts/run-app.sh`, and a final `scripts/verify-app.sh`. `scripts/run-app.sh` is the approved signed `.app` runtime refresh for this branch; do not run the raw binary directly.
 
 ## Release Scope
 

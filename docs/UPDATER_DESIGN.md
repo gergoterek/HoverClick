@@ -223,7 +223,7 @@ Phase 4: optional background download/install.
 
 v0.8.0 completed the manual updater MVP and appcast publication path. v0.9.0 should complete the updater enough for v1.0 without making the update system aggressive.
 
-Recommended v0.9.0 behavior:
+Implemented v0.9.0 behavior:
 
 - Keep the top-level `Check for Updates...` manual action.
 - Keep `SUFeedURL` pointed at `https://gergoterek.github.io/HoverClick/appcast.xml`.
@@ -232,13 +232,13 @@ Recommended v0.9.0 behavior:
 - Keep the appcast published from the dedicated `gh-pages` branch root.
 - Keep background automatic download/install disabled with `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`.
 - Do not set `SUEnableAutomaticChecks = true` as an unconditional default.
-- Prefer an explicit `Automatically Check for Updates` menu toggle, default off, wired to Sparkle's automatic-check setting if the implementation can do that cleanly.
-- Do not rely on a surprise second-launch automatic-check permission prompt for v0.9.0. Sparkle supports that behavior when `SUEnableAutomaticChecks` is omitted, but HoverClick should keep launch-time prompting predictable.
+- Add an explicit `Automatically Check for Updates` menu toggle, default off through `SUEnableAutomaticChecks = false`, wired to Sparkle's `automaticallyChecksForUpdates` setting.
+- Do not rely on a surprise second-launch automatic-check permission prompt for v0.9.0. Sparkle supports that behavior when `SUEnableAutomaticChecks` is omitted, but HoverClick keeps the key set to false and uses the explicit menu toggle instead.
 - Treat automatic checks as notification-only. Updates still require Sparkle's standard user-visible update/install flow.
 
-Complete updater for v1.0 means the user has a clear manual check path, an optional user-consented automatic check path if v0.9.0 implements it, a repeatable appcast workflow, and no silent background install behavior.
+Complete updater for v1.0 means the user has a clear manual check path, an optional user-consented automatic check path through `Automatically Check for Updates`, a repeatable appcast workflow, and no silent background install behavior.
 
-Hover Click Assist is not part of the v0.9.0 updater-completion scope. It should not become a real feature here, and no Click-Time Hover Assist, mouse-move handling, synthetic click, event replay, cursor movement, or delayed assist path should be added.
+Hover Click Assist is not part of the v0.9.0 updater-completion scope. The visible no-op placeholder is removed instead of becoming a real feature, and no Click-Time Hover Assist, mouse-move handling, synthetic click, event replay, cursor movement, or delayed assist path is added.
 
 ## Files Likely To Change Later
 

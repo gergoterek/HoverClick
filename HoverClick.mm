@@ -20,12 +20,10 @@ static NSString * const HoverClickChromeBundleID = @"com.google.Chrome";
 static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
 static NSString * const HoverClickFallbackBuildVersion = @"unknown";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
-static NSString * const HoverClickHoverClickAssistDefaultsKey = @"hoverClickAssistEnabled";
 static NSString * const HoverClickLaunchAtLoginOnboardingPromptShownDefaultsKey = @"launchAtLoginOnboardingPromptShown";
 static NSString * const HoverClickStableHelp = @"HoverClick - Windows-like click focus for macOS.";
 static NSString * const HoverClickLeftClickFocusHelp = @"Activates a background window before passing through your original left click.";
 static NSString * const HoverClickRightClickFocusHelp = @"Activates a background window before opening its normal right-click menu.";
-static NSString * const HoverClickHoverClickAssistHelp = @"Experimental placeholder for future hover-dependent buttons; requires Left Click Focus and currently adds no cursor movement or synthetic clicks.";
 static NSString * const HoverClickAccessibilityStatusHelp = @"Shows whether macOS currently allows HoverClick to inspect and focus windows.";
 static NSString * const HoverClickRefreshAccessibilityHelp = @"Checks whether Accessibility permission is now granted and starts click focus when possible.";
 static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Opens the macOS Accessibility privacy pane so you can review HoverClick access.";
@@ -33,6 +31,7 @@ static NSString * const HoverClickLaunchAtLoginHelp = @"Starts HoverClick automa
 static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
 static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the current HoverClick status summary to the clipboard.";
 static NSString * const HoverClickCheckForUpdatesHelp = @"Checks for HoverClick updates using Sparkle.";
+static NSString * const HoverClickAutomaticUpdateChecksHelp = @"Lets Sparkle periodically check for updates; installs still require user action.";
 static NSString * const HoverClickAboutHelp = @"Shows HoverClick version and bundle identity.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static NSString * const HoverClickMenuItemTitlePadding = @" ";
@@ -313,11 +312,10 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 @property(nonatomic, strong) NSMenuItem *permissionRefreshItem;
 @property(nonatomic, strong) NSMenuItem *clickToFocusItem;
 @property(nonatomic, strong) NSMenuItem *rightClickFocusItem;
-@property(nonatomic, strong) NSMenuItem *hoverMenuItem;
-@property(nonatomic, strong) NSMenuItem *hoverClickAssistItem;
 @property(nonatomic, strong) NSMenuItem *launchAtLoginItem;
 @property(nonatomic, strong) NSMenuItem *diagnosticsItem;
 @property(nonatomic, strong) NSMenuItem *verboseItem;
+@property(nonatomic, strong) NSMenuItem *automaticUpdateChecksItem;
 @property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
 @property(nonatomic, strong) NSAlert *accessibilityOnboardingAlert;
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
@@ -332,7 +330,6 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)handleEventTapCallbackWithMissingAccessibilityForType:(CGEventType)type;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
-- (BOOL)isEffectiveHoverClickAssistEnabled;
 - (BOOL)isChromeApplication:(NSRunningApplication *)app;
 - (NSString *)browserContentDiagnosticNoteForTargetApp:(NSRunningApplication *)targetApp
                                                appName:(NSString *)appName
@@ -357,7 +354,6 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     BOOL _eventTapEnabled;
     BOOL _clickToFocusEnabled;
     BOOL _rightClickFocusEnabled;
-    BOOL _hoverClickAssistEnabled;
     BOOL _verboseDiagnostics;
     BOOL _accessibilityOnboardingShownThisLaunch;
     BOOL _accessibilityTrustPromptRequestedThisLaunch;
@@ -477,7 +473,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _eventTapEnabled = NO;
     _clickToFocusEnabled = YES;
     _rightClickFocusEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickRightClickFocusDefaultsKey];
-    _hoverClickAssistEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickHoverClickAssistDefaultsKey];
     _verboseDiagnostics = YES;
     _accessibilityOnboardingShownThisLaunch = NO;
     _accessibilityTrustPromptRequestedThisLaunch = NO;
@@ -620,27 +615,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.rightClickFocusItem.toolTip = HoverClickRightClickFocusHelp;
     [menu addItem:self.rightClickFocusItem];
 
-    self.hoverMenuItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Hover")
-                                                    action:nil
-                                             keyEquivalent:@""];
-    self.hoverMenuItem.enabled = YES;
-    self.hoverMenuItem.indentationLevel = 0;
-    self.hoverMenuItem.state = NSControlStateValueOff;
-
-    NSMenu *hoverMenu = [[NSMenu alloc] initWithTitle:@"Hover"];
-    [hoverMenu setAutoenablesItems:NO];
-    self.hoverMenuItem.submenu = hoverMenu;
-    [menu addItem:self.hoverMenuItem];
-
-    self.hoverClickAssistItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Hover Click Assist")
-                                                           action:@selector(toggleHoverClickAssist:)
-                                                    keyEquivalent:@""];
-    self.hoverClickAssistItem.target = self;
-    self.hoverClickAssistItem.enabled = YES;
-    self.hoverClickAssistItem.indentationLevel = 0;
-    self.hoverClickAssistItem.toolTip = HoverClickHoverClickAssistHelp;
-    [hoverMenu addItem:self.hoverClickAssistItem];
-
     [menu addItem:[NSMenuItem separatorItem]];
 
     NSMenuItem *permissionsStartupItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Permissions & Startup")
@@ -745,6 +719,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
     [menu addItem:checkForUpdatesItem];
 
+    self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Automatically Check for Updates")
+                                                                action:@selector(toggleAutomaticUpdateChecks:)
+                                                         keyEquivalent:@""];
+    self.automaticUpdateChecksItem.target = self;
+    self.automaticUpdateChecksItem.enabled = YES;
+    self.automaticUpdateChecksItem.indentationLevel = 0;
+    self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
+    [menu addItem:self.automaticUpdateChecksItem];
+
     NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick...")
                                                        action:@selector(showAboutHoverClick:)
                                                 keyEquivalent:@""];
@@ -789,12 +772,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickLog("HoverClick: bundle id = %s", HoverClickBundleID.UTF8String);
     HoverClickLog("HoverClick: version = %s", HoverClickDisplayVersion().UTF8String);
     HoverClickLog("HoverClick: accessibility trusted = %s", trusted ? "YES" : "NO");
-    HoverClickLog("HoverClick: launch state leftClickFocus=%s rightClickFocus=%s experimentalHoverClickAssist=%s rightClickDefaultsKey=%s hoverClickAssistDefaultsKey=%s",
+    HoverClickLog("HoverClick: launch state leftClickFocus=%s rightClickFocus=%s automaticUpdateChecks=%s automaticDownloadInstall=%s rightClickDefaultsKey=%s",
                   _clickToFocusEnabled ? "ON" : "OFF",
                   _rightClickFocusEnabled ? "ON" : "OFF",
-                  _hoverClickAssistEnabled ? "ON" : "OFF",
-                  HoverClickRightClickFocusDefaultsKey.UTF8String,
-                  HoverClickHoverClickAssistDefaultsKey.UTF8String);
+                  self.updaterController.updater.automaticallyChecksForUpdates ? "ON" : "OFF",
+                  self.updaterController.updater.automaticallyDownloadsUpdates ? "ON" : "OFF",
+                  HoverClickRightClickFocusDefaultsKey.UTF8String);
 }
 
 - (void)logLaunchAtLoginStatus:(NSString *)statusDescription force:(BOOL)force {
@@ -1581,22 +1564,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateMenuTitles];
 }
 
-- (void)toggleHoverClickAssist:(id)sender {
+- (void)toggleAutomaticUpdateChecks:(id)sender {
     (void)sender;
-    if (!_clickToFocusEnabled) {
-        HoverClickLog("HoverClick: Hover Click Assist toggle ignored because Left Click Focus is disabled");
-        [self updateMenuTitles];
-        return;
-    }
+    SPUUpdater *updater = self.updaterController.updater;
+    BOOL automaticChecksEnabled = !updater.automaticallyChecksForUpdates;
+    updater.automaticallyChecksForUpdates = automaticChecksEnabled;
+    updater.automaticallyDownloadsUpdates = NO;
 
-    _hoverClickAssistEnabled = !_hoverClickAssistEnabled;
-    [[NSUserDefaults standardUserDefaults] setBool:_hoverClickAssistEnabled forKey:HoverClickHoverClickAssistDefaultsKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-
-    HoverClickLog("HoverClick: Experimental Hover Click Assist %s", _hoverClickAssistEnabled ? "enabled" : "disabled");
-    HoverClickLog("HoverClick: Experimental Hover Click Assist %s: no assist path scheduled",
-                  _hoverClickAssistEnabled ? "ON" : "OFF");
-    [self setLastClickResult:_hoverClickAssistEnabled ? @"Experimental Assist Enabled" : @"Experimental Assist Disabled"];
+    HoverClickLog("HoverClick: automatic update checks %s; automatic download/install disabled",
+                  automaticChecksEnabled ? "enabled" : "disabled");
+    [self setLastClickResult:automaticChecksEnabled ? @"Automatic Update Checks Enabled" : @"Automatic Update Checks Disabled"];
     [self updateMenuTitles];
 }
 
@@ -1870,6 +1847,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                          HoverClickDiagnosticTimestamp(_lastSuccessfulBackgroundFocusTime)];
     }
     NSString *recentDecisionHistory = [self recentDecisionHistoryDescription];
+    SPUUpdater *updater = self.updaterController.updater;
+    NSString *automaticUpdateChecksStatus = updater.automaticallyChecksForUpdates ? @"enabled" : @"disabled";
+    NSString *automaticDownloadInstallStatus = updater.automaticallyDownloadsUpdates ? @"enabled" : @"disabled";
+    NSString *automaticDownloadInstallAllowed = updater.allowsAutomaticUpdates ? @"yes" : @"no";
 
     return [NSString stringWithFormat:
             @"HoverClick diagnostics\n"
@@ -1888,6 +1869,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last permission missing pass-through: %@\n"
              "Launch at Login: %@\n"
              "Launch at Login onboarding: %@\n"
+             "Automatic update checks: %@\n"
+             "Automatic download/install: %@\n"
+             "Automatic download/install allowed: %@\n"
              "Click detection: %@\n"
              "Last handled action: %@\n"
              "Last focus action/skip: %@\n"
@@ -1933,8 +1917,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Diagnostics copy/menu note: volatile last handled/focus fields may reflect the status/menu click used to copy diagnostics; stable real/background fields and recent non-menu history ignore HoverClick menu/status UI clicks.\n"
              "Left Click Focus: %@\n"
              "Right Click Focus: %@\n"
-             "Hover Click Assist setting: %@\n"
-             "Hover Click Assist runtime behavior: %@\n"
              "Verbose Diagnostics: %@\n"
              "Event tap mask: left mouse down + right mouse down only\n"
              "Safety note: HoverClick returns original click events unchanged; no synthetic clicks, event replay, or cursor movement\n"
@@ -1955,6 +1937,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             _lastPermissionMissingPassThroughDescription ?: @"none",
             [self launchAtLoginStatusForDiagnostics],
             _lastLaunchAtLoginOnboardingDecision ?: @"not offered",
+            automaticUpdateChecksStatus,
+            automaticDownloadInstallStatus,
+            automaticDownloadInstallAllowed,
             [self clickDetectionStatusForDiagnostics],
             lastAction,
             lastAction,
@@ -2006,12 +1991,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             recentDecisionHistory,
             _clickToFocusEnabled ? @"enabled" : @"disabled",
             _rightClickFocusEnabled ? @"enabled" : @"disabled",
-            _hoverClickAssistEnabled ? @"enabled" : @"disabled",
-            [self isEffectiveHoverClickAssistEnabled] ?
-                @"no-op placeholder (setting enabled; Left Click Focus enabled)" :
-                (_hoverClickAssistEnabled ?
-                    @"no-op placeholder (setting enabled; Left Click Focus disabled)" :
-                    @"no-op placeholder (setting disabled)"),
             _verboseDiagnostics ? @"enabled" : @"disabled"];
 }
 
@@ -2064,16 +2043,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.rightClickFocusItem.enabled = trusted;
     self.rightClickFocusItem.state = _rightClickFocusEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.rightClickFocusItem.toolTip = trusted ? HoverClickRightClickFocusHelp : @"Requires Accessibility permission.";
-    self.hoverMenuItem.title = HoverClickMenuItemTitle(@"Hover");
-    self.hoverMenuItem.enabled = trusted && _clickToFocusEnabled;
-    self.hoverMenuItem.state = NSControlStateValueOff;
-    self.hoverClickAssistItem.title = HoverClickMenuItemTitle(@"Hover Click Assist");
-    self.hoverClickAssistItem.enabled = trusted && _clickToFocusEnabled;
-    self.hoverClickAssistItem.state = _hoverClickAssistEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-    self.hoverClickAssistItem.toolTip = trusted ? HoverClickHoverClickAssistHelp : @"Requires Accessibility permission.";
     [self updateLaunchAtLoginMenuItem];
     self.verboseItem.title = HoverClickMenuItemTitle(@"Verbose Diagnostics");
     self.verboseItem.state = _verboseDiagnostics ? NSControlStateValueOn : NSControlStateValueOff;
+    self.automaticUpdateChecksItem.title = HoverClickMenuItemTitle(@"Automatically Check for Updates");
+    self.automaticUpdateChecksItem.enabled = YES;
+    self.automaticUpdateChecksItem.state = self.updaterController.updater.automaticallyChecksForUpdates ? NSControlStateValueOn : NSControlStateValueOff;
+    self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
 }
 
 - (void)setLastClickResult:(NSString *)result {
@@ -2106,8 +2082,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         @"Left Click Focus Disabled",
         @"Right Click Focus Enabled",
         @"Right Click Focus Disabled",
-        @"Experimental Assist Enabled",
-        @"Experimental Assist Disabled"
+        @"Automatic Update Checks Enabled",
+        @"Automatic Update Checks Disabled"
     ]];
 
     return ![volatileMenuOrSetupResults containsObject:result];
@@ -2125,10 +2101,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     va_end(args);
 
     HoverClickLog("%s", buffer);
-}
-
-- (BOOL)isEffectiveHoverClickAssistEnabled {
-    return _clickToFocusEnabled && _hoverClickAssistEnabled;
 }
 
 - (BOOL)isChromeApplication:(NSRunningApplication *)app {
@@ -2218,10 +2190,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
     [self beginRecentDecisionWithTrigger:"click" sequenceID:clickID rawPoint:rawPoint axPoint:axPoint];
-    [self diagnosticLog:"HoverClick: click #%llu received leftClickFocus=%s experimentalHoverClickAssist=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
+    [self diagnosticLog:"HoverClick: click #%llu received leftClickFocus=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
                         clickID,
                         _clickToFocusEnabled ? "ON" : "OFF",
-                        _hoverClickAssistEnabled ? "ON" : "OFF",
                         rawPoint.x,
                         rawPoint.y,
                         axPoint.x,
@@ -2295,11 +2266,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
     [self beginRecentDecisionWithTrigger:"right-click" sequenceID:clickID rawPoint:rawPoint axPoint:axPoint];
-    [self diagnosticLog:"HoverClick: right-click #%llu received rightClickFocus=%s leftClickFocus=%s experimentalHoverClickAssist=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
+    [self diagnosticLog:"HoverClick: right-click #%llu received rightClickFocus=%s leftClickFocus=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
                         clickID,
                         _rightClickFocusEnabled ? "ON" : "OFF",
                         _clickToFocusEnabled ? "ON" : "OFF",
-                        _hoverClickAssistEnabled ? "ON" : "OFF",
                         rawPoint.x,
                         rawPoint.y,
                         axPoint.x,
@@ -3423,18 +3393,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         });
     }
     HoverClickLog("HoverClick: %s #%llu event passed through", trigger, sequenceID);
-
-    if (![self isEffectiveHoverClickAssistEnabled]) {
-        if (_hoverClickAssistEnabled) {
-            HoverClickLog("HoverClick: Experimental Hover Click Assist ON but ineffective because Left Click Focus is disabled: no assist path scheduled");
-            return;
-        }
-
-        HoverClickLog("HoverClick: Experimental Hover Click Assist OFF: no assist path scheduled");
-        return;
-    }
-
-    HoverClickLog("HoverClick: Experimental Hover Click Assist ON: placeholder no-op; no assist path scheduled");
 }
 
 - (AXUIElementRef)copyWindowForElement:(AXUIElementRef)element {
