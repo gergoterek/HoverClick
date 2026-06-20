@@ -40,7 +40,7 @@ static NSString * const HoverClickUninstallHelp = @"Shows safe manual uninstall 
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
-static const CGFloat HoverClickMenuContentWidth = 286.0;
+static const CGFloat HoverClickMenuContentWidth = 260.0;
 static const CGFloat HoverClickMenuLeadingInset = 14.0;
 static const CGFloat HoverClickMenuTrailingInset = 8.0;
 static const CGFloat HoverClickMenuIconTitleSpacing = 8.0;
@@ -376,11 +376,12 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
+    [super drawRect:dirtyRect];
     if (self.highlighted && self.rowEnabled) {
+        NSRect highlightRect = NSInsetRect(self.bounds, 5.0, 2.0);
+        NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:highlightRect xRadius:5.0 yRadius:5.0];
         [[NSColor selectedContentBackgroundColor] setFill];
-        NSRectFill(dirtyRect);
-    } else {
-        [super drawRect:dirtyRect];
+        [path fill];
     }
 }
 
@@ -409,7 +410,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 
     NSString *stateGlyph = @"";
     if (self.showsSubmenuArrow) {
-        stateGlyph = @"›";
+        stateGlyph = @"▸";
     } else if (item.state == NSControlStateValueOn) {
         stateGlyph = @"✓";
     } else if (item.state == NSControlStateValueMixed) {
@@ -657,6 +658,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 @property(nonatomic, strong) NSMenuItem *verboseItem;
 @property(nonatomic, strong) NSMenuItem *checkForUpdatesItem;
 @property(nonatomic, strong) NSMenuItem *automaticUpdateChecksItem;
+@property(nonatomic, strong) NSMenuItem *diagnosticsCopyItem;
 @property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
 @property(nonatomic, strong) NSAlert *accessibilityOnboardingAlert;
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
@@ -707,6 +709,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     BOOL _permissionMissingPassThroughActive;
     BOOL _eventTapRemovedDueToMissingPermission;
     BOOL _eventTapRemovalScheduledDueToMissingPermission;
+    BOOL _showRefreshStatusFeedback;
     CFMachPortRef _eventTap;
     CFRunLoopSourceRef _eventTapSource;
     CFAbsoluteTime _lastMouseDownLogTime;
@@ -1131,16 +1134,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.diagnosticsItem.submenu = diagnosticsMenu;
     [menu addItem:self.diagnosticsItem];
 
-    NSMenuItem *copyDiagnosticsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Copy Summary")
-                                                                 action:@selector(copyDiagnosticsSummary:)
-                                                          keyEquivalent:@""];
-    copyDiagnosticsItem.target = self;
-    copyDiagnosticsItem.enabled = YES;
-    copyDiagnosticsItem.indentationLevel = 0;
-    copyDiagnosticsItem.state = NSControlStateValueOff;
-    copyDiagnosticsItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
-    HoverClickUseNonClosingMenuRow(copyDiagnosticsItem, @"doc.on.doc", @"doc.text", NO);
-    [diagnosticsMenu addItem:copyDiagnosticsItem];
+    self.diagnosticsCopyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Copy Summary")
+                                                         action:@selector(copyDiagnosticsSummary:)
+                                                  keyEquivalent:@""];
+    self.diagnosticsCopyItem.target = self;
+    self.diagnosticsCopyItem.enabled = YES;
+    self.diagnosticsCopyItem.indentationLevel = 0;
+    self.diagnosticsCopyItem.state = NSControlStateValueOff;
+    self.diagnosticsCopyItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
+    HoverClickUseNonClosingMenuRow(self.diagnosticsCopyItem, @"doc.on.doc", @"doc.text", NO);
+    [diagnosticsMenu addItem:self.diagnosticsCopyItem];
 
     self.verboseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Verbose Mode")
                                                   action:@selector(toggleVerboseDiagnostics:)
@@ -1440,6 +1443,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self refreshAccessibilityStatusForReason:userInitiated ? @"manual refresh" : @"refresh"
                               promptIfMissing:userInitiated
                              updateLastAction:userInitiated];
+    if (userInitiated) {
+        _showRefreshStatusFeedback = YES;
+        self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refreshed");
+        HoverClickSyncMenuRowView(self.permissionRefreshItem);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            _showRefreshStatusFeedback = NO;
+            self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refresh Status");
+            HoverClickSyncMenuRowView(self.permissionRefreshItem);
+        });
+    }
 }
 
 - (BOOL)isEventTapPortValid {
@@ -2462,6 +2476,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     HoverClickLog("HoverClick: diagnostics summary copied");
     [self setLastClickResult:@"Diagnostics Summary Copied"];
+
+    if (self.diagnosticsCopyItem != nil) {
+        self.diagnosticsCopyItem.title = HoverClickMenuItemTitle(@"Copied");
+        HoverClickSyncMenuRowView(self.diagnosticsCopyItem);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            self.diagnosticsCopyItem.title = HoverClickMenuItemTitle(@"Copy Summary");
+            HoverClickSyncMenuRowView(self.diagnosticsCopyItem);
+        });
+    }
 }
 
 - (void)showAboutHoverClick:(id)sender {
@@ -2530,11 +2554,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionItem.toolTip = trusted ? HoverClickAccessibilityStatusHelp : @"HoverClick needs Accessibility permission before click focus can work.";
     HoverClickSyncMenuRowView(self.permissionItem);
 
-    self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refresh Status");
-    self.permissionRefreshItem.enabled = YES;
-    self.permissionRefreshItem.state = NSControlStateValueOff;
-    self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
-    HoverClickSyncMenuRowView(self.permissionRefreshItem);
+    if (!_showRefreshStatusFeedback) {
+        self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refresh Status");
+        self.permissionRefreshItem.enabled = YES;
+        self.permissionRefreshItem.state = NSControlStateValueOff;
+        self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
+        HoverClickSyncMenuRowView(self.permissionRefreshItem);
+    }
 
     self.clickToFocusItem.title = HoverClickMenuItemTitle(@"Left Click Focus");
     self.clickToFocusItem.enabled = trusted;
