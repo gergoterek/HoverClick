@@ -264,7 +264,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 @property(nonatomic) SEL actionSelector;
 @property(nonatomic, strong) NSImageView *iconView;
 @property(nonatomic, strong) NSTextField *titleField;
-@property(nonatomic, strong) NSImageView *stateView;
+@property(nonatomic, strong) NSTextField *stateField;
 @property(nonatomic, strong) NSTextField *accessoryField;
 @property(nonatomic) BOOL rowEnabled;
 @property(nonatomic) BOOL highlighted;
@@ -326,13 +326,16 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
         [self addSubview:_accessoryField];
     }
 
-    _stateView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickMenuRowStateX,
-                                                               4.0,
-                                                               HoverClickMenuRowStateSize,
-                                                               HoverClickMenuRowStateSize)];
-    _stateView.imageScaling = NSImageScaleProportionallyDown;
-    _stateView.hidden = !showsStateView;
-    [self addSubview:_stateView];
+    _stateField = [NSTextField labelWithString:@""];
+    _stateField.frame = NSMakeRect(HoverClickMenuRightAccessoryX - 36.0,
+                                   2.0,
+                                   HoverClickMenuRightAccessoryWidth + 36.0,
+                                   18.0);
+    _stateField.alignment = NSTextAlignmentRight;
+    _stateField.font = [NSFont menuFontOfSize:0.0];
+    _stateField.lineBreakMode = NSLineBreakByClipping;
+    _stateField.hidden = !showsStateView;
+    [self addSubview:_stateField];
 
     [self syncFromMenuItem];
     return self;
@@ -346,6 +349,30 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     _highlighted = highlighted;
     [self setNeedsDisplay:YES];
     [self syncFromMenuItem];
+}
+
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    for (NSTrackingArea *area in self.trackingAreas.copy) {
+        [self removeTrackingArea:area];
+    }
+    NSTrackingArea *area = [[NSTrackingArea alloc] initWithRect:self.bounds
+                                                        options:(NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways)
+                                                          owner:self
+                                                       userInfo:nil];
+    [self addTrackingArea:area];
+}
+
+- (void)mouseEntered:(NSEvent *)event {
+    (void)event;
+    if (self.rowEnabled) {
+        self.highlighted = YES;
+    }
+}
+
+- (void)mouseExited:(NSEvent *)event {
+    (void)event;
+    self.highlighted = NO;
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
@@ -367,32 +394,29 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
         textColor = [NSColor selectedMenuItemTextColor];
     }
     self.titleField.textColor = textColor;
+    self.stateField.textColor = textColor;
     self.accessoryField.textColor = textColor;
 
     self.iconView.alphaValue = self.rowEnabled ? 1.0 : 0.35;
-    self.stateView.alphaValue = self.rowEnabled ? 1.0 : 0.35;
+    self.stateField.alphaValue = self.rowEnabled ? 1.0 : 0.35;
     self.accessoryField.alphaValue = self.rowEnabled ? 1.0 : 0.35;
 
     if (@available(macOS 10.14, *)) {
         if (self.iconView != nil) {
             self.iconView.contentTintColor = textColor;
         }
-        self.stateView.contentTintColor = textColor;
     }
 
+    NSString *stateGlyph = @"";
     if (self.showsSubmenuArrow) {
-        self.stateView.image = HoverClickMenuSystemImage(@"chevron.right", @"arrowtriangle.right.fill");
-        self.stateView.hidden = NO;
-    } else {
-        NSImage *stateImage = nil;
-        if (item.state == NSControlStateValueOn) {
-            stateImage = HoverClickMenuSystemImage(@"checkmark", @"checkmark.circle");
-        } else if (item.state == NSControlStateValueMixed) {
-            stateImage = HoverClickMenuSystemImage(@"minus", @"minus.circle");
-        }
-        self.stateView.image = stateImage;
-        self.stateView.hidden = (stateImage == nil);
+        stateGlyph = @"›";
+    } else if (item.state == NSControlStateValueOn) {
+        stateGlyph = @"✓";
+    } else if (item.state == NSControlStateValueMixed) {
+        stateGlyph = @"–";
     }
+    self.stateField.stringValue = stateGlyph;
+    self.stateField.hidden = (stateGlyph.length == 0);
 }
 
 - (void)mouseDown:(NSEvent *)event {
@@ -419,6 +443,16 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
         [NSApp sendAction:self.actionSelector to:self.actionTarget from:self.menuItem ?: self];
         if (self.closesMenuAfterAction) {
             [self.menuItem.menu cancelTracking];
+        }
+    }
+    if (!self.closesMenuAfterAction) {
+        NSWindow *win = self.window;
+        if (win != nil) {
+            NSPoint winPt = [win convertPointFromScreen:[NSEvent mouseLocation]];
+            NSPoint viewPt = [self convertPoint:winPt fromView:nil];
+            if (NSPointInRect(viewPt, self.bounds)) {
+                self.highlighted = YES;
+            }
         }
     }
 }
@@ -998,6 +1032,31 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [menu addItem:[NSMenuItem separatorItem]];
 
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Updates")];
+
+    self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check Now...")
+                                                          action:@selector(checkForUpdates:)
+                                                   keyEquivalent:@""];
+    self.checkForUpdatesItem.target = self.updaterController;
+    self.checkForUpdatesItem.enabled = YES;
+    self.checkForUpdatesItem.indentationLevel = 0;
+    self.checkForUpdatesItem.state = NSControlStateValueOff;
+    self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
+    HoverClickUseClosingMenuRow(self.checkForUpdatesItem, @"arrow.down.circle", @"arrow.clockwise.circle");
+    [menu addItem:self.checkForUpdatesItem];
+
+    self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Auto Check Updates")
+                                                                action:@selector(toggleAutomaticUpdateChecks:)
+                                                         keyEquivalent:@""];
+    self.automaticUpdateChecksItem.target = self;
+    self.automaticUpdateChecksItem.enabled = YES;
+    self.automaticUpdateChecksItem.indentationLevel = 0;
+    self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
+    HoverClickUseNonClosingMenuRow(self.automaticUpdateChecksItem, @"clock.arrow.circlepath", @"checkmark.circle", YES);
+    [menu addItem:self.automaticUpdateChecksItem];
+
+    [menu addItem:[NSMenuItem separatorItem]];
+
     [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Info")];
 
     NSMenuItem *helpItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Help")
@@ -1092,31 +1151,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.verboseItem.toolTip = HoverClickVerboseDiagnosticsHelp;
     HoverClickUseNonClosingMenuRow(self.verboseItem, @"list.bullet.rectangle", @"list.bullet", YES);
     [diagnosticsMenu addItem:self.verboseItem];
-
-    [menu addItem:[NSMenuItem separatorItem]];
-
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Updates")];
-
-    self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check Now...")
-                                                          action:@selector(checkForUpdates:)
-                                                   keyEquivalent:@""];
-    self.checkForUpdatesItem.target = self.updaterController;
-    self.checkForUpdatesItem.enabled = YES;
-    self.checkForUpdatesItem.indentationLevel = 0;
-    self.checkForUpdatesItem.state = NSControlStateValueOff;
-    self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
-    HoverClickUseClosingMenuRow(self.checkForUpdatesItem, @"arrow.down.circle", @"arrow.clockwise.circle");
-    [menu addItem:self.checkForUpdatesItem];
-
-    self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Auto Check Updates")
-                                                                action:@selector(toggleAutomaticUpdateChecks:)
-                                                         keyEquivalent:@""];
-    self.automaticUpdateChecksItem.target = self;
-    self.automaticUpdateChecksItem.enabled = YES;
-    self.automaticUpdateChecksItem.indentationLevel = 0;
-    self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
-    HoverClickUseNonClosingMenuRow(self.automaticUpdateChecksItem, @"clock.arrow.circlepath", @"checkmark.circle", YES);
-    [menu addItem:self.automaticUpdateChecksItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
