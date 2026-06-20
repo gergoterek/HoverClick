@@ -42,7 +42,7 @@ static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
 static const CGFloat HoverClickMenuContentWidth = 286.0;
 static const CGFloat HoverClickMenuLeadingInset = 14.0;
-static const CGFloat HoverClickMenuTrailingInset = 14.0;
+static const CGFloat HoverClickMenuTrailingInset = 8.0;
 static const CGFloat HoverClickMenuIconTitleSpacing = 8.0;
 static const CGFloat HoverClickMenuRightAccessoryWidth = 14.0;
 static const CGFloat HoverClickMenuImagePointSize = 13.0;
@@ -51,7 +51,7 @@ static const CGFloat HoverClickMenuRightAccessoryX = HoverClickMenuContentWidth 
 static const CGFloat HoverClickHeaderWidth = HoverClickMenuContentWidth;
 static const CGFloat HoverClickHeaderHeight = 24.0;
 static const CGFloat HoverClickHeaderStatusDotSize = 8.0;
-static const CGFloat HoverClickHeaderStatusDotX = HoverClickMenuLeadingInset;
+static const CGFloat HoverClickHeaderStatusDotX = HoverClickMenuLeadingInset + (HoverClickMenuImageSize - HoverClickHeaderStatusDotSize) / 2.0;
 static const CGFloat HoverClickHeaderTextX = HoverClickMenuLeadingInset + HoverClickMenuImageSize + HoverClickMenuIconTitleSpacing;
 static const CGFloat HoverClickHeaderVersionWidth = 72.0;
 static const CGFloat HoverClickHeaderVersionX = HoverClickMenuRightAccessoryX + HoverClickMenuRightAccessoryWidth - HoverClickHeaderVersionWidth;
@@ -371,6 +371,13 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     self.iconView.alphaValue = self.rowEnabled ? 1.0 : 0.35;
     self.stateView.alphaValue = self.rowEnabled ? 1.0 : 0.35;
     self.accessoryField.alphaValue = self.rowEnabled ? 1.0 : 0.35;
+
+    if (@available(macOS 10.14, *)) {
+        if (self.iconView != nil) {
+            self.iconView.contentTintColor = textColor;
+        }
+        self.stateView.contentTintColor = textColor;
+    }
 
     NSImage *stateImage = nil;
     if (item.state == NSControlStateValueOn) {
@@ -919,7 +926,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     permissionsItem.enabled = YES;
     permissionsItem.indentationLevel = 0;
     permissionsItem.state = NSControlStateValueOff;
-    HoverClickSetMenuItemImage(permissionsItem, @"lock.shield", @"lock");
+    HoverClickUseClosingMenuRow(permissionsItem, @"lock.shield", @"lock");
 
     NSMenu *permissionsMenu = [[NSMenu alloc] initWithTitle:@"Permissions"];
     [permissionsMenu setAutoenablesItems:NO];
@@ -981,7 +988,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     helpItem.enabled = YES;
     helpItem.indentationLevel = 0;
     helpItem.state = NSControlStateValueOff;
-    HoverClickSetMenuItemImage(helpItem, @"questionmark.circle", @"questionmark");
+    HoverClickUseClosingMenuRow(helpItem, @"questionmark.circle", @"questionmark");
 
     NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
     [helpMenu setAutoenablesItems:NO];
@@ -1040,7 +1047,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.diagnosticsItem.enabled = YES;
     self.diagnosticsItem.indentationLevel = 0;
     self.diagnosticsItem.state = NSControlStateValueOff;
-    HoverClickSetMenuItemImage(self.diagnosticsItem, @"waveform.path.ecg", @"doc.text");
+    HoverClickUseClosingMenuRow(self.diagnosticsItem, @"waveform.path.ecg", @"doc.text");
 
     NSMenu *diagnosticsMenu = [[NSMenu alloc] initWithTitle:@"Diagnostics"];
     [diagnosticsMenu setAutoenablesItems:NO];
