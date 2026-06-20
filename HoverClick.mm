@@ -34,10 +34,8 @@ static NSString * const HoverClickCheckForUpdatesHelp = @"Checks for HoverClick 
 static NSString * const HoverClickAutomaticUpdateChecksHelp = @"Lets Sparkle periodically look for updates. Downloads and installs still require user action.";
 static NSString * const HoverClickAboutHelp = @"Shows HoverClick version and bundle identity.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
-static NSString * const HoverClickMenuItemTitlePadding = @" ";
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
-static const CGFloat HoverClickMenuSymbolPointSize = 13.0;
 static const CGFloat HoverClickHeaderWidth = 286.0;
 static const CGFloat HoverClickHeaderHeight = 24.0;
 static const CGFloat HoverClickHeaderHorizontalPadding = 14.0;
@@ -206,28 +204,17 @@ static BOOL HoverClickStringContainsCaseInsensitive(NSString *value, NSString *n
 }
 
 static NSString *HoverClickMenuItemTitle(NSString *title) {
-    // Match the Quit row's state-slot icon spacing for plain, checked, icon, and submenu rows.
-    return [HoverClickMenuItemTitlePadding stringByAppendingString:title];
+    return title ?: @"";
 }
 
-static NSImage *HoverClickMenuSymbolImage(NSString *symbolName, NSString *accessibilityDescription) {
-    if (@available(macOS 11.0, *)) {
-        NSImage *image = [NSImage imageWithSystemSymbolName:symbolName
-                                   accessibilityDescription:accessibilityDescription];
-        if (image == nil) {
-            return nil;
-        }
-
-        NSImageSymbolConfiguration *configuration = [NSImageSymbolConfiguration configurationWithPointSize:HoverClickMenuSymbolPointSize
-                                                                                                    weight:NSFontWeightRegular
-                                                                                                     scale:NSImageSymbolScaleMedium];
-        image = [image imageWithSymbolConfiguration:configuration] ?: image;
-        [image setTemplate:YES];
-        image.size = NSMakeSize(HoverClickStatusIconPointSize, HoverClickStatusIconPointSize);
-        return image;
-    }
-
-    return nil;
+static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
+    NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(title)
+                                                        action:nil
+                                                 keyEquivalent:@""];
+    headerItem.enabled = NO;
+    headerItem.indentationLevel = 0;
+    headerItem.state = NSControlStateValueOff;
+    return headerItem;
 }
 
 static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
@@ -619,6 +606,22 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [menu addItem:[NSMenuItem separatorItem]];
 
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"General")];
+
+    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick...")
+                                                       action:@selector(showAboutHoverClick:)
+                                                keyEquivalent:@""];
+    aboutItem.target = self;
+    aboutItem.enabled = YES;
+    aboutItem.indentationLevel = 0;
+    aboutItem.state = NSControlStateValueOff;
+    aboutItem.toolTip = HoverClickAboutHelp;
+    [menu addItem:aboutItem];
+
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Click Focus")];
+
     self.clickToFocusItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Left Click Focus")
                                                        action:@selector(toggleClickToFocus:)
                                                 keyEquivalent:@""];
@@ -638,6 +641,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [menu addItem:self.rightClickFocusItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
+
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Permissions")];
 
     NSMenuItem *permissionsStartupItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Permissions & Startup")
                                                                     action:nil
@@ -668,7 +673,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionRefreshItem.enabled = YES;
     self.permissionRefreshItem.indentationLevel = 0;
     self.permissionRefreshItem.state = NSControlStateValueOff;
-    self.permissionRefreshItem.offStateImage = HoverClickMenuSymbolImage(@"arrow.clockwise", @"Check Again");
     self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
     [permissionsStartupMenu addItem:self.permissionRefreshItem];
 
@@ -692,9 +696,35 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     settingsItem.enabled = YES;
     settingsItem.indentationLevel = 0;
     settingsItem.state = NSControlStateValueOff;
-    settingsItem.offStateImage = HoverClickMenuSymbolImage(@"gearshape", @"Open Accessibility Settings");
     settingsItem.toolTip = HoverClickOpenAccessibilitySettingsHelp;
     [permissionsStartupMenu addItem:settingsItem];
+
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Updates")];
+
+    self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check for Updates...")
+                                                          action:@selector(checkForUpdates:)
+                                                   keyEquivalent:@""];
+    self.checkForUpdatesItem.target = self.updaterController;
+    self.checkForUpdatesItem.enabled = YES;
+    self.checkForUpdatesItem.indentationLevel = 0;
+    self.checkForUpdatesItem.state = NSControlStateValueOff;
+    self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
+    [menu addItem:self.checkForUpdatesItem];
+
+    self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Automatically Check for Updates")
+                                                                action:@selector(toggleAutomaticUpdateChecks:)
+                                                         keyEquivalent:@""];
+    self.automaticUpdateChecksItem.target = self;
+    self.automaticUpdateChecksItem.enabled = YES;
+    self.automaticUpdateChecksItem.indentationLevel = 0;
+    self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
+    [menu addItem:self.automaticUpdateChecksItem];
+
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Diagnostics")];
 
     self.diagnosticsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Diagnostics")
                                                       action:nil
@@ -724,42 +754,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     copyDiagnosticsItem.enabled = YES;
     copyDiagnosticsItem.indentationLevel = 0;
     copyDiagnosticsItem.state = NSControlStateValueOff;
-    copyDiagnosticsItem.offStateImage = HoverClickMenuSymbolImage(@"doc.on.doc", @"Copy");
     copyDiagnosticsItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check for Updates...")
-                                                          action:@selector(checkForUpdates:)
-                                                   keyEquivalent:@""];
-    self.checkForUpdatesItem.target = self.updaterController;
-    self.checkForUpdatesItem.enabled = YES;
-    self.checkForUpdatesItem.indentationLevel = 0;
-    self.checkForUpdatesItem.state = NSControlStateValueOff;
-    self.checkForUpdatesItem.offStateImage = HoverClickMenuSymbolImage(@"arrow.triangle.2.circlepath", @"Check for Updates");
-    self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
-    [menu addItem:self.checkForUpdatesItem];
-
-    self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Automatically Check for Updates")
-                                                                action:@selector(toggleAutomaticUpdateChecks:)
-                                                         keyEquivalent:@""];
-    self.automaticUpdateChecksItem.target = self;
-    self.automaticUpdateChecksItem.enabled = YES;
-    self.automaticUpdateChecksItem.indentationLevel = 0;
-    self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
-    [menu addItem:self.automaticUpdateChecksItem];
-
-    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick...")
-                                                       action:@selector(showAboutHoverClick:)
-                                                keyEquivalent:@""];
-    aboutItem.target = self;
-    aboutItem.enabled = YES;
-    aboutItem.indentationLevel = 0;
-    aboutItem.state = NSControlStateValueOff;
-    aboutItem.offStateImage = HoverClickMenuSymbolImage(@"info.circle", @"About");
-    aboutItem.toolTip = HoverClickAboutHelp;
-    [menu addItem:aboutItem];
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Quit")];
 
     NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quit")
                                                       action:@selector(quitApplication:)
@@ -768,10 +768,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     quitItem.enabled = YES;
     quitItem.indentationLevel = 0;
     quitItem.state = NSControlStateValueOff;
-    quitItem.image = nil;
-    quitItem.onStateImage = nil;
-    quitItem.mixedStateImage = nil;
-    quitItem.offStateImage = HoverClickMenuSymbolImage(@"power", @"Quit");
     quitItem.toolTip = HoverClickQuitHelp;
     [menu addItem:quitItem];
 
@@ -1019,7 +1015,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"HoverClick Needs Accessibility Permission";
-    alert.informativeText = @"HoverClick needs Accessibility permission to focus background windows before your original click is delivered. Left Click Focus, Right Click Focus, and Hover controls stay disabled until permission is granted.\n\nUse Permissions & Startup > Open Accessibility Settings if macOS does not show the permission prompt, then choose Check Again after enabling HoverClick.";
+    alert.informativeText = @"HoverClick needs Accessibility permission to focus background windows before your original click is delivered. Click focus controls stay disabled until permission is granted.\n\nUse Permissions & Startup > Open Accessibility Settings if macOS does not show the permission prompt, then choose Check Again after enabling HoverClick.";
     alert.alertStyle = NSAlertStyleInformational;
     NSButton *okButton = [alert addButtonWithTitle:@"OK"];
     okButton.target = self;
