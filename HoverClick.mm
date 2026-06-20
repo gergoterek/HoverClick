@@ -40,23 +40,33 @@ static NSString * const HoverClickUninstallHelp = @"Shows safe manual uninstall 
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
-static const CGFloat HoverClickHeaderWidth = 286.0;
-static const CGFloat HoverClickHeaderHeight = 24.0;
-static const CGFloat HoverClickHeaderHorizontalPadding = 14.0;
-static const CGFloat HoverClickHeaderStatusDotSize = 8.0;
-static const CGFloat HoverClickHeaderStatusDotX = 14.0;
-static const CGFloat HoverClickHeaderTextX = 28.0;
-static const CGFloat HoverClickHeaderVersionWidth = 72.0;
-static const CGFloat HoverClickHeaderLabelY = 4.0;
-static const CGFloat HoverClickHeaderLabelHeight = 18.0;
-static const CGFloat HoverClickMenuRowWidth = 286.0;
-static const CGFloat HoverClickMenuRowHeight = 22.0;
-static const CGFloat HoverClickMenuRowIconX = 14.0;
-static const CGFloat HoverClickMenuRowTextX = 38.0;
-static const CGFloat HoverClickMenuRowStateSize = 13.0;
-static const CGFloat HoverClickMenuRowStateX = 258.0;
+static const CGFloat HoverClickMenuContentWidth = 286.0;
+static const CGFloat HoverClickMenuLeadingInset = 14.0;
+static const CGFloat HoverClickMenuTrailingInset = 14.0;
+static const CGFloat HoverClickMenuIconTitleSpacing = 8.0;
+static const CGFloat HoverClickMenuRightAccessoryWidth = 14.0;
 static const CGFloat HoverClickMenuImagePointSize = 13.0;
 static const CGFloat HoverClickMenuImageSize = 16.0;
+static const CGFloat HoverClickMenuRightAccessoryX = HoverClickMenuContentWidth - HoverClickMenuTrailingInset - HoverClickMenuRightAccessoryWidth;
+static const CGFloat HoverClickHeaderWidth = HoverClickMenuContentWidth;
+static const CGFloat HoverClickHeaderHeight = 24.0;
+static const CGFloat HoverClickHeaderStatusDotSize = 8.0;
+static const CGFloat HoverClickHeaderStatusDotX = HoverClickMenuLeadingInset;
+static const CGFloat HoverClickHeaderTextX = HoverClickMenuLeadingInset + HoverClickMenuImageSize + HoverClickMenuIconTitleSpacing;
+static const CGFloat HoverClickHeaderVersionWidth = 72.0;
+static const CGFloat HoverClickHeaderVersionX = HoverClickMenuRightAccessoryX + HoverClickMenuRightAccessoryWidth - HoverClickHeaderVersionWidth;
+static const CGFloat HoverClickHeaderLabelY = 4.0;
+static const CGFloat HoverClickHeaderLabelHeight = 18.0;
+static const CGFloat HoverClickMenuRowWidth = HoverClickMenuContentWidth;
+static const CGFloat HoverClickMenuRowHeight = 22.0;
+static const CGFloat HoverClickMenuRowIconX = HoverClickMenuLeadingInset;
+static const CGFloat HoverClickMenuRowTextX = HoverClickMenuRowIconX + HoverClickMenuImageSize + HoverClickMenuIconTitleSpacing;
+static const CGFloat HoverClickMenuRowStateSize = 13.0;
+static const CGFloat HoverClickMenuRowStateX = HoverClickMenuRightAccessoryX + ((HoverClickMenuRightAccessoryWidth - HoverClickMenuRowStateSize) / 2.0);
+static const CGFloat HoverClickSectionHeaderHeight = 18.0;
+static const CGFloat HoverClickSectionHeaderLeadingInset = HoverClickMenuLeadingInset;
+static const CGFloat HoverClickSectionHeaderLabelY = 2.0;
+static const CGFloat HoverClickSectionHeaderLabelHeight = 15.0;
 static const CGFloat HoverClickSectionHeaderFontSize = 11.0;
 static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
 static const NSUInteger HoverClickRecentDecisionHistoryLimit = 10;
@@ -289,7 +299,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     _titleField = [NSTextField labelWithString:menuItem.title ?: @""];
     _titleField.frame = NSMakeRect(HoverClickMenuRowTextX,
                                    2.0,
-                                   HoverClickMenuRowStateX - HoverClickMenuRowTextX - 8.0,
+                                   HoverClickMenuRightAccessoryX - HoverClickMenuRowTextX - HoverClickMenuIconTitleSpacing,
                                    18.0);
     _titleField.font = [NSFont menuFontOfSize:0.0];
     _titleField.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -411,13 +421,22 @@ static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
     headerItem.enabled = NO;
     headerItem.indentationLevel = 0;
     headerItem.state = NSControlStateValueOff;
-    NSDictionary<NSAttributedStringKey, id> *attributes = @{
-        NSFontAttributeName: [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize
-                                              weight:NSFontWeightRegular],
-        NSForegroundColorAttributeName: [NSColor disabledControlTextColor]
-    };
-    headerItem.attributedTitle = [[NSAttributedString alloc] initWithString:HoverClickMenuItemTitle(title)
-                                                                 attributes:attributes];
+
+    NSView *headerView = [[NSView alloc] initWithFrame:NSMakeRect(0.0,
+                                                                  0.0,
+                                                                  HoverClickMenuContentWidth,
+                                                                  HoverClickSectionHeaderHeight)];
+    NSTextField *label = [NSTextField labelWithString:HoverClickMenuItemTitle(title)];
+    label.frame = NSMakeRect(HoverClickSectionHeaderLeadingInset,
+                             HoverClickSectionHeaderLabelY,
+                             HoverClickMenuContentWidth - HoverClickSectionHeaderLeadingInset - HoverClickMenuTrailingInset,
+                             HoverClickSectionHeaderLabelHeight);
+    label.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize
+                                   weight:NSFontWeightRegular];
+    label.textColor = [NSColor disabledControlTextColor];
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    [headerView addSubview:label];
+    headerItem.view = headerView;
     return headerItem;
 }
 
@@ -439,7 +458,7 @@ static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
     NSTextField *statusLabel = [NSTextField labelWithString:@"HoverClick is running"];
     statusLabel.frame = NSMakeRect(HoverClickHeaderTextX,
                                    HoverClickHeaderLabelY,
-                                   HoverClickHeaderWidth - HoverClickHeaderTextX - HoverClickHeaderVersionWidth - HoverClickHeaderHorizontalPadding,
+                                   HoverClickHeaderVersionX - HoverClickHeaderTextX - HoverClickMenuIconTitleSpacing,
                                    HoverClickHeaderLabelHeight);
     statusLabel.font = [NSFont menuFontOfSize:0.0];
     statusLabel.textColor = [NSColor disabledControlTextColor];
@@ -447,7 +466,7 @@ static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
     [headerView addSubview:statusLabel];
 
     NSTextField *versionLabel = [NSTextField labelWithString:headerVersion];
-    versionLabel.frame = NSMakeRect(HoverClickHeaderWidth - HoverClickHeaderHorizontalPadding - HoverClickHeaderVersionWidth,
+    versionLabel.frame = NSMakeRect(HoverClickHeaderVersionX,
                                     HoverClickHeaderLabelY,
                                     HoverClickHeaderVersionWidth,
                                     HoverClickHeaderLabelHeight);

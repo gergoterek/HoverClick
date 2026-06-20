@@ -129,13 +129,13 @@
 ## v1.1 Menu UI/UX Refactor State
 
 - v1.1 menu UI/UX refactor is implemented on `feature-v1.1-menu-ui-refactor`.
-- The status menu keeps a compact top status row with a green status dot, `HoverClick is running`, and right-aligned `v<short-version>` read from `CFBundleShortVersionString`.
-- The top-level menu now uses subtle native section headers Functions, Access, Info, and Updates, followed by a bottom separator with `About` above `Quit`.
+- The status menu keeps a compact top status row with a green status dot, `HoverClick is running`, and right-aligned `v<short-version>` read from `CFBundleShortVersionString`; custom header/control rows share named leading, icon-spacing, and right accessory constants so the top status row, section labels, left icons, right-side indicators, and version label align visually with the plain bottom `About`/`Quit` rows as closely as native AppKit menus permit.
+- The top-level menu now uses subtle section headers Functions, Access, Info, and Updates, followed by a bottom separator with `About` above `Quit`.
 - Functions contains `Left Click Focus` and `Right Click Focus`.
 - Access contains a `Permissions` submenu with Accessibility status, `Launch at Login`, a separator, `Refresh Permission Status`, and `Open Accessibility Settings`.
 - Info contains `Help` and `Diagnostics` submenus. Help contains `GitHub`, `Contact`, `Release Notes`, a separator, and `Uninstall HoverClick...`; Diagnostics contains `Copy Diagnostics Summary` and `Verbose Diagnostics`.
 - Updates contains `Check for Updates...` and `Automatically Check for Updates`.
-- Menu rows use native `NSMenuItem.image` icons with SF Symbols where available; this avoids text-icon prefixes, manual title padding, and the old `icon + space + label` look while leaning on native images, separators, submenu arrows, and right-side state indicators for custom toggle rows.
+- Menu rows use native `NSMenuItem.image` icons with SF Symbols where available; this avoids text-icon prefixes, manual title padding, and the old `icon + space + label` look while leaning on native images, separators, submenu arrows, aligned custom section/header rows, and right-side state indicators for custom toggle rows.
 - Feature behavior is unchanged: updater completion behavior, diagnostics output, Launch at Login, permission refresh, click-focus toggles, Quit/Cmd+Q, event tap mask, and mouse semantics are preserved.
 - No `Info.plist`, script, appcast, release asset, signing identity, bundle identifier, app name, version/build, release workflow, Hover Click Assist UI, or README reduction change is part of v1.1 menu UI/UX refactor.
 - Manual validation still needs to confirm the menu opens normally, grouping looks clean, controls remain easy to find, toggles and actions work, updater and diagnostics behavior are intact, no Hover Assist UI appears, and click-focus behavior remains unchanged.
@@ -179,7 +179,7 @@
 - If Accessibility is missing, click-focus feature toggles are disabled until the user grants permission and chooses `Refresh Permission Status` or relaunches.
 - `Diagnostics` contains `Copy Diagnostics Summary` and `Verbose Diagnostics`.
 - `Updates` is a top-level section containing `Check for Updates...` and `Automatically Check for Updates`. The toggle controls Sparkle's automatic update checks only and does not enable automatic download/install.
-- The top-level menu is grouped by subtle disabled native section headers for Functions, Access, Info, and Updates.
+- The top-level menu is grouped by subtle disabled section headers for Functions, Access, Info, and Updates.
 - `Help` contains GitHub, Contact, Release Notes, and safe uninstall instructions.
 - `About` is in the bottom group directly above `Quit`.
 - Technical click detection and last action details are available in the copied diagnostics summary.
@@ -194,7 +194,7 @@
 - Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
 - Diagnostics summary: copies app name, bundle identifier, permission, permission onboarding, permission-missing pass-through/removal state, last permission refresh/check result, startup, automatic update check state, automatic download/install state, click detection, feature state, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last handled action, last focus action/skip reason, last non-menu focus action/skip, detailed last focus decision, right-click-specific focus decision, stable last real/background click decision fields that are not overwritten by HoverClick menu/status UI clicks, overlay/system UI skip reason, overlay candidate owner/window/layer/title/bounds plus AX role/subrole/app detail, last eligible hit-test candidate, persistent last background-focus trigger/target/frontmost-before/activation/AX-operation/immediate-frontmost/delayed-verification/result/failure details, recent non-menu mouse-down decision history, aggregate callback/focus/skip counters, last verified successful background focus, event tap mask, safety note, and concise known limitations. Version/build are shown by `About` instead of being duplicated in copied diagnostics.
-- Diagnostics/menu polish: visible runtime details stay out of the menu; smaller subtle section headers, separators, submenu arrows, native menu item images, and right-side custom state indicators provide structure; action rows do not use text icon prefixes or leading title padding, and Quit preserves Cmd+Q.
+- Diagnostics/menu polish: visible runtime details stay out of the menu; smaller subtle section headers, separators, submenu arrows, native menu item images, shared visual columns, and right-side custom state indicators provide structure; action rows do not use text icon prefixes or leading title padding, and Quit preserves Cmd+Q.
 - Accessibility onboarding: first launch requests the native macOS Accessibility prompt when needed, shows a native explanatory alert, and keeps `Permissions` actions available for manual recovery.
 
 ## v0.4.6 Validated Release
