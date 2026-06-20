@@ -20,6 +20,9 @@
 - Current v1.0 readiness planning doc: `docs/V1.0_READINESS_PLAN.md`
 - Current release-prep branch: `release-v1.0.0-prep`
 - Main/origin-main v1.0 release baseline: `446478237ca32cfb1a4316f9f6f2931c6e56946f`
+- Current v1.1.x planning branch: `plan-v1.1-updater-menu-readme`
+- Current v1.1.x planning doc: `docs/V1.1_PLANNING.md`
+- Main/origin-main v1.1.x planning baseline: `711a76d810f993b8c1c8e57730fd57c26476988d`
 - Public DMG: `HoverClick-1.0.0.dmg`
 - Public DMG SHA-256: computed during the v1.0.0 release workflow after `HoverClick-1.0.0.dmg` is packaged.
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
@@ -101,6 +104,17 @@
 - The v1.0.0 release preserves v0.9.0 runtime, updater, Accessibility, diagnostics, event-tap, app identity, signing identity, bundle identifier, and Sparkle key behavior.
 - Public release publishing uses tag `v1.0.0`, DMG asset `HoverClick-1.0.0.dmg`, and a GitHub Pages appcast item for version `1.0.0` / build `39`.
 - No Hover Click Assist, Click-Time Hover Assist, Scroll Focus, Key Focus, mouse-move focus, synthetic click, event replay, delayed click delivery, cursor movement, app identity change, bundle identifier change, signing identity change, or Sparkle key change is part of v1.0.0.
+
+## v1.1.x Planning State
+
+- v1.1.x planning is recorded in `docs/V1.1_PLANNING.md`.
+- The recommended first v1.1 feature release is `v1.1.0`, with possible follow-up releases such as `v1.1.1`, `v1.1.2`, and `v1.1.3`.
+- The intended v1.1.x feature areas are updater completion, status menu UI/UX refactor, and README reduction.
+- Updater completion should keep manual `Check for Updates...`, keep `Automatically Check for Updates` clear and persistent, improve updater-state clarity where safe, preserve the GitHub Release DMG plus `gh-pages` appcast workflow, and avoid silent/background automatic install unless explicitly approved.
+- Menu UI/UX refactor should improve section structure, grouping, spacing, icon alignment, and native macOS feel without changing event semantics.
+- README reduction should make the public README roughly one half or one third of its current length by moving technical depth into docs instead of deleting useful material.
+- This planning branch is docs-only. It must not modify `README.md`, `HoverClick.mm`, `Info.plist`, scripts, `appcast.xml`, Sparkle keys, release assets, DMGs, signing settings, bundle identity, version/build metadata, event tap mask, or mouse semantics.
+- Implementation should be split into separate feature branches before release prep unless the later implementation scope is proven small and tightly coupled.
 
 ## v1.0 Readiness Planning State
 

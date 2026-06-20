@@ -190,6 +190,35 @@ Do not run build, verify, runtime refresh, package, appcast publication, tag, or
 
 Manual v1.0 release-readiness validation, when the user intentionally performs it, should confirm the signed `.app` launches, Accessibility permission remains stable, menu items work, mouse movement over background windows does not focus them, left-click focus works, right-click focus works when enabled with normal context menus, `Check for Updates...` reaches the live appcast without a 404, `Automatically Check for Updates` persists without enabling automatic download/install, diagnostics report updater automatic-check/download/install state, no Hover Click Assist UI remains, and event semantics remain unchanged.
 
+## v1.1.x Planning
+
+Use `docs/V1.1_PLANNING.md` as the scope reference for the v1.1.x cycle.
+
+The planned v1.1.x work areas are:
+
+- updater completion;
+- status menu UI/UX refactor;
+- README reduction.
+
+The recommended branch sequence is:
+
+1. `plan-v1.1-updater-menu-readme`
+2. `feature-v1.1-updater-completion`
+3. `feature-v1.1-menu-ui-refactor`
+4. `feature-v1.1-readme-reduction`
+5. `release-v1.1.0-prep`
+
+The planning branch is docs-only. It must not modify `README.md`, `HoverClick.mm`, `Info.plist`, scripts, `appcast.xml`, release assets, Sparkle keys, signing settings, bundle identity, version/build metadata, event tap mask, or mouse semantics. It must not run build, verify, runtime refresh, package, appcast publication, tag, release, raw binary, sudo, TCC reset, or Finder/System Settings UI automation.
+
+Docs-only v1.1.x planning validation should use:
+
+```zsh
+git diff --check
+/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/ci-safety-check.sh
+```
+
+Manual Finder UI validation remains optional and must not be automated.
+
 ## Release Scope
 
 Release prep, DMG packaging, tags, and GitHub releases require explicit release-scope confirmation. `scripts/run-app.sh` is for local runtime refresh after build and verify, not for packaging or publishing.
