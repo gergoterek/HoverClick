@@ -460,6 +460,7 @@ static void HoverClickUseSubmenuMenuRow(NSMenuItem *item, NSString *symbolName, 
                                                                       showsStateView:NO];
     rowView.showsSubmenuArrow = YES;
     rowView.closesMenuAfterAction = NO;
+    [rowView syncFromMenuItem];
     item.view = rowView;
 }
 
