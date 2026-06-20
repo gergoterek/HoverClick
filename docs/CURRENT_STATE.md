@@ -116,6 +116,16 @@
 - This planning branch is docs-only. It must not modify `README.md`, `HoverClick.mm`, `Info.plist`, scripts, `appcast.xml`, Sparkle keys, release assets, DMGs, signing settings, bundle identity, version/build metadata, event tap mask, or mouse semantics.
 - Implementation should be split into separate feature branches before release prep unless the later implementation scope is proven small and tightly coupled.
 
+## v1.1 Updater Completion State
+
+- v1.1 updater completion is implemented on `feature-v1.1-updater-completion`.
+- Manual `Check for Updates...` remains a visible Sparkle update action and uses Sparkle's standard user-visible update flow.
+- `Automatically Check for Updates` remains a native checkmark toggle backed by Sparkle's `automaticallyChecksForUpdates` state.
+- Toggling automatic update checks reasserts `automaticallyDownloadsUpdates = NO`, records the change for diagnostics, and does not enable silent/background automatic install.
+- Copied diagnostics now distinguish manual update check availability, appcast URL, Sparkle public key presence, automatic-check defaults, current automatic-check state, last automatic-check toggle, automatic download/install defaults, current automatic download/install state, whether automatic install is allowed, and the updater safety policy.
+- No `Info.plist`, script, appcast, release asset, signing identity, bundle identifier, app name, version/build, event tap mask, mouse semantics, or Hover Click Assist UI change is part of v1.1 updater completion.
+- Manual validation still needs to confirm the menu items are clear, `Automatically Check for Updates` persists across relaunch, diagnostics report the expected updater rows, `Check for Updates...` reaches the live appcast, and left/right click-focus behavior remains unchanged.
+
 ## v1.0 Readiness Planning State
 
 - v1.0 should be a stable, shippable, low-surprise release.

@@ -30,8 +30,8 @@ static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Opens the ma
 static NSString * const HoverClickLaunchAtLoginHelp = @"Starts HoverClick automatically after you log in, without changing click behavior.";
 static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
 static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the current HoverClick status summary to the clipboard.";
-static NSString * const HoverClickCheckForUpdatesHelp = @"Checks for HoverClick updates using Sparkle.";
-static NSString * const HoverClickAutomaticUpdateChecksHelp = @"Lets Sparkle periodically check for updates; installs still require user action.";
+static NSString * const HoverClickCheckForUpdatesHelp = @"Checks for HoverClick updates now using Sparkle's visible update flow.";
+static NSString * const HoverClickAutomaticUpdateChecksHelp = @"Lets Sparkle periodically look for updates. Downloads and installs still require user action.";
 static NSString * const HoverClickAboutHelp = @"Shows HoverClick version and bundle identity.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static NSString * const HoverClickMenuItemTitlePadding = @" ";
@@ -90,6 +90,24 @@ static NSString *HoverClickBundleIdentifier(void) {
     }
 
     return HoverClickBundleID;
+}
+
+static NSString *HoverClickInfoString(NSString *key, NSString *fallback) {
+    NSString *value = [[NSBundle mainBundle] objectForInfoDictionaryKey:key];
+    if ([value isKindOfClass:[NSString class]] && value.length > 0) {
+        return value;
+    }
+
+    return fallback;
+}
+
+static NSString *HoverClickInfoBoolStatus(NSString *key) {
+    id value = [[NSBundle mainBundle] objectForInfoDictionaryKey:key];
+    if ([value respondsToSelector:@selector(boolValue)]) {
+        return [value boolValue] ? @"enabled" : @"disabled";
+    }
+
+    return @"missing";
 }
 
 static NSString *HoverClickHeaderVersion(void) {
@@ -315,6 +333,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 @property(nonatomic, strong) NSMenuItem *launchAtLoginItem;
 @property(nonatomic, strong) NSMenuItem *diagnosticsItem;
 @property(nonatomic, strong) NSMenuItem *verboseItem;
+@property(nonatomic, strong) NSMenuItem *checkForUpdatesItem;
 @property(nonatomic, strong) NSMenuItem *automaticUpdateChecksItem;
 @property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
 @property(nonatomic, strong) NSAlert *accessibilityOnboardingAlert;
@@ -419,6 +438,8 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     NSString *_lastLaunchAtLoginOnboardingDecision;
     NSString *_lastPermissionCheckResult;
     NSString *_lastPermissionMissingPassThroughDescription;
+    NSString *_lastAutomaticUpdateChecksChangeDescription;
+    CFAbsoluteTime _lastAutomaticUpdateChecksChangeTime;
     NSMutableArray<NSMutableDictionary<NSString *, NSString *> *> *_recentDecisionHistory;
     NSMutableDictionary<NSNumber *, NSMutableDictionary<NSString *, NSString *> *> *_activeDecisionHistory;
 }
@@ -538,6 +559,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastLaunchAtLoginOnboardingDecision = @"not offered";
     _lastPermissionCheckResult = @"not checked";
     _lastPermissionMissingPassThroughDescription = @"none";
+    _lastAutomaticUpdateChecksChangeDescription = @"never";
     _recentDecisionHistory = [NSMutableArray arrayWithCapacity:HoverClickRecentDecisionHistoryLimit];
     _activeDecisionHistory = [NSMutableDictionary dictionary];
 
@@ -708,16 +730,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check for Updates...")
-                                                                 action:@selector(checkForUpdates:)
-                                                          keyEquivalent:@""];
-    checkForUpdatesItem.target = self.updaterController;
-    checkForUpdatesItem.enabled = YES;
-    checkForUpdatesItem.indentationLevel = 0;
-    checkForUpdatesItem.state = NSControlStateValueOff;
-    checkForUpdatesItem.offStateImage = HoverClickMenuSymbolImage(@"arrow.triangle.2.circlepath", @"Check for Updates");
-    checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
-    [menu addItem:checkForUpdatesItem];
+    self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check for Updates...")
+                                                          action:@selector(checkForUpdates:)
+                                                   keyEquivalent:@""];
+    self.checkForUpdatesItem.target = self.updaterController;
+    self.checkForUpdatesItem.enabled = YES;
+    self.checkForUpdatesItem.indentationLevel = 0;
+    self.checkForUpdatesItem.state = NSControlStateValueOff;
+    self.checkForUpdatesItem.offStateImage = HoverClickMenuSymbolImage(@"arrow.triangle.2.circlepath", @"Check for Updates");
+    self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
+    [menu addItem:self.checkForUpdatesItem];
 
     self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Automatically Check for Updates")
                                                                 action:@selector(toggleAutomaticUpdateChecks:)
@@ -1570,9 +1592,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     BOOL automaticChecksEnabled = !updater.automaticallyChecksForUpdates;
     updater.automaticallyChecksForUpdates = automaticChecksEnabled;
     updater.automaticallyDownloadsUpdates = NO;
+    [[NSUserDefaults standardUserDefaults] synchronize];
 
-    HoverClickLog("HoverClick: automatic update checks %s; automatic download/install disabled",
-                  automaticChecksEnabled ? "enabled" : "disabled");
+    _lastAutomaticUpdateChecksChangeTime = CFAbsoluteTimeGetCurrent();
+    _lastAutomaticUpdateChecksChangeDescription = [NSString stringWithFormat:@"automatic checks %@; automatic download/install disabled",
+                                                   automaticChecksEnabled ? @"enabled" : @"disabled"];
+
+    HoverClickLog("HoverClick: automatic update checks %s; automatic download/install disabled; automatic install allowed=%s",
+                  automaticChecksEnabled ? "enabled" : "disabled",
+                  updater.allowsAutomaticUpdates ? "yes" : "no");
     [self setLastClickResult:automaticChecksEnabled ? @"Automatic Update Checks Enabled" : @"Automatic Update Checks Disabled"];
     [self updateMenuTitles];
 }
@@ -1851,6 +1879,18 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSString *automaticUpdateChecksStatus = updater.automaticallyChecksForUpdates ? @"enabled" : @"disabled";
     NSString *automaticDownloadInstallStatus = updater.automaticallyDownloadsUpdates ? @"enabled" : @"disabled";
     NSString *automaticDownloadInstallAllowed = updater.allowsAutomaticUpdates ? @"yes" : @"no";
+    NSString *manualUpdateCheckAvailability = (self.checkForUpdatesItem.enabled && self.checkForUpdatesItem.target != nil) ? @"available" : @"unavailable";
+    NSString *appcastURL = HoverClickInfoString(@"SUFeedURL", @"missing");
+    NSString *publicKeyStatus = [HoverClickInfoString(@"SUPublicEDKey", @"") length] > 0 ? @"present" : @"missing";
+    NSString *automaticChecksDefault = HoverClickInfoBoolStatus(@"SUEnableAutomaticChecks");
+    NSString *automaticDownloadInstallDefault = HoverClickInfoBoolStatus(@"SUAutomaticallyUpdate");
+    NSString *automaticInstallAllowedDefault = HoverClickInfoBoolStatus(@"SUAllowsAutomaticUpdates");
+    NSString *lastAutomaticUpdateChecksChange = @"never";
+    if (_lastAutomaticUpdateChecksChangeTime > 0) {
+        lastAutomaticUpdateChecksChange = [NSString stringWithFormat:@"%@ at %@",
+                                           _lastAutomaticUpdateChecksChangeDescription ?: @"changed",
+                                           HoverClickDiagnosticTimestamp(_lastAutomaticUpdateChecksChangeTime)];
+    }
 
     return [NSString stringWithFormat:
             @"HoverClick diagnostics\n"
@@ -1869,9 +1909,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last permission missing pass-through: %@\n"
              "Launch at Login: %@\n"
              "Launch at Login onboarding: %@\n"
+             "Manual update check: %@\n"
+             "Updater appcast URL: %@\n"
+             "Updater public key: %@\n"
+             "Automatic update checks default: %@\n"
              "Automatic update checks: %@\n"
+             "Last automatic update checks change: %@\n"
+             "Automatic download/install default: %@\n"
              "Automatic download/install: %@\n"
+             "Automatic install allowed default: %@\n"
              "Automatic download/install allowed: %@\n"
+             "Updater safety: automatic checks only look for updates; downloads/installs remain user-visible and automatic install is disabled unless explicitly approved\n"
              "Click detection: %@\n"
              "Last handled action: %@\n"
              "Last focus action/skip: %@\n"
@@ -1937,8 +1985,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             _lastPermissionMissingPassThroughDescription ?: @"none",
             [self launchAtLoginStatusForDiagnostics],
             _lastLaunchAtLoginOnboardingDecision ?: @"not offered",
+            manualUpdateCheckAvailability,
+            appcastURL,
+            publicKeyStatus,
+            automaticChecksDefault,
             automaticUpdateChecksStatus,
+            lastAutomaticUpdateChecksChange,
+            automaticDownloadInstallDefault,
             automaticDownloadInstallStatus,
+            automaticInstallAllowedDefault,
             automaticDownloadInstallAllowed,
             [self clickDetectionStatusForDiagnostics],
             lastAction,
@@ -2046,6 +2101,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateLaunchAtLoginMenuItem];
     self.verboseItem.title = HoverClickMenuItemTitle(@"Verbose Diagnostics");
     self.verboseItem.state = _verboseDiagnostics ? NSControlStateValueOn : NSControlStateValueOff;
+    self.checkForUpdatesItem.title = HoverClickMenuItemTitle(@"Check for Updates...");
+    self.checkForUpdatesItem.enabled = YES;
+    self.checkForUpdatesItem.state = NSControlStateValueOff;
+    self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
     self.automaticUpdateChecksItem.title = HoverClickMenuItemTitle(@"Automatically Check for Updates");
     self.automaticUpdateChecksItem.enabled = YES;
     self.automaticUpdateChecksItem.state = self.updaterController.updater.automaticallyChecksForUpdates ? NSControlStateValueOn : NSControlStateValueOff;

@@ -304,6 +304,18 @@ Manual Finder UI validation -- not run automatically.
 
 Manual validation for v1.0 readiness should additionally confirm `Check for Updates...` reaches the live appcast without a 404, `Automatically Check for Updates` persists across relaunch, copied diagnostics report automatic-check/download/install state, and no silent/background automatic install occurs.
 
+## v1.1 Updater Completion Notes
+
+v1.1 updater completion keeps the v1.0 release/update architecture stable and focuses on clarity.
+
+- Manual `Check for Updates...` remains the explicit user-initiated update path through Sparkle's visible update flow.
+- `Automatically Check for Updates` remains a user-controlled Sparkle automatic-check preference.
+- Toggling automatic checks reasserts `automaticallyDownloadsUpdates = NO`.
+- Silent/background automatic install remains disabled unless a later explicit release decision changes that policy.
+- Copied diagnostics should show manual update check availability, appcast URL, Sparkle public key presence, automatic-check default/current state, last automatic-check toggle, automatic download/install default/current state, automatic-install allowed default/current state, and a clear safety note.
+- Diagnostics must not expose private Sparkle key material or local signing secrets.
+- v1.1 updater completion does not change `Info.plist`, scripts, appcast publication, release assets, signing identity, app name, bundle identifier, version/build, Accessibility/TCC behavior, event tap mask, mouse event semantics, or Hover Click Assist UI.
+
 ## Risks And Stop Gates
 
 Stop before adding the Sparkle dependency.
