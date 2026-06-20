@@ -49,6 +49,12 @@ static const CGFloat HoverClickHeaderTextX = 28.0;
 static const CGFloat HoverClickHeaderVersionWidth = 72.0;
 static const CGFloat HoverClickHeaderLabelY = 4.0;
 static const CGFloat HoverClickHeaderLabelHeight = 18.0;
+static const CGFloat HoverClickMenuRowWidth = 286.0;
+static const CGFloat HoverClickMenuRowHeight = 22.0;
+static const CGFloat HoverClickMenuRowIconX = 14.0;
+static const CGFloat HoverClickMenuRowTextX = 38.0;
+static const CGFloat HoverClickMenuRowStateSize = 13.0;
+static const CGFloat HoverClickMenuRowStateX = 258.0;
 static const CGFloat HoverClickMenuImagePointSize = 13.0;
 static const CGFloat HoverClickMenuImageSize = 16.0;
 static const CGFloat HoverClickSectionHeaderFontSize = 11.0;
@@ -240,6 +246,149 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
 
 static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName) {
     item.image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
+}
+
+@interface HoverClickMenuRowView : NSView
+@property(nonatomic, weak) NSMenuItem *menuItem;
+@property(nonatomic, weak) id actionTarget;
+@property(nonatomic) SEL actionSelector;
+@property(nonatomic, strong) NSImageView *iconView;
+@property(nonatomic, strong) NSTextField *titleField;
+@property(nonatomic, strong) NSImageView *stateView;
+@property(nonatomic) BOOL rowEnabled;
+@property(nonatomic) BOOL highlighted;
+- (instancetype)initWithMenuItem:(NSMenuItem *)menuItem
+                           image:(NSImage *)image
+                  showsStateView:(BOOL)showsStateView;
+- (void)syncFromMenuItem;
+@end
+
+@implementation HoverClickMenuRowView
+
+- (instancetype)initWithMenuItem:(NSMenuItem *)menuItem
+                           image:(NSImage *)image
+                  showsStateView:(BOOL)showsStateView {
+    self = [super initWithFrame:NSMakeRect(0.0, 0.0, HoverClickMenuRowWidth, HoverClickMenuRowHeight)];
+    if (self == nil) {
+        return nil;
+    }
+
+    _menuItem = menuItem;
+    _actionTarget = menuItem.target;
+    _actionSelector = menuItem.action;
+    _rowEnabled = menuItem.enabled;
+
+    _iconView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickMenuRowIconX,
+                                                              3.0,
+                                                              HoverClickMenuImageSize,
+                                                              HoverClickMenuImageSize)];
+    _iconView.image = image;
+    _iconView.imageScaling = NSImageScaleProportionallyDown;
+    [self addSubview:_iconView];
+
+    _titleField = [NSTextField labelWithString:menuItem.title ?: @""];
+    _titleField.frame = NSMakeRect(HoverClickMenuRowTextX,
+                                   2.0,
+                                   HoverClickMenuRowStateX - HoverClickMenuRowTextX - 8.0,
+                                   18.0);
+    _titleField.font = [NSFont menuFontOfSize:0.0];
+    _titleField.lineBreakMode = NSLineBreakByTruncatingTail;
+    [self addSubview:_titleField];
+
+    _stateView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickMenuRowStateX,
+                                                               4.0,
+                                                               HoverClickMenuRowStateSize,
+                                                               HoverClickMenuRowStateSize)];
+    _stateView.imageScaling = NSImageScaleProportionallyDown;
+    _stateView.hidden = !showsStateView;
+    [self addSubview:_stateView];
+
+    [self syncFromMenuItem];
+    return self;
+}
+
+- (BOOL)isFlipped {
+    return YES;
+}
+
+- (void)setHighlighted:(BOOL)highlighted {
+    _highlighted = highlighted;
+    [self setNeedsDisplay:YES];
+    [self syncFromMenuItem];
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+    if (self.highlighted && self.rowEnabled) {
+        [[NSColor selectedContentBackgroundColor] setFill];
+        NSRectFill(dirtyRect);
+    } else {
+        [super drawRect:dirtyRect];
+    }
+}
+
+- (void)syncFromMenuItem {
+    NSMenuItem *item = self.menuItem;
+    self.rowEnabled = (item == nil || item.enabled);
+    self.titleField.stringValue = item.title ?: @"";
+
+    NSColor *textColor = self.rowEnabled ? [NSColor controlTextColor] : [NSColor disabledControlTextColor];
+    if (self.highlighted && self.rowEnabled) {
+        textColor = [NSColor selectedMenuItemTextColor];
+    }
+    self.titleField.textColor = textColor;
+
+    self.iconView.alphaValue = self.rowEnabled ? 1.0 : 0.35;
+    self.stateView.alphaValue = self.rowEnabled ? 1.0 : 0.35;
+
+    NSImage *stateImage = nil;
+    if (item.state == NSControlStateValueOn) {
+        stateImage = HoverClickMenuSystemImage(@"checkmark", @"checkmark.circle");
+    } else if (item.state == NSControlStateValueMixed) {
+        stateImage = HoverClickMenuSystemImage(@"minus", @"minus.circle");
+    }
+    self.stateView.image = stateImage;
+    self.stateView.hidden = (stateImage == nil);
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    if (!self.rowEnabled) {
+        return;
+    }
+
+    self.highlighted = YES;
+    BOOL shouldSendAction = NO;
+    while (YES) {
+        NSEvent *nextEvent = [[self window] nextEventMatchingMask:(NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp)];
+        if (nextEvent == nil) {
+            break;
+        }
+        if (nextEvent.type == NSEventTypeLeftMouseUp) {
+            NSPoint point = [self convertPoint:nextEvent.locationInWindow fromView:nil];
+            shouldSendAction = NSPointInRect(point, self.bounds);
+            break;
+        }
+    }
+
+    self.highlighted = NO;
+    if (shouldSendAction && self.actionTarget != nil && self.actionSelector != NULL) {
+        [NSApp sendAction:self.actionSelector to:self.actionTarget from:self.menuItem ?: self];
+    }
+}
+
+@end
+
+static void HoverClickUseNonClosingMenuRow(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName, BOOL showsStateView) {
+    NSImage *image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
+    HoverClickMenuRowView *rowView = [[HoverClickMenuRowView alloc] initWithMenuItem:item
+                                                                               image:image
+                                                                      showsStateView:showsStateView];
+    item.view = rowView;
+}
+
+static void HoverClickSyncMenuRowView(NSMenuItem *item) {
+    if ([item.view isKindOfClass:[HoverClickMenuRowView class]]) {
+        [(HoverClickMenuRowView *)item.view syncFromMenuItem];
+    }
 }
 
 static NSImage *HoverClickStatusDotImage(void) {
@@ -684,7 +833,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.clickToFocusItem.enabled = YES;
     self.clickToFocusItem.indentationLevel = 0;
     self.clickToFocusItem.toolTip = HoverClickLeftClickFocusHelp;
-    HoverClickSetMenuItemImage(self.clickToFocusItem, @"cursorarrow.click", @"target");
+    HoverClickUseNonClosingMenuRow(self.clickToFocusItem, @"cursorarrow.click", @"target", YES);
     [menu addItem:self.clickToFocusItem];
 
     self.rightClickFocusItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Right Click Focus")
@@ -694,7 +843,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.rightClickFocusItem.enabled = YES;
     self.rightClickFocusItem.indentationLevel = 0;
     self.rightClickFocusItem.toolTip = HoverClickRightClickFocusHelp;
-    HoverClickSetMenuItemImage(self.rightClickFocusItem, @"contextualmenu.and.cursorarrow", @"cursorarrow");
+    HoverClickUseNonClosingMenuRow(self.rightClickFocusItem, @"contextualmenu.and.cursorarrow", @"cursorarrow", YES);
     [menu addItem:self.rightClickFocusItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
@@ -722,7 +871,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionItem.indentationLevel = 0;
     self.permissionItem.state = NSControlStateValueOff;
     self.permissionItem.toolTip = HoverClickAccessibilityStatusHelp;
-    HoverClickSetMenuItemImage(self.permissionItem, @"accessibility", @"person.crop.circle.badge.checkmark");
+    HoverClickUseNonClosingMenuRow(self.permissionItem, @"accessibility", @"person.crop.circle.badge.checkmark", YES);
     [permissionsMenu addItem:self.permissionItem];
 
     self.launchAtLoginItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Launch at Login")
@@ -732,7 +881,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.launchAtLoginItem.enabled = YES;
     self.launchAtLoginItem.indentationLevel = 0;
     self.launchAtLoginItem.toolTip = HoverClickLaunchAtLoginHelp;
-    HoverClickSetMenuItemImage(self.launchAtLoginItem, @"power", @"arrow.clockwise.circle");
+    HoverClickUseNonClosingMenuRow(self.launchAtLoginItem, @"power", @"arrow.clockwise.circle", YES);
     [permissionsMenu addItem:self.launchAtLoginItem];
 
     [permissionsMenu addItem:[NSMenuItem separatorItem]];
@@ -745,7 +894,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionRefreshItem.indentationLevel = 0;
     self.permissionRefreshItem.state = NSControlStateValueOff;
     self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
-    HoverClickSetMenuItemImage(self.permissionRefreshItem, @"arrow.clockwise", @"arrow.clockwise.circle");
+    HoverClickUseNonClosingMenuRow(self.permissionRefreshItem, @"arrow.clockwise", @"arrow.clockwise.circle", NO);
     [permissionsMenu addItem:self.permissionRefreshItem];
 
     NSMenuItem *settingsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Open Accessibility Settings")
@@ -843,7 +992,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     copyDiagnosticsItem.indentationLevel = 0;
     copyDiagnosticsItem.state = NSControlStateValueOff;
     copyDiagnosticsItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
-    HoverClickSetMenuItemImage(copyDiagnosticsItem, @"doc.on.doc", @"doc.text");
+    HoverClickUseNonClosingMenuRow(copyDiagnosticsItem, @"doc.on.doc", @"doc.text", NO);
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
     self.verboseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Verbose Diagnostics")
@@ -853,7 +1002,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.verboseItem.enabled = YES;
     self.verboseItem.indentationLevel = 0;
     self.verboseItem.toolTip = HoverClickVerboseDiagnosticsHelp;
-    HoverClickSetMenuItemImage(self.verboseItem, @"list.bullet.rectangle", @"list.bullet");
+    HoverClickUseNonClosingMenuRow(self.verboseItem, @"list.bullet.rectangle", @"list.bullet", YES);
     [diagnosticsMenu addItem:self.verboseItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
@@ -878,12 +1027,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.automaticUpdateChecksItem.enabled = YES;
     self.automaticUpdateChecksItem.indentationLevel = 0;
     self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
-    HoverClickSetMenuItemImage(self.automaticUpdateChecksItem, @"clock.arrow.circlepath", @"checkmark.circle");
+    HoverClickUseNonClosingMenuRow(self.automaticUpdateChecksItem, @"clock.arrow.circlepath", @"checkmark.circle", YES);
     [menu addItem:self.automaticUpdateChecksItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick")
+    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About")
                                                        action:@selector(showAboutHoverClick:)
                                                 keyEquivalent:@""];
     aboutItem.target = self;
@@ -891,7 +1040,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     aboutItem.indentationLevel = 0;
     aboutItem.state = NSControlStateValueOff;
     aboutItem.toolTip = HoverClickAboutHelp;
-    HoverClickSetMenuItemImage(aboutItem, @"info.circle", @"info");
     [menu addItem:aboutItem];
 
     NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quit")
@@ -902,7 +1050,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     quitItem.indentationLevel = 0;
     quitItem.state = NSControlStateValueOff;
     quitItem.toolTip = HoverClickQuitHelp;
-    HoverClickSetMenuItemImage(quitItem, @"power", @"xmark.circle");
     [menu addItem:quitItem];
 
     self.statusItem.menu = menu;
@@ -1007,6 +1154,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         }
 
         [self logLaunchAtLoginStatus:statusDescription force:NO];
+        HoverClickSyncMenuRowView(self.launchAtLoginItem);
         return;
     }
 #endif
@@ -1015,6 +1163,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.launchAtLoginItem.title = HoverClickMenuItemTitle(@"Launch at Login: Unavailable");
     self.launchAtLoginItem.state = NSControlStateValueOff;
     self.launchAtLoginItem.toolTip = @"Launch at Login requires macOS 13 or later.";
+    HoverClickSyncMenuRowView(self.launchAtLoginItem);
     [self logLaunchAtLoginStatus:@"unavailable on this macOS version" force:NO];
 }
 
@@ -2255,23 +2404,28 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionItem.title = HoverClickMenuItemTitle(trusted ? @"Accessibility: Granted" : @"Accessibility: Required");
     self.permissionItem.state = trusted ? NSControlStateValueOn : NSControlStateValueOff;
     self.permissionItem.toolTip = trusted ? HoverClickAccessibilityStatusHelp : @"HoverClick needs Accessibility permission before click focus can work.";
+    HoverClickSyncMenuRowView(self.permissionItem);
 
     self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refresh Permission Status");
     self.permissionRefreshItem.enabled = YES;
     self.permissionRefreshItem.state = NSControlStateValueOff;
     self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
+    HoverClickSyncMenuRowView(self.permissionRefreshItem);
 
     self.clickToFocusItem.title = HoverClickMenuItemTitle(@"Left Click Focus");
     self.clickToFocusItem.enabled = trusted;
     self.clickToFocusItem.state = _clickToFocusEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.clickToFocusItem.toolTip = trusted ? HoverClickLeftClickFocusHelp : @"Requires Accessibility permission.";
+    HoverClickSyncMenuRowView(self.clickToFocusItem);
     self.rightClickFocusItem.title = HoverClickMenuItemTitle(@"Right Click Focus");
     self.rightClickFocusItem.enabled = trusted;
     self.rightClickFocusItem.state = _rightClickFocusEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.rightClickFocusItem.toolTip = trusted ? HoverClickRightClickFocusHelp : @"Requires Accessibility permission.";
+    HoverClickSyncMenuRowView(self.rightClickFocusItem);
     [self updateLaunchAtLoginMenuItem];
     self.verboseItem.title = HoverClickMenuItemTitle(@"Verbose Diagnostics");
     self.verboseItem.state = _verboseDiagnostics ? NSControlStateValueOn : NSControlStateValueOff;
+    HoverClickSyncMenuRowView(self.verboseItem);
     self.checkForUpdatesItem.title = HoverClickMenuItemTitle(@"Check for Updates...");
     self.checkForUpdatesItem.enabled = YES;
     self.checkForUpdatesItem.state = NSControlStateValueOff;
@@ -2280,6 +2434,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.automaticUpdateChecksItem.enabled = YES;
     self.automaticUpdateChecksItem.state = self.updaterController.updater.automaticallyChecksForUpdates ? NSControlStateValueOn : NSControlStateValueOff;
     self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
+    HoverClickSyncMenuRowView(self.automaticUpdateChecksItem);
 }
 
 - (void)setLastClickResult:(NSString *)result {
