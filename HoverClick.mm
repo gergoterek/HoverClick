@@ -974,7 +974,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [permissionsMenu addItem:[NSMenuItem separatorItem]];
 
-    self.permissionRefreshItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Refresh Permission Status")
+    self.permissionRefreshItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Refresh Status")
                                                             action:@selector(refreshAccessibilityStatus:)
                                                      keyEquivalent:@""];
     self.permissionRefreshItem.target = self;
@@ -985,7 +985,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickUseNonClosingMenuRow(self.permissionRefreshItem, @"arrow.clockwise", @"arrow.clockwise.circle", NO);
     [permissionsMenu addItem:self.permissionRefreshItem];
 
-    NSMenuItem *settingsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Open Accessibility Settings")
+    NSMenuItem *settingsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Accessibility Settings")
                                                           action:@selector(openAccessibilitySettings:)
                                                    keyEquivalent:@""];
     settingsItem.target = self;
@@ -1048,7 +1048,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [helpMenu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *uninstallItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Uninstall HoverClick...")
+    NSMenuItem *uninstallItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Uninstall...")
                                                            action:@selector(showUninstallInstructions:)
                                                     keyEquivalent:@""];
     uninstallItem.target = self;
@@ -1072,7 +1072,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.diagnosticsItem.submenu = diagnosticsMenu;
     [menu addItem:self.diagnosticsItem];
 
-    NSMenuItem *copyDiagnosticsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Copy Diagnostics Summary")
+    NSMenuItem *copyDiagnosticsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Copy Summary")
                                                                  action:@selector(copyDiagnosticsSummary:)
                                                           keyEquivalent:@""];
     copyDiagnosticsItem.target = self;
@@ -1083,7 +1083,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickUseNonClosingMenuRow(copyDiagnosticsItem, @"doc.on.doc", @"doc.text", NO);
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
-    self.verboseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Verbose Diagnostics")
+    self.verboseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Verbose Mode")
                                                   action:@selector(toggleVerboseDiagnostics:)
                                            keyEquivalent:@""];
     self.verboseItem.target = self;
@@ -1097,7 +1097,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Updates")];
 
-    self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check for Updates...")
+    self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check Now...")
                                                           action:@selector(checkForUpdates:)
                                                    keyEquivalent:@""];
     self.checkForUpdatesItem.target = self.updaterController;
@@ -1108,7 +1108,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickUseClosingMenuRow(self.checkForUpdatesItem, @"arrow.down.circle", @"arrow.clockwise.circle");
     [menu addItem:self.checkForUpdatesItem];
 
-    self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Automatically Check for Updates")
+    self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Auto Check Updates")
                                                                 action:@selector(toggleAutomaticUpdateChecks:)
                                                          keyEquivalent:@""];
     self.automaticUpdateChecksItem.target = self;
@@ -1388,7 +1388,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"HoverClick Needs Accessibility Permission";
-    alert.informativeText = @"HoverClick needs Accessibility permission to focus background windows before your original click is delivered. Click focus controls stay disabled until permission is granted.\n\nUse Permissions > Open Accessibility Settings if macOS does not show the permission prompt, then choose Refresh Permission Status after enabling HoverClick.";
+    alert.informativeText = @"HoverClick needs Accessibility permission to focus background windows before your original click is delivered. Click focus controls stay disabled until permission is granted.\n\nUse Permissions > Accessibility Settings if macOS does not show the permission prompt, then choose Refresh Status after enabling HoverClick.";
     alert.alertStyle = NSAlertStyleInformational;
     NSButton *okButton = [alert addButtonWithTitle:@"OK"];
     okButton.target = self;
@@ -2496,7 +2496,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionItem.toolTip = trusted ? HoverClickAccessibilityStatusHelp : @"HoverClick needs Accessibility permission before click focus can work.";
     HoverClickSyncMenuRowView(self.permissionItem);
 
-    self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refresh Permission Status");
+    self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refresh Status");
     self.permissionRefreshItem.enabled = YES;
     self.permissionRefreshItem.state = NSControlStateValueOff;
     self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
@@ -2513,14 +2513,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.rightClickFocusItem.toolTip = trusted ? HoverClickRightClickFocusHelp : @"Requires Accessibility permission.";
     HoverClickSyncMenuRowView(self.rightClickFocusItem);
     [self updateLaunchAtLoginMenuItem];
-    self.verboseItem.title = HoverClickMenuItemTitle(@"Verbose Diagnostics");
+    self.verboseItem.title = HoverClickMenuItemTitle(@"Verbose Mode");
     self.verboseItem.state = _verboseDiagnostics ? NSControlStateValueOn : NSControlStateValueOff;
     HoverClickSyncMenuRowView(self.verboseItem);
-    self.checkForUpdatesItem.title = HoverClickMenuItemTitle(@"Check for Updates...");
+    self.checkForUpdatesItem.title = HoverClickMenuItemTitle(@"Check Now...");
     self.checkForUpdatesItem.enabled = YES;
     self.checkForUpdatesItem.state = NSControlStateValueOff;
     self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
-    self.automaticUpdateChecksItem.title = HoverClickMenuItemTitle(@"Automatically Check for Updates");
+    self.automaticUpdateChecksItem.title = HoverClickMenuItemTitle(@"Auto Check Updates");
     self.automaticUpdateChecksItem.enabled = YES;
     self.automaticUpdateChecksItem.state = self.updaterController.updater.automaticallyChecksForUpdates ? NSControlStateValueOn : NSControlStateValueOff;
     self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
