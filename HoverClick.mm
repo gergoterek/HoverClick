@@ -43,8 +43,15 @@ static const CGFloat HoverClickStatusIconPointSize = 16.0;
 static const CGFloat HoverClickHeaderWidth = 286.0;
 static const CGFloat HoverClickHeaderHeight = 24.0;
 static const CGFloat HoverClickHeaderHorizontalPadding = 14.0;
+static const CGFloat HoverClickHeaderStatusDotSize = 8.0;
+static const CGFloat HoverClickHeaderStatusDotX = 14.0;
+static const CGFloat HoverClickHeaderTextX = 28.0;
+static const CGFloat HoverClickHeaderVersionWidth = 72.0;
 static const CGFloat HoverClickHeaderLabelY = 4.0;
 static const CGFloat HoverClickHeaderLabelHeight = 18.0;
+static const CGFloat HoverClickMenuImagePointSize = 13.0;
+static const CGFloat HoverClickMenuImageSize = 16.0;
+static const CGFloat HoverClickSectionHeaderFontSize = 11.0;
 static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
 static const NSUInteger HoverClickRecentDecisionHistoryLimit = 10;
 
@@ -112,10 +119,6 @@ static NSString *HoverClickInfoBoolStatus(NSString *key) {
 
 static NSString *HoverClickHeaderVersion(void) {
     return [NSString stringWithFormat:@"v%@", HoverClickDisplayVersion()];
-}
-
-static NSString *HoverClickHeaderStatusTitle(void) {
-    return [NSString stringWithFormat:@"HoverClick Ready \u2022 %@", HoverClickHeaderVersion()];
 }
 
 static NSString *HoverClickDiagnosticTimestamp(CFAbsoluteTime timestamp) {
@@ -213,6 +216,45 @@ static NSString *HoverClickMenuItemTitle(NSString *title) {
     return title ?: @"";
 }
 
+static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallbackSymbolName) {
+    if (@available(macOS 11.0, *)) {
+        NSImage *image = [NSImage imageWithSystemSymbolName:symbolName
+                                   accessibilityDescription:nil];
+        if (image == nil && fallbackSymbolName.length > 0) {
+            image = [NSImage imageWithSystemSymbolName:fallbackSymbolName
+                              accessibilityDescription:nil];
+        }
+        if (image != nil) {
+            NSImageSymbolConfiguration *configuration = [NSImageSymbolConfiguration configurationWithPointSize:HoverClickMenuImagePointSize
+                                                                                                        weight:NSFontWeightRegular
+                                                                                                         scale:NSImageSymbolScaleMedium];
+            image = [image imageWithSymbolConfiguration:configuration] ?: image;
+            [image setTemplate:YES];
+            image.size = NSMakeSize(HoverClickMenuImageSize, HoverClickMenuImageSize);
+        }
+        return image;
+    }
+
+    return nil;
+}
+
+static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName) {
+    item.image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
+}
+
+static NSImage *HoverClickStatusDotImage(void) {
+    NSImage *image = [NSImage imageWithSize:NSMakeSize(HoverClickHeaderStatusDotSize, HoverClickHeaderStatusDotSize)
+                                    flipped:NO
+                             drawingHandler:^BOOL(NSRect dstRect) {
+        [[NSColor systemGreenColor] setFill];
+        NSBezierPath *path = [NSBezierPath bezierPathWithOvalInRect:dstRect];
+        [path fill];
+        return YES;
+    }];
+    image.size = NSMakeSize(HoverClickHeaderStatusDotSize, HoverClickHeaderStatusDotSize);
+    return image;
+}
+
 static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
     NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(title)
                                                         action:nil
@@ -220,24 +262,51 @@ static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
     headerItem.enabled = NO;
     headerItem.indentationLevel = 0;
     headerItem.state = NSControlStateValueOff;
+    NSDictionary<NSAttributedStringKey, id> *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize
+                                              weight:NSFontWeightRegular],
+        NSForegroundColorAttributeName: [NSColor disabledControlTextColor]
+    };
+    headerItem.attributedTitle = [[NSAttributedString alloc] initWithString:HoverClickMenuItemTitle(title)
+                                                                 attributes:attributes];
     return headerItem;
 }
 
 static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
-    NSString *headerStatus = HoverClickHeaderStatusTitle();
+    NSString *headerVersion = HoverClickHeaderVersion();
     NSRect headerFrame = NSMakeRect(0.0, 0.0, HoverClickHeaderWidth, HoverClickHeaderHeight);
     NSView *headerView = [[NSView alloc] initWithFrame:headerFrame];
     headerView.toolTip = HoverClickStableHelp;
 
-    NSTextField *statusLabel = [NSTextField labelWithString:headerStatus];
-    statusLabel.frame = NSMakeRect(HoverClickHeaderHorizontalPadding,
+    NSImageView *statusDotView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickHeaderStatusDotX,
+                                                                               8.0,
+                                                                               HoverClickHeaderStatusDotSize,
+                                                                               HoverClickHeaderStatusDotSize)];
+    statusDotView.image = HoverClickStatusDotImage();
+    statusDotView.imageScaling = NSImageScaleProportionallyDown;
+    statusDotView.toolTip = HoverClickStableHelp;
+    [headerView addSubview:statusDotView];
+
+    NSTextField *statusLabel = [NSTextField labelWithString:@"HoverClick is running"];
+    statusLabel.frame = NSMakeRect(HoverClickHeaderTextX,
                                    HoverClickHeaderLabelY,
-                                   HoverClickHeaderWidth - (HoverClickHeaderHorizontalPadding * 2.0),
+                                   HoverClickHeaderWidth - HoverClickHeaderTextX - HoverClickHeaderVersionWidth - HoverClickHeaderHorizontalPadding,
                                    HoverClickHeaderLabelHeight);
-    statusLabel.font = [NSFont menuBarFontOfSize:0.0];
+    statusLabel.font = [NSFont menuFontOfSize:0.0];
     statusLabel.textColor = [NSColor disabledControlTextColor];
     statusLabel.toolTip = HoverClickStableHelp;
     [headerView addSubview:statusLabel];
+
+    NSTextField *versionLabel = [NSTextField labelWithString:headerVersion];
+    versionLabel.frame = NSMakeRect(HoverClickHeaderWidth - HoverClickHeaderHorizontalPadding - HoverClickHeaderVersionWidth,
+                                    HoverClickHeaderLabelY,
+                                    HoverClickHeaderVersionWidth,
+                                    HoverClickHeaderLabelHeight);
+    versionLabel.alignment = NSTextAlignmentRight;
+    versionLabel.font = [NSFont menuFontOfSize:0.0];
+    versionLabel.textColor = [NSColor disabledControlTextColor];
+    versionLabel.toolTip = HoverClickStableHelp;
+    [headerView addSubview:versionLabel];
 
     NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:@""
                                                         action:nil
@@ -615,6 +684,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.clickToFocusItem.enabled = YES;
     self.clickToFocusItem.indentationLevel = 0;
     self.clickToFocusItem.toolTip = HoverClickLeftClickFocusHelp;
+    HoverClickSetMenuItemImage(self.clickToFocusItem, @"cursorarrow.click", @"target");
     [menu addItem:self.clickToFocusItem];
 
     self.rightClickFocusItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Right Click Focus")
@@ -624,6 +694,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.rightClickFocusItem.enabled = YES;
     self.rightClickFocusItem.indentationLevel = 0;
     self.rightClickFocusItem.toolTip = HoverClickRightClickFocusHelp;
+    HoverClickSetMenuItemImage(self.rightClickFocusItem, @"contextualmenu.and.cursorarrow", @"cursorarrow");
     [menu addItem:self.rightClickFocusItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
@@ -636,6 +707,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     permissionsItem.enabled = YES;
     permissionsItem.indentationLevel = 0;
     permissionsItem.state = NSControlStateValueOff;
+    HoverClickSetMenuItemImage(permissionsItem, @"lock.shield", @"lock");
 
     NSMenu *permissionsMenu = [[NSMenu alloc] initWithTitle:@"Permissions"];
     [permissionsMenu setAutoenablesItems:NO];
@@ -650,6 +722,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionItem.indentationLevel = 0;
     self.permissionItem.state = NSControlStateValueOff;
     self.permissionItem.toolTip = HoverClickAccessibilityStatusHelp;
+    HoverClickSetMenuItemImage(self.permissionItem, @"accessibility", @"person.crop.circle.badge.checkmark");
     [permissionsMenu addItem:self.permissionItem];
 
     self.launchAtLoginItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Launch at Login")
@@ -659,6 +732,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.launchAtLoginItem.enabled = YES;
     self.launchAtLoginItem.indentationLevel = 0;
     self.launchAtLoginItem.toolTip = HoverClickLaunchAtLoginHelp;
+    HoverClickSetMenuItemImage(self.launchAtLoginItem, @"power", @"arrow.clockwise.circle");
     [permissionsMenu addItem:self.launchAtLoginItem];
 
     [permissionsMenu addItem:[NSMenuItem separatorItem]];
@@ -671,6 +745,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionRefreshItem.indentationLevel = 0;
     self.permissionRefreshItem.state = NSControlStateValueOff;
     self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
+    HoverClickSetMenuItemImage(self.permissionRefreshItem, @"arrow.clockwise", @"arrow.clockwise.circle");
     [permissionsMenu addItem:self.permissionRefreshItem];
 
     NSMenuItem *settingsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Open Accessibility Settings")
@@ -681,6 +756,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     settingsItem.indentationLevel = 0;
     settingsItem.state = NSControlStateValueOff;
     settingsItem.toolTip = HoverClickOpenAccessibilitySettingsHelp;
+    HoverClickSetMenuItemImage(settingsItem, @"gearshape", @"accessibility");
     [permissionsMenu addItem:settingsItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
@@ -693,6 +769,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     helpItem.enabled = YES;
     helpItem.indentationLevel = 0;
     helpItem.state = NSControlStateValueOff;
+    HoverClickSetMenuItemImage(helpItem, @"questionmark.circle", @"questionmark");
 
     NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
     [helpMenu setAutoenablesItems:NO];
@@ -707,6 +784,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     githubItem.indentationLevel = 0;
     githubItem.state = NSControlStateValueOff;
     githubItem.toolTip = HoverClickGitHubHelp;
+    HoverClickSetMenuItemImage(githubItem, @"link", @"globe");
     [helpMenu addItem:githubItem];
 
     NSMenuItem *contactItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Contact")
@@ -717,6 +795,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     contactItem.indentationLevel = 0;
     contactItem.state = NSControlStateValueOff;
     contactItem.toolTip = HoverClickContactHelp;
+    HoverClickSetMenuItemImage(contactItem, @"envelope", @"at");
     [helpMenu addItem:contactItem];
 
     NSMenuItem *releaseNotesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Release Notes")
@@ -727,6 +806,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     releaseNotesItem.indentationLevel = 0;
     releaseNotesItem.state = NSControlStateValueOff;
     releaseNotesItem.toolTip = HoverClickReleaseNotesHelp;
+    HoverClickSetMenuItemImage(releaseNotesItem, @"doc.text", @"doc");
     [helpMenu addItem:releaseNotesItem];
 
     [helpMenu addItem:[NSMenuItem separatorItem]];
@@ -739,17 +819,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     uninstallItem.indentationLevel = 0;
     uninstallItem.state = NSControlStateValueOff;
     uninstallItem.toolTip = HoverClickUninstallHelp;
+    HoverClickSetMenuItemImage(uninstallItem, @"trash", @"xmark.circle");
     [helpMenu addItem:uninstallItem];
-
-    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick")
-                                                       action:@selector(showAboutHoverClick:)
-                                                keyEquivalent:@""];
-    aboutItem.target = self;
-    aboutItem.enabled = YES;
-    aboutItem.indentationLevel = 0;
-    aboutItem.state = NSControlStateValueOff;
-    aboutItem.toolTip = HoverClickAboutHelp;
-    [helpMenu addItem:aboutItem];
 
     self.diagnosticsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Diagnostics")
                                                       action:nil
@@ -757,6 +828,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.diagnosticsItem.enabled = YES;
     self.diagnosticsItem.indentationLevel = 0;
     self.diagnosticsItem.state = NSControlStateValueOff;
+    HoverClickSetMenuItemImage(self.diagnosticsItem, @"waveform.path.ecg", @"doc.text");
 
     NSMenu *diagnosticsMenu = [[NSMenu alloc] initWithTitle:@"Diagnostics"];
     [diagnosticsMenu setAutoenablesItems:NO];
@@ -771,6 +843,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     copyDiagnosticsItem.indentationLevel = 0;
     copyDiagnosticsItem.state = NSControlStateValueOff;
     copyDiagnosticsItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
+    HoverClickSetMenuItemImage(copyDiagnosticsItem, @"doc.on.doc", @"doc.text");
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
     self.verboseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Verbose Diagnostics")
@@ -780,19 +853,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.verboseItem.enabled = YES;
     self.verboseItem.indentationLevel = 0;
     self.verboseItem.toolTip = HoverClickVerboseDiagnosticsHelp;
+    HoverClickSetMenuItemImage(self.verboseItem, @"list.bullet.rectangle", @"list.bullet");
     [diagnosticsMenu addItem:self.verboseItem];
 
-    NSMenuItem *updatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Updates")
-                                                         action:nil
-                                                  keyEquivalent:@""];
-    updatesItem.enabled = YES;
-    updatesItem.indentationLevel = 0;
-    updatesItem.state = NSControlStateValueOff;
+    [menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenu *updatesMenu = [[NSMenu alloc] initWithTitle:@"Updates"];
-    [updatesMenu setAutoenablesItems:NO];
-    updatesItem.submenu = updatesMenu;
-    [menu addItem:updatesItem];
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Updates")];
 
     self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check for Updates...")
                                                           action:@selector(checkForUpdates:)
@@ -802,7 +868,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.checkForUpdatesItem.indentationLevel = 0;
     self.checkForUpdatesItem.state = NSControlStateValueOff;
     self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
-    [updatesMenu addItem:self.checkForUpdatesItem];
+    HoverClickSetMenuItemImage(self.checkForUpdatesItem, @"arrow.down.circle", @"arrow.clockwise.circle");
+    [menu addItem:self.checkForUpdatesItem];
 
     self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Automatically Check for Updates")
                                                                 action:@selector(toggleAutomaticUpdateChecks:)
@@ -811,11 +878,23 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.automaticUpdateChecksItem.enabled = YES;
     self.automaticUpdateChecksItem.indentationLevel = 0;
     self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
-    [updatesMenu addItem:self.automaticUpdateChecksItem];
+    HoverClickSetMenuItemImage(self.automaticUpdateChecksItem, @"clock.arrow.circlepath", @"checkmark.circle");
+    [menu addItem:self.automaticUpdateChecksItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quit HoverClick")
+    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick")
+                                                       action:@selector(showAboutHoverClick:)
+                                                keyEquivalent:@""];
+    aboutItem.target = self;
+    aboutItem.enabled = YES;
+    aboutItem.indentationLevel = 0;
+    aboutItem.state = NSControlStateValueOff;
+    aboutItem.toolTip = HoverClickAboutHelp;
+    HoverClickSetMenuItemImage(aboutItem, @"info.circle", @"info");
+    [menu addItem:aboutItem];
+
+    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quit")
                                                       action:@selector(quitApplication:)
                                                keyEquivalent:@"q"];
     quitItem.target = self;
@@ -823,6 +902,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     quitItem.indentationLevel = 0;
     quitItem.state = NSControlStateValueOff;
     quitItem.toolTip = HoverClickQuitHelp;
+    HoverClickSetMenuItemImage(quitItem, @"power", @"xmark.circle");
     [menu addItem:quitItem];
 
     self.statusItem.menu = menu;

@@ -7,8 +7,8 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: `HoverClick Ready • v1.0.0`
-- Full version/build UI surface: `Info` > `Help` > `About HoverClick`
+- Visible menu header: green status dot, `HoverClick is running`, and right-aligned dynamic `v1.0.0`
+- Full version/build UI surface: bottom `About HoverClick` item above `Quit`
 - Bundle short version/build version: `1.0.0` / `39`
 - Latest fully validated baseline before v0.8.0 local DMG validation: `v0.7.0` / build `36`
 - Latest public release: `v1.0.0` / build `39`
@@ -61,7 +61,7 @@
 - Sparkle source URL: `https://github.com/sparkle-project/Sparkle/releases/download/2.9.3/Sparkle-2.9.3.tar.xz`.
 - Sparkle archive SHA-256: `74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6`.
 - Dependency method: `Makefile` downloads the pinned archive into ignored `tmp/sparkle/`, verifies the SHA-256, extracts `Sparkle.framework`, links with `-framework Sparkle`, embeds it in `HoverClick.app/Contents/Frameworks/`, and signs Sparkle nested helpers plus the app with the existing Apple Development identity.
-- Menu entry point: `Info` > `Updates` > `Check for Updates...` calls Sparkle's standard `checkForUpdates:` UI.
+- Menu entry point: top-level `Updates` section > `Check for Updates...` calls Sparkle's standard `checkForUpdates:` UI.
 - Appcast URL: `https://gergoterek.github.io/HoverClick/appcast.xml`.
 - The appcast is published through GitHub Pages at the feed URL.
 - Sparkle public key: `093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=`.
@@ -129,12 +129,13 @@
 ## v1.1 Menu UI/UX Refactor State
 
 - v1.1 menu UI/UX refactor is implemented on `feature-v1.1-menu-ui-refactor`.
-- The status menu keeps a compact top status row, `HoverClick Ready • v<short-version>`, with the visible version read from `CFBundleShortVersionString`.
-- The top-level menu now uses the native section headers Functions, Access, and Info, followed by a bottom separator and `Quit HoverClick`.
+- The status menu keeps a compact top status row with a green status dot, `HoverClick is running`, and right-aligned `v<short-version>` read from `CFBundleShortVersionString`.
+- The top-level menu now uses subtle native section headers Functions, Access, Info, and Updates, followed by a bottom separator with `About HoverClick` above `Quit`.
 - Functions contains `Left Click Focus` and `Right Click Focus`.
 - Access contains a `Permissions` submenu with Accessibility status, `Launch at Login`, a separator, `Refresh Permission Status`, and `Open Accessibility Settings`.
-- Info contains `Help`, `Diagnostics`, and `Updates` submenus. Help contains `GitHub`, `Contact`, `Release Notes`, a separator, `Uninstall HoverClick...`, and `About HoverClick`; Diagnostics contains `Copy Diagnostics Summary` and `Verbose Diagnostics`; Updates contains `Check for Updates...` and `Automatically Check for Updates`.
-- Action rows no longer use left-slot SF Symbol action icons or leading title padding; this avoids the old `icon + space + label` look and leans on native menu text, separators, submenu arrows, and checkmarks.
+- Info contains `Help` and `Diagnostics` submenus. Help contains `GitHub`, `Contact`, `Release Notes`, a separator, and `Uninstall HoverClick...`; Diagnostics contains `Copy Diagnostics Summary` and `Verbose Diagnostics`.
+- Updates contains `Check for Updates...` and `Automatically Check for Updates`.
+- Menu rows use native `NSMenuItem.image` icons with SF Symbols where available; this avoids text-icon prefixes, manual title padding, and the old `icon + space + label` look while leaning on native images, separators, submenu arrows, and checkmarks.
 - Feature behavior is unchanged: updater completion behavior, diagnostics output, Launch at Login, permission refresh, click-focus toggles, Quit/Cmd+Q, event tap mask, and mouse semantics are preserved.
 - No `Info.plist`, script, appcast, release asset, signing identity, bundle identifier, app name, version/build, release workflow, Hover Click Assist UI, or README reduction change is part of v1.1 menu UI/UX refactor.
 - Manual validation still needs to confirm the menu opens normally, grouping looks clean, controls remain easy to find, toggles and actions work, updater and diagnostics behavior are intact, no Hover Assist UI appears, and click-focus behavior remains unchanged.
@@ -170,16 +171,17 @@
 - The menu bar icon uses the native template SF Symbol `cursorarrow.click`.
 - The app bundle icon is generated from the branded source image at `assets/HoverClickAppIcon-1024.png` into `Resources/HoverClick.icns`.
 - The DMG volume icon is generated from `assets/HoverClickDMGVolumeIcon.png` into `Resources/HoverClickDMGVolumeIcon.icns`; it is separate from the app bundle icon.
-- The menu header shows `HoverClick Ready • v<short-version>` with the visible app version.
+- The menu header shows a green status dot, `HoverClick is running`, and right-aligned `v<short-version>`.
 - `Left Click Focus` defaults on.
 - `Right Click Focus` defaults off and is independent from left-click behavior.
 - `Permissions` contains Accessibility status, Launch at Login, `Refresh Permission Status`, and `Open Accessibility Settings`.
 - `Accessibility: Granted` shows a native menu checkmark when Accessibility permission is granted; `Accessibility: Required` is unchecked.
 - If Accessibility is missing, click-focus feature toggles are disabled until the user grants permission and chooses `Refresh Permission Status` or relaunches.
 - `Diagnostics` contains `Copy Diagnostics Summary` and `Verbose Diagnostics`.
-- `Updates` contains `Check for Updates...` and `Automatically Check for Updates`. The toggle controls Sparkle's automatic update checks only and does not enable automatic download/install.
-- The top-level menu is grouped by disabled native section headers for Functions, Access, and Info.
-- `Help` contains GitHub, Contact, Release Notes, safe uninstall instructions, and `About HoverClick`.
+- `Updates` is a top-level section containing `Check for Updates...` and `Automatically Check for Updates`. The toggle controls Sparkle's automatic update checks only and does not enable automatic download/install.
+- The top-level menu is grouped by subtle disabled native section headers for Functions, Access, Info, and Updates.
+- `Help` contains GitHub, Contact, Release Notes, and safe uninstall instructions.
+- `About HoverClick` is in the bottom group directly above `Quit`.
 - Technical click detection and last action details are available in the copied diagnostics summary.
 
 ## Stable Features
@@ -192,7 +194,7 @@
 - Background text first-drag limitation: HoverClick still returns the original mouse-down unchanged, but some apps may treat the first mouse-down that began while inactive as activation-only, so text selection/drag can require a second drag unless a future safe non-replay fix is proven.
 - Launch at Login: uses the ServiceManagement main-app login item API on macOS 13 and newer.
 - Diagnostics summary: copies app name, bundle identifier, permission, permission onboarding, permission-missing pass-through/removal state, last permission refresh/check result, startup, automatic update check state, automatic download/install state, click detection, feature state, event tap requested/object/source/validity/installed/enabled state, last event tap callback, last left/right mouse-down timestamps, last recovery attempt/result, last handled action, last focus action/skip reason, last non-menu focus action/skip, detailed last focus decision, right-click-specific focus decision, stable last real/background click decision fields that are not overwritten by HoverClick menu/status UI clicks, overlay/system UI skip reason, overlay candidate owner/window/layer/title/bounds plus AX role/subrole/app detail, last eligible hit-test candidate, persistent last background-focus trigger/target/frontmost-before/activation/AX-operation/immediate-frontmost/delayed-verification/result/failure details, recent non-menu mouse-down decision history, aggregate callback/focus/skip counters, last verified successful background focus, event tap mask, safety note, and concise known limitations. Version/build are shown by `About HoverClick` instead of being duplicated in copied diagnostics.
-- Diagnostics/menu polish: visible runtime details stay out of the menu; section headers, separators, submenu arrows, and native checkmarks provide structure; action rows use plain native menu text without left-slot action icons or leading title padding, and Quit preserves Cmd+Q.
+- Diagnostics/menu polish: visible runtime details stay out of the menu; smaller subtle section headers, separators, submenu arrows, native menu item images, and native checkmarks provide structure; action rows do not use text icon prefixes or leading title padding, and Quit preserves Cmd+Q.
 - Accessibility onboarding: first launch requests the native macOS Accessibility prompt when needed, shows a native explanatory alert, and keeps `Permissions` actions available for manual recovery.
 
 ## v0.4.6 Validated Release
@@ -216,7 +218,7 @@ v0.4.7 / build 33 was the latest public release until v0.5.0 was released.
 Included polish:
 
 - `About HoverClick` is the native alert that shows Version, Build, bundle ID, and the description.
-- The visible top menu/header status is dynamic `HoverClick Ready • v<short-version>` from `CFBundleShortVersionString` through the version helper, not hardcoded.
+- The visible top menu/header status combines `HoverClick is running` with dynamic right-aligned `v<short-version>` from `CFBundleShortVersionString` through the version helper, not hardcoded.
 - Tooltip wording stays release-independent: `HoverClick - Windows-like click focus for macOS`.
 - `Copy Diagnostics Summary` does not include a separate Version line.
 - The Diagnostics submenu does not include a separate version/build row.
@@ -498,8 +500,8 @@ Manual Finder UI validation -- not run automatically.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.7.0, Build 36, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI for that release.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.8.0, Build 37, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 1.0.0, Build 39, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
-- Confirm the status menu groups items under Functions, Access, and Info section headers, with `Quit HoverClick` bottom-separated and no Quit section header.
-- Confirm action rows use plain native menu text without left-slot action icons or leading title padding.
+- Confirm the status menu groups items under Functions, Access, Info, and Updates section headers, with `About HoverClick` above `Quit` in the bottom group and no Quit section header.
+- Confirm action rows use native menu item images without text-icon prefixes or leading title padding.
 - Confirm `Quit` preserves Cmd+Q.
 - Confirm `Copy Diagnostics Summary` includes the event tap lifecycle fields: requested, object exists, port valid, run loop source exists, run loop source valid, installed/enabled believed state, detected enabled state, last callback, last left/right mouse-down, last recovery attempt/result, last focus action/skip, last background-focus trigger/target/frontmost-before/activation/AX/immediate/delayed/final verification/failure reason, and last verified successful background focus.
 - Move the pointer over background windows without clicking; no focus change should occur.
@@ -510,5 +512,5 @@ Manual Finder UI validation -- not run automatically.
 - Confirm menu/status UI skip protection remains intact.
 - Click HoverClick status/menu UI and transient menu/popover UI; they should be ignored safely.
 - Drag windows, select text, and use sliders; drag behavior should remain unchanged.
-- Copy diagnostics and confirm it includes app name, bundle identifier, permission, startup, feature states, expanded event tap lifecycle state, event tap mask, the safety note, and concise known limitations. Confirm version/build are available from `Info` > `Help` > `About HoverClick` instead.
+- Copy diagnostics and confirm it includes app name, bundle identifier, permission, startup, feature states, expanded event tap lifecycle state, event tap mask, the safety note, and concise known limitations. Confirm version/build are available from bottom `About HoverClick` instead.
 - Leave the app running for a longer period, including idle/sleep/wake or lock-unlock if practical. If left and right click focus stop together, copy diagnostics immediately and compare the requested/enabled/validity/recovery fields.
