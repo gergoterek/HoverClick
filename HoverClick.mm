@@ -33,6 +33,10 @@ static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the curr
 static NSString * const HoverClickCheckForUpdatesHelp = @"Checks for HoverClick updates now using Sparkle's visible update flow.";
 static NSString * const HoverClickAutomaticUpdateChecksHelp = @"Lets Sparkle periodically look for updates. Downloads and installs still require user action.";
 static NSString * const HoverClickAboutHelp = @"Shows HoverClick version and bundle identity.";
+static NSString * const HoverClickGitHubHelp = @"Opens the HoverClick GitHub repository.";
+static NSString * const HoverClickContactHelp = @"Opens a new email addressed to HoverClick support.";
+static NSString * const HoverClickReleaseNotesHelp = @"Opens the HoverClick GitHub releases page.";
+static NSString * const HoverClickUninstallHelp = @"Shows safe manual uninstall instructions.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
@@ -41,8 +45,6 @@ static const CGFloat HoverClickHeaderHeight = 24.0;
 static const CGFloat HoverClickHeaderHorizontalPadding = 14.0;
 static const CGFloat HoverClickHeaderLabelY = 4.0;
 static const CGFloat HoverClickHeaderLabelHeight = 18.0;
-static const CGFloat HoverClickHeaderTitleWidth = 130.0;
-static const CGFloat HoverClickHeaderVersionWidth = 122.0;
 static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
 static const NSUInteger HoverClickRecentDecisionHistoryLimit = 10;
 
@@ -110,6 +112,10 @@ static NSString *HoverClickInfoBoolStatus(NSString *key) {
 
 static NSString *HoverClickHeaderVersion(void) {
     return [NSString stringWithFormat:@"v%@", HoverClickDisplayVersion()];
+}
+
+static NSString *HoverClickHeaderStatusTitle(void) {
+    return [NSString stringWithFormat:@"HoverClick Ready \u2022 %@", HoverClickHeaderVersion()];
 }
 
 static NSString *HoverClickDiagnosticTimestamp(CFAbsoluteTime timestamp) {
@@ -218,31 +224,20 @@ static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
 }
 
 static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
-    NSString *headerVersion = HoverClickHeaderVersion();
+    NSString *headerStatus = HoverClickHeaderStatusTitle();
     NSRect headerFrame = NSMakeRect(0.0, 0.0, HoverClickHeaderWidth, HoverClickHeaderHeight);
     NSView *headerView = [[NSView alloc] initWithFrame:headerFrame];
     headerView.toolTip = HoverClickStableHelp;
 
-    NSTextField *nameLabel = [NSTextField labelWithString:@"HoverClick"];
-    nameLabel.frame = NSMakeRect(HoverClickHeaderHorizontalPadding,
-                                 HoverClickHeaderLabelY,
-                                 HoverClickHeaderTitleWidth,
-                                 HoverClickHeaderLabelHeight);
-    nameLabel.font = [NSFont menuBarFontOfSize:0.0];
-    nameLabel.textColor = [NSColor disabledControlTextColor];
-    nameLabel.toolTip = HoverClickStableHelp;
-    [headerView addSubview:nameLabel];
-
-    NSTextField *versionLabel = [NSTextField labelWithString:headerVersion];
-    versionLabel.frame = NSMakeRect(HoverClickHeaderWidth - HoverClickHeaderHorizontalPadding - HoverClickHeaderVersionWidth,
-                                    HoverClickHeaderLabelY,
-                                    HoverClickHeaderVersionWidth,
-                                    HoverClickHeaderLabelHeight);
-    versionLabel.alignment = NSTextAlignmentRight;
-    versionLabel.font = [NSFont menuFontOfSize:0.0];
-    versionLabel.textColor = [NSColor disabledControlTextColor];
-    versionLabel.toolTip = HoverClickStableHelp;
-    [headerView addSubview:versionLabel];
+    NSTextField *statusLabel = [NSTextField labelWithString:headerStatus];
+    statusLabel.frame = NSMakeRect(HoverClickHeaderHorizontalPadding,
+                                   HoverClickHeaderLabelY,
+                                   HoverClickHeaderWidth - (HoverClickHeaderHorizontalPadding * 2.0),
+                                   HoverClickHeaderLabelHeight);
+    statusLabel.font = [NSFont menuBarFontOfSize:0.0];
+    statusLabel.textColor = [NSColor disabledControlTextColor];
+    statusLabel.toolTip = HoverClickStableHelp;
+    [headerView addSubview:statusLabel];
 
     NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:@""
                                                         action:nil
@@ -351,6 +346,11 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)showAccessibilityOnboardingIfNeeded;
 - (void)offerLaunchAtLoginOnboardingIfNeeded;
 - (void)showAboutHoverClick:(id)sender;
+- (void)openURLString:(NSString *)urlString label:(NSString *)label;
+- (void)openGitHub:(id)sender;
+- (void)openContact:(id)sender;
+- (void)openReleaseNotes:(id)sender;
+- (void)showUninstallInstructions:(id)sender;
 - (void)quitApplication:(id)sender;
 @end
 
@@ -606,21 +606,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"General")];
-
-    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick...")
-                                                       action:@selector(showAboutHoverClick:)
-                                                keyEquivalent:@""];
-    aboutItem.target = self;
-    aboutItem.enabled = YES;
-    aboutItem.indentationLevel = 0;
-    aboutItem.state = NSControlStateValueOff;
-    aboutItem.toolTip = HoverClickAboutHelp;
-    [menu addItem:aboutItem];
-
-    [menu addItem:[NSMenuItem separatorItem]];
-
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Click Focus")];
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Functions")];
 
     self.clickToFocusItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Left Click Focus")
                                                        action:@selector(toggleClickToFocus:)
@@ -642,19 +628,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Permissions")];
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Access")];
 
-    NSMenuItem *permissionsStartupItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Permissions & Startup")
-                                                                    action:nil
-                                                             keyEquivalent:@""];
-    permissionsStartupItem.enabled = YES;
-    permissionsStartupItem.indentationLevel = 0;
-    permissionsStartupItem.state = NSControlStateValueOff;
+    NSMenuItem *permissionsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Permissions")
+                                                             action:nil
+                                                      keyEquivalent:@""];
+    permissionsItem.enabled = YES;
+    permissionsItem.indentationLevel = 0;
+    permissionsItem.state = NSControlStateValueOff;
 
-    NSMenu *permissionsStartupMenu = [[NSMenu alloc] initWithTitle:@"Permissions & Startup"];
-    [permissionsStartupMenu setAutoenablesItems:NO];
-    permissionsStartupItem.submenu = permissionsStartupMenu;
-    [menu addItem:permissionsStartupItem];
+    NSMenu *permissionsMenu = [[NSMenu alloc] initWithTitle:@"Permissions"];
+    [permissionsMenu setAutoenablesItems:NO];
+    permissionsItem.submenu = permissionsMenu;
+    [menu addItem:permissionsItem];
 
     self.permissionItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Accessibility: Required")
                                                      action:@selector(refreshAccessibilityStatus:)
@@ -664,19 +650,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionItem.indentationLevel = 0;
     self.permissionItem.state = NSControlStateValueOff;
     self.permissionItem.toolTip = HoverClickAccessibilityStatusHelp;
-    [permissionsStartupMenu addItem:self.permissionItem];
-
-    self.permissionRefreshItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check Again")
-                                                            action:@selector(refreshAccessibilityStatus:)
-                                                     keyEquivalent:@""];
-    self.permissionRefreshItem.target = self;
-    self.permissionRefreshItem.enabled = YES;
-    self.permissionRefreshItem.indentationLevel = 0;
-    self.permissionRefreshItem.state = NSControlStateValueOff;
-    self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
-    [permissionsStartupMenu addItem:self.permissionRefreshItem];
-
-    [permissionsStartupMenu addItem:[NSMenuItem separatorItem]];
+    [permissionsMenu addItem:self.permissionItem];
 
     self.launchAtLoginItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Launch at Login")
                                                         action:@selector(toggleLaunchAtLogin:)
@@ -685,9 +659,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.launchAtLoginItem.enabled = YES;
     self.launchAtLoginItem.indentationLevel = 0;
     self.launchAtLoginItem.toolTip = HoverClickLaunchAtLoginHelp;
-    [permissionsStartupMenu addItem:self.launchAtLoginItem];
+    [permissionsMenu addItem:self.launchAtLoginItem];
 
-    [permissionsStartupMenu addItem:[NSMenuItem separatorItem]];
+    [permissionsMenu addItem:[NSMenuItem separatorItem]];
+
+    self.permissionRefreshItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Refresh Permission Status")
+                                                            action:@selector(refreshAccessibilityStatus:)
+                                                     keyEquivalent:@""];
+    self.permissionRefreshItem.target = self;
+    self.permissionRefreshItem.enabled = YES;
+    self.permissionRefreshItem.indentationLevel = 0;
+    self.permissionRefreshItem.state = NSControlStateValueOff;
+    self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
+    [permissionsMenu addItem:self.permissionRefreshItem];
 
     NSMenuItem *settingsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Open Accessibility Settings")
                                                           action:@selector(openAccessibilitySettings:)
@@ -697,34 +681,75 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     settingsItem.indentationLevel = 0;
     settingsItem.state = NSControlStateValueOff;
     settingsItem.toolTip = HoverClickOpenAccessibilitySettingsHelp;
-    [permissionsStartupMenu addItem:settingsItem];
+    [permissionsMenu addItem:settingsItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Updates")];
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Info")];
 
-    self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check for Updates...")
-                                                          action:@selector(checkForUpdates:)
-                                                   keyEquivalent:@""];
-    self.checkForUpdatesItem.target = self.updaterController;
-    self.checkForUpdatesItem.enabled = YES;
-    self.checkForUpdatesItem.indentationLevel = 0;
-    self.checkForUpdatesItem.state = NSControlStateValueOff;
-    self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
-    [menu addItem:self.checkForUpdatesItem];
+    NSMenuItem *helpItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Help")
+                                                      action:nil
+                                               keyEquivalent:@""];
+    helpItem.enabled = YES;
+    helpItem.indentationLevel = 0;
+    helpItem.state = NSControlStateValueOff;
 
-    self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Automatically Check for Updates")
-                                                                action:@selector(toggleAutomaticUpdateChecks:)
-                                                         keyEquivalent:@""];
-    self.automaticUpdateChecksItem.target = self;
-    self.automaticUpdateChecksItem.enabled = YES;
-    self.automaticUpdateChecksItem.indentationLevel = 0;
-    self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
-    [menu addItem:self.automaticUpdateChecksItem];
+    NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
+    [helpMenu setAutoenablesItems:NO];
+    helpItem.submenu = helpMenu;
+    [menu addItem:helpItem];
 
-    [menu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *githubItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"GitHub")
+                                                        action:@selector(openGitHub:)
+                                                 keyEquivalent:@""];
+    githubItem.target = self;
+    githubItem.enabled = YES;
+    githubItem.indentationLevel = 0;
+    githubItem.state = NSControlStateValueOff;
+    githubItem.toolTip = HoverClickGitHubHelp;
+    [helpMenu addItem:githubItem];
 
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Diagnostics")];
+    NSMenuItem *contactItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Contact")
+                                                         action:@selector(openContact:)
+                                                  keyEquivalent:@""];
+    contactItem.target = self;
+    contactItem.enabled = YES;
+    contactItem.indentationLevel = 0;
+    contactItem.state = NSControlStateValueOff;
+    contactItem.toolTip = HoverClickContactHelp;
+    [helpMenu addItem:contactItem];
+
+    NSMenuItem *releaseNotesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Release Notes")
+                                                              action:@selector(openReleaseNotes:)
+                                                       keyEquivalent:@""];
+    releaseNotesItem.target = self;
+    releaseNotesItem.enabled = YES;
+    releaseNotesItem.indentationLevel = 0;
+    releaseNotesItem.state = NSControlStateValueOff;
+    releaseNotesItem.toolTip = HoverClickReleaseNotesHelp;
+    [helpMenu addItem:releaseNotesItem];
+
+    [helpMenu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *uninstallItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Uninstall HoverClick...")
+                                                           action:@selector(showUninstallInstructions:)
+                                                    keyEquivalent:@""];
+    uninstallItem.target = self;
+    uninstallItem.enabled = YES;
+    uninstallItem.indentationLevel = 0;
+    uninstallItem.state = NSControlStateValueOff;
+    uninstallItem.toolTip = HoverClickUninstallHelp;
+    [helpMenu addItem:uninstallItem];
+
+    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About HoverClick")
+                                                       action:@selector(showAboutHoverClick:)
+                                                keyEquivalent:@""];
+    aboutItem.target = self;
+    aboutItem.enabled = YES;
+    aboutItem.indentationLevel = 0;
+    aboutItem.state = NSControlStateValueOff;
+    aboutItem.toolTip = HoverClickAboutHelp;
+    [helpMenu addItem:aboutItem];
 
     self.diagnosticsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Diagnostics")
                                                       action:nil
@@ -738,15 +763,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.diagnosticsItem.submenu = diagnosticsMenu;
     [menu addItem:self.diagnosticsItem];
 
-    self.verboseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Verbose Diagnostics")
-                                                  action:@selector(toggleVerboseDiagnostics:)
-                                           keyEquivalent:@""];
-    self.verboseItem.target = self;
-    self.verboseItem.enabled = YES;
-    self.verboseItem.indentationLevel = 0;
-    self.verboseItem.toolTip = HoverClickVerboseDiagnosticsHelp;
-    [diagnosticsMenu addItem:self.verboseItem];
-
     NSMenuItem *copyDiagnosticsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Copy Diagnostics Summary")
                                                                  action:@selector(copyDiagnosticsSummary:)
                                                           keyEquivalent:@""];
@@ -757,11 +773,49 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     copyDiagnosticsItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
     [diagnosticsMenu addItem:copyDiagnosticsItem];
 
+    self.verboseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Verbose Diagnostics")
+                                                  action:@selector(toggleVerboseDiagnostics:)
+                                           keyEquivalent:@""];
+    self.verboseItem.target = self;
+    self.verboseItem.enabled = YES;
+    self.verboseItem.indentationLevel = 0;
+    self.verboseItem.toolTip = HoverClickVerboseDiagnosticsHelp;
+    [diagnosticsMenu addItem:self.verboseItem];
+
+    NSMenuItem *updatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Updates")
+                                                         action:nil
+                                                  keyEquivalent:@""];
+    updatesItem.enabled = YES;
+    updatesItem.indentationLevel = 0;
+    updatesItem.state = NSControlStateValueOff;
+
+    NSMenu *updatesMenu = [[NSMenu alloc] initWithTitle:@"Updates"];
+    [updatesMenu setAutoenablesItems:NO];
+    updatesItem.submenu = updatesMenu;
+    [menu addItem:updatesItem];
+
+    self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check for Updates...")
+                                                          action:@selector(checkForUpdates:)
+                                                   keyEquivalent:@""];
+    self.checkForUpdatesItem.target = self.updaterController;
+    self.checkForUpdatesItem.enabled = YES;
+    self.checkForUpdatesItem.indentationLevel = 0;
+    self.checkForUpdatesItem.state = NSControlStateValueOff;
+    self.checkForUpdatesItem.toolTip = HoverClickCheckForUpdatesHelp;
+    [updatesMenu addItem:self.checkForUpdatesItem];
+
+    self.automaticUpdateChecksItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Automatically Check for Updates")
+                                                                action:@selector(toggleAutomaticUpdateChecks:)
+                                                         keyEquivalent:@""];
+    self.automaticUpdateChecksItem.target = self;
+    self.automaticUpdateChecksItem.enabled = YES;
+    self.automaticUpdateChecksItem.indentationLevel = 0;
+    self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
+    [updatesMenu addItem:self.automaticUpdateChecksItem];
+
     [menu addItem:[NSMenuItem separatorItem]];
 
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Quit")];
-
-    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quit")
+    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quit HoverClick")
                                                       action:@selector(quitApplication:)
                                                keyEquivalent:@"q"];
     quitItem.target = self;
@@ -1015,7 +1069,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"HoverClick Needs Accessibility Permission";
-    alert.informativeText = @"HoverClick needs Accessibility permission to focus background windows before your original click is delivered. Click focus controls stay disabled until permission is granted.\n\nUse Permissions & Startup > Open Accessibility Settings if macOS does not show the permission prompt, then choose Check Again after enabling HoverClick.";
+    alert.informativeText = @"HoverClick needs Accessibility permission to focus background windows before your original click is delivered. Click focus controls stay disabled until permission is granted.\n\nUse Permissions > Open Accessibility Settings if macOS does not show the permission prompt, then choose Refresh Permission Status after enabling HoverClick.";
     alert.alertStyle = NSAlertStyleInformational;
     NSButton *okButton = [alert addButtonWithTitle:@"OK"];
     okButton.target = self;
@@ -2075,13 +2129,54 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [alert runModal];
 }
 
+- (void)openURLString:(NSString *)urlString label:(NSString *)label {
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (url == nil) {
+        HoverClickLog("HoverClick: failed to create %s URL", (label ?: @"link").UTF8String);
+        return;
+    }
+
+    if (![[NSWorkspace sharedWorkspace] openURL:url]) {
+        HoverClickLog("HoverClick: failed to open %s URL", (label ?: @"link").UTF8String);
+    }
+}
+
+- (void)openGitHub:(id)sender {
+    (void)sender;
+    [self openURLString:@"https://github.com/gergoterek/HoverClick"
+                  label:@"GitHub"];
+}
+
+- (void)openContact:(id)sender {
+    (void)sender;
+    [self openURLString:@"mailto:mushikalabs@gmail.com"
+                  label:@"Contact"];
+}
+
+- (void)openReleaseNotes:(id)sender {
+    (void)sender;
+    [self openURLString:@"https://github.com/gergoterek/HoverClick/releases"
+                  label:@"Release Notes"];
+}
+
+- (void)showUninstallInstructions:(id)sender {
+    (void)sender;
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Uninstall HoverClick";
+    alert.informativeText = @"To uninstall HoverClick, turn off Launch at Login, quit HoverClick, then move HoverClick.app to the Trash.";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+}
+
 - (void)updateMenuTitles {
     BOOL trusted = [self accessibilityTrusted];
     self.permissionItem.title = HoverClickMenuItemTitle(trusted ? @"Accessibility: Granted" : @"Accessibility: Required");
     self.permissionItem.state = trusted ? NSControlStateValueOn : NSControlStateValueOff;
     self.permissionItem.toolTip = trusted ? HoverClickAccessibilityStatusHelp : @"HoverClick needs Accessibility permission before click focus can work.";
 
-    self.permissionRefreshItem.title = HoverClickMenuItemTitle(trusted ? @"Refresh Permission Status" : @"Check Again");
+    self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refresh Permission Status");
     self.permissionRefreshItem.enabled = YES;
     self.permissionRefreshItem.state = NSControlStateValueOff;
     self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
