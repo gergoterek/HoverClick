@@ -41,7 +41,6 @@ static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
 static const CGFloat HoverClickMenuContentWidth = 286.0;
-static const CGFloat HoverClickSubmenuContentWidth = 240.0;
 static const CGFloat HoverClickMenuLeadingInset = 14.0;
 static const CGFloat HoverClickMenuTrailingInset = 8.0;
 static const CGFloat HoverClickMenuIconTitleSpacing = 8.0;
@@ -506,28 +505,62 @@ static void HoverClickUseNonClosingMenuRow(NSMenuItem *item, NSString *symbolNam
     HoverClickUseCustomMenuRow(item, symbolName, fallbackSymbolName, nil, showsStateView, NO);
 }
 
+static CGFloat HoverClickMeasureMenuTitleWidth(NSString *title) {
+    NSFont *font = [NSFont menuFontOfSize:0.0];
+    NSDictionary *attrs = @{NSFontAttributeName: font};
+    return ceil([title sizeWithAttributes:attrs].width);
+}
+
+static const CGFloat HoverClickSubmenuMinWidth = 200.0;
+static const CGFloat HoverClickSubmenuSafetyPadding = 10.0;
+
+static CGFloat HoverClickCalculatedSubmenuWidth(NSArray<NSString *> *titles) {
+    CGFloat maxTitleWidth = 0.0;
+    for (NSString *title in titles) {
+        CGFloat w = HoverClickMeasureMenuTitleWidth(title);
+        if (w > maxTitleWidth) {
+            maxTitleWidth = w;
+        }
+    }
+    // All submenu rows carry an icon, so titleX = HoverClickMenuRowTextX.
+    // rowWidth = titleText + safetyPad + titleX + title-to-accessory gap + accessory + trailing
+    CGFloat width = maxTitleWidth + HoverClickSubmenuSafetyPadding
+                    + HoverClickMenuRowTextX
+                    + HoverClickMenuIconTitleSpacing
+                    + HoverClickMenuRightAccessoryWidth
+                    + HoverClickMenuTrailingInset;
+    if (width < HoverClickSubmenuMinWidth) {
+        width = HoverClickSubmenuMinWidth;
+    }
+    if (width > HoverClickMenuContentWidth) {
+        width = HoverClickMenuContentWidth;
+    }
+    return width;
+}
+
 static void HoverClickUseCustomSubmenuRow(NSMenuItem *item,
                                            NSString *symbolName,
                                            NSString *fallbackSymbolName,
                                            NSString *accessoryTitle,
                                            BOOL showsStateView,
-                                           BOOL closesMenuAfterAction) {
+                                           BOOL closesMenuAfterAction,
+                                           CGFloat rowWidth) {
     NSImage *image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
     HoverClickMenuRowView *rowView = [[HoverClickMenuRowView alloc] initWithMenuItem:item
                                                                                image:image
                                                                       accessoryTitle:accessoryTitle
                                                                       showsStateView:showsStateView
-                                                                            rowWidth:HoverClickSubmenuContentWidth];
+                                                                            rowWidth:rowWidth];
     rowView.closesMenuAfterAction = closesMenuAfterAction;
     item.view = rowView;
 }
 
-static void HoverClickUseClosingSubmenuRow(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName) {
-    HoverClickUseCustomSubmenuRow(item, symbolName, fallbackSymbolName, nil, NO, YES);
+static void HoverClickUseClosingSubmenuRow(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName, CGFloat rowWidth) {
+    HoverClickUseCustomSubmenuRow(item, symbolName, fallbackSymbolName, nil, NO, YES, rowWidth);
 }
 
-static void HoverClickUseNonClosingSubmenuRow(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName, BOOL showsStateView) {
-    HoverClickUseCustomSubmenuRow(item, symbolName, fallbackSymbolName, nil, showsStateView, NO);
+static void HoverClickUseNonClosingSubmenuRow(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName, BOOL showsStateView, CGFloat rowWidth) {
+    HoverClickUseCustomSubmenuRow(item, symbolName, fallbackSymbolName, nil, showsStateView, NO, rowWidth);
 }
 
 static void HoverClickUseSubmenuMenuRow(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName) {
@@ -1031,6 +1064,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     permissionsItem.submenu = permissionsMenu;
     [menu addItem:permissionsItem];
 
+    CGFloat permissionsWidth = HoverClickCalculatedSubmenuWidth(@[
+        @"Accessibility: Required",
+        @"Accessibility: Granted",
+        @"Launch at Login",
+        @"Launch at Login: Unavailable",
+        @"Refresh Status",
+        @"Accessibility Settings"
+    ]);
+
     self.permissionItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Accessibility: Required")
                                                      action:@selector(refreshAccessibilityStatus:)
                                               keyEquivalent:@""];
@@ -1039,7 +1081,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionItem.indentationLevel = 0;
     self.permissionItem.state = NSControlStateValueOff;
     self.permissionItem.toolTip = HoverClickAccessibilityStatusHelp;
-    HoverClickUseNonClosingSubmenuRow(self.permissionItem, @"accessibility", @"person.crop.circle.badge.checkmark", YES);
+    HoverClickUseNonClosingSubmenuRow(self.permissionItem, @"accessibility", @"person.crop.circle.badge.checkmark", YES, permissionsWidth);
     [permissionsMenu addItem:self.permissionItem];
 
     self.launchAtLoginItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Launch at Login")
@@ -1049,7 +1091,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.launchAtLoginItem.enabled = YES;
     self.launchAtLoginItem.indentationLevel = 0;
     self.launchAtLoginItem.toolTip = HoverClickLaunchAtLoginHelp;
-    HoverClickUseNonClosingSubmenuRow(self.launchAtLoginItem, @"power", @"arrow.clockwise.circle", YES);
+    HoverClickUseNonClosingSubmenuRow(self.launchAtLoginItem, @"power", @"arrow.clockwise.circle", YES, permissionsWidth);
     [permissionsMenu addItem:self.launchAtLoginItem];
 
     [permissionsMenu addItem:[NSMenuItem separatorItem]];
@@ -1062,7 +1104,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.permissionRefreshItem.indentationLevel = 0;
     self.permissionRefreshItem.state = NSControlStateValueOff;
     self.permissionRefreshItem.toolTip = HoverClickRefreshAccessibilityHelp;
-    HoverClickUseNonClosingSubmenuRow(self.permissionRefreshItem, @"arrow.clockwise", @"arrow.clockwise.circle", NO);
+    HoverClickUseNonClosingSubmenuRow(self.permissionRefreshItem, @"arrow.clockwise", @"arrow.clockwise.circle", NO, permissionsWidth);
     [permissionsMenu addItem:self.permissionRefreshItem];
 
     NSMenuItem *settingsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Accessibility Settings")
@@ -1073,7 +1115,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     settingsItem.indentationLevel = 0;
     settingsItem.state = NSControlStateValueOff;
     settingsItem.toolTip = HoverClickOpenAccessibilitySettingsHelp;
-    HoverClickUseClosingSubmenuRow(settingsItem, @"gearshape", @"accessibility");
+    HoverClickUseClosingSubmenuRow(settingsItem, @"gearshape", @"accessibility", permissionsWidth);
     [permissionsMenu addItem:settingsItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
@@ -1118,6 +1160,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     helpItem.submenu = helpMenu;
     [menu addItem:helpItem];
 
+    CGFloat helpWidth = HoverClickCalculatedSubmenuWidth(@[
+        @"GitHub",
+        @"Contact",
+        @"Release Notes",
+        @"Uninstall..."
+    ]);
+
     NSMenuItem *githubItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"GitHub")
                                                         action:@selector(openGitHub:)
                                                  keyEquivalent:@""];
@@ -1126,7 +1175,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     githubItem.indentationLevel = 0;
     githubItem.state = NSControlStateValueOff;
     githubItem.toolTip = HoverClickGitHubHelp;
-    HoverClickUseClosingSubmenuRow(githubItem, @"link", @"globe");
+    HoverClickUseClosingSubmenuRow(githubItem, @"link", @"globe", helpWidth);
     [helpMenu addItem:githubItem];
 
     NSMenuItem *contactItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Contact")
@@ -1137,7 +1186,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     contactItem.indentationLevel = 0;
     contactItem.state = NSControlStateValueOff;
     contactItem.toolTip = HoverClickContactHelp;
-    HoverClickUseClosingSubmenuRow(contactItem, @"envelope", @"at");
+    HoverClickUseClosingSubmenuRow(contactItem, @"envelope", @"at", helpWidth);
     [helpMenu addItem:contactItem];
 
     NSMenuItem *releaseNotesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Release Notes")
@@ -1148,7 +1197,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     releaseNotesItem.indentationLevel = 0;
     releaseNotesItem.state = NSControlStateValueOff;
     releaseNotesItem.toolTip = HoverClickReleaseNotesHelp;
-    HoverClickUseClosingSubmenuRow(releaseNotesItem, @"doc.text", @"doc");
+    HoverClickUseClosingSubmenuRow(releaseNotesItem, @"doc.text", @"doc", helpWidth);
     [helpMenu addItem:releaseNotesItem];
 
     [helpMenu addItem:[NSMenuItem separatorItem]];
@@ -1161,7 +1210,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     uninstallItem.indentationLevel = 0;
     uninstallItem.state = NSControlStateValueOff;
     uninstallItem.toolTip = HoverClickUninstallHelp;
-    HoverClickUseClosingSubmenuRow(uninstallItem, @"trash", @"xmark.circle");
+    HoverClickUseClosingSubmenuRow(uninstallItem, @"trash", @"xmark.circle", helpWidth);
     [helpMenu addItem:uninstallItem];
 
     self.diagnosticsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Diagnostics")
@@ -1177,6 +1226,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.diagnosticsItem.submenu = diagnosticsMenu;
     [menu addItem:self.diagnosticsItem];
 
+    CGFloat diagnosticsWidth = HoverClickCalculatedSubmenuWidth(@[
+        @"Copy Summary",
+        @"Verbose Mode"
+    ]);
+
     self.diagnosticsCopyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Copy Summary")
                                                          action:@selector(copyDiagnosticsSummary:)
                                                   keyEquivalent:@""];
@@ -1185,7 +1239,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.diagnosticsCopyItem.indentationLevel = 0;
     self.diagnosticsCopyItem.state = NSControlStateValueOff;
     self.diagnosticsCopyItem.toolTip = HoverClickCopyDiagnosticsSummaryHelp;
-    HoverClickUseNonClosingSubmenuRow(self.diagnosticsCopyItem, @"doc.on.doc", @"doc.text", NO);
+    HoverClickUseNonClosingSubmenuRow(self.diagnosticsCopyItem, @"doc.on.doc", @"doc.text", NO, diagnosticsWidth);
     [diagnosticsMenu addItem:self.diagnosticsCopyItem];
 
     self.verboseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Verbose Mode")
@@ -1195,7 +1249,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.verboseItem.enabled = YES;
     self.verboseItem.indentationLevel = 0;
     self.verboseItem.toolTip = HoverClickVerboseDiagnosticsHelp;
-    HoverClickUseNonClosingSubmenuRow(self.verboseItem, @"list.bullet.rectangle", @"list.bullet", YES);
+    HoverClickUseNonClosingSubmenuRow(self.verboseItem, @"list.bullet.rectangle", @"list.bullet", YES, diagnosticsWidth);
     [diagnosticsMenu addItem:self.verboseItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
