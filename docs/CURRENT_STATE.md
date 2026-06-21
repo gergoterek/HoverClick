@@ -61,7 +61,7 @@
 - Sparkle source URL: `https://github.com/sparkle-project/Sparkle/releases/download/2.9.3/Sparkle-2.9.3.tar.xz`.
 - Sparkle archive SHA-256: `74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6`.
 - Dependency method: `Makefile` downloads the pinned archive into ignored `tmp/sparkle/`, verifies the SHA-256, extracts `Sparkle.framework`, links with `-framework Sparkle`, embeds it in `HoverClick.app/Contents/Frameworks/`, and signs Sparkle nested helpers plus the app with the existing Apple Development identity.
-- Menu entry point: top-level `Updates` section > `Check for Updates...` calls Sparkle's standard `checkForUpdates:` UI.
+- Menu entry point: top-level `Updates` section > `Check Now...` calls Sparkle's standard `checkForUpdates:` UI.
 - Appcast URL: `https://gergoterek.github.io/HoverClick/appcast.xml`.
 - The appcast is published through GitHub Pages at the feed URL.
 - Sparkle public key: `093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=`.
@@ -87,7 +87,7 @@
 - v0.9.0 is implemented as `Complete Updater & 1.0 Readiness` on `feature-v0.9.0-updater-completion`.
 - v0.9.0 / build 38 was the public release baseline for v1.0 readiness planning.
 - Release prep sets `CFBundleShortVersionString = 0.9.0` and `CFBundleVersion = 38`.
-- The v0.9.0 updater UX is conservative: keep manual `Check for Updates...`, add explicit user-controlled automatic checks, and keep silent/background install disabled.
+- The v0.9.0 updater UX is conservative: keep manual `Check Now...`, add explicit user-controlled automatic checks, and keep silent/background install disabled.
 - Do not set unconditional automatic update checks as the default.
 - Do not enable automatic download/install before v1.0.
 - Keep the GitHub Release DMG plus GitHub Pages appcast workflow.
@@ -110,7 +110,7 @@
 - v1.1.x planning is recorded in `docs/V1.1_PLANNING.md`.
 - The recommended first v1.1 feature release is `v1.1.0`, with possible follow-up releases such as `v1.1.1`, `v1.1.2`, and `v1.1.3`.
 - The intended v1.1.x feature areas are updater completion, status menu UI/UX refactor, and README reduction.
-- Updater completion should keep manual `Check for Updates...`, keep `Automatically Check for Updates` clear and persistent, improve updater-state clarity where safe, preserve the GitHub Release DMG plus `gh-pages` appcast workflow, and avoid silent/background automatic install unless explicitly approved.
+- Updater completion should keep manual `Check Now...`, keep `Automatically Check for Updates` clear and persistent, improve updater-state clarity where safe, preserve the GitHub Release DMG plus `gh-pages` appcast workflow, and avoid silent/background automatic install unless explicitly approved.
 - Menu UI/UX refactor should improve section structure, grouping, spacing, icon alignment, and native macOS feel without changing event semantics.
 - README reduction should make the public README roughly one half or one third of its current length by moving technical depth into docs instead of deleting useful material.
 - This planning branch is docs-only. It must not modify `README.md`, `HoverClick.mm`, `Info.plist`, scripts, `appcast.xml`, Sparkle keys, release assets, DMGs, signing settings, bundle identity, version/build metadata, event tap mask, or mouse semantics.
@@ -119,12 +119,12 @@
 ## v1.1 Updater Completion State
 
 - v1.1 updater completion is implemented on `feature-v1.1-updater-completion`.
-- Manual `Check for Updates...` remains a visible Sparkle update action and uses Sparkle's standard user-visible update flow.
+- Manual `Check Now...` remains a visible Sparkle update action and uses Sparkle's standard user-visible update flow.
 - `Automatically Check for Updates` remains a toggle backed by Sparkle's `automaticallyChecksForUpdates` state.
 - Toggling automatic update checks reasserts `automaticallyDownloadsUpdates = NO`, records the change for diagnostics, and does not enable silent/background automatic install.
 - Copied diagnostics now distinguish manual update check availability, appcast URL, Sparkle public key presence, automatic-check defaults, current automatic-check state, last automatic-check toggle, automatic download/install defaults, current automatic download/install state, whether automatic install is allowed, and the updater safety policy.
 - No `Info.plist`, script, appcast, release asset, signing identity, bundle identifier, app name, version/build, event tap mask, mouse semantics, or Hover Click Assist UI change is part of v1.1 updater completion.
-- Manual validation still needs to confirm the menu items are clear, `Automatically Check for Updates` persists across relaunch, diagnostics report the expected updater rows, `Check for Updates...` reaches the live appcast, and left/right click-focus behavior remains unchanged.
+- Manual validation still needs to confirm the menu items are clear, `Automatically Check for Updates` persists across relaunch, diagnostics report the expected updater rows, `Check Now...` reaches the live appcast, and left/right click-focus behavior remains unchanged.
 
 ## v1.1 Menu UI/UX Refactor State
 
@@ -132,9 +132,9 @@
 - The status menu keeps a compact top status row with a green status dot, `HoverClick is running`, and right-aligned `v<short-version>` read from `CFBundleShortVersionString`; custom header/control rows share named leading, icon-spacing, and right accessory constants so the top status row, section labels, left icons, right-side indicators, and version label align visually with the plain bottom `About`/`Quit` rows as closely as native AppKit menus permit.
 - The top-level menu now uses subtle section headers Functions, Access, Info, and Updates, followed by a bottom separator with `About` above `Quit`.
 - Functions contains `Left Click Focus` and `Right Click Focus`.
-- Access contains a `Permissions` submenu with Accessibility status, `Launch at Login`, a separator, `Refresh Permission Status`, and `Open Accessibility Settings`.
-- Info contains `Help` and `Diagnostics` submenus. Help contains `GitHub`, `Contact`, `Release Notes`, a separator, and `Uninstall HoverClick...`; Diagnostics contains `Copy Diagnostics Summary` and `Verbose Diagnostics`.
-- Updates contains `Check for Updates...` and `Automatically Check for Updates`.
+- Access contains a `Permissions` submenu with Accessibility status, `Launch at Login`, a separator, `Refresh Status`, and `Accessibility Settings`.
+- Info contains `Help` and `Diagnostics` submenus. Help contains `GitHub`, `Contact`, `Release Notes`, a separator, and `Uninstall...`; Diagnostics contains `Copy Summary` and `Verbose Mode`.
+- Updates contains `Check Now...` and `Automatically Check for Updates`.
 - Menu rows use native `NSMenuItem.image` icons with SF Symbols where available; this avoids text-icon prefixes, manual title padding, and the old `icon + space + label` look while leaning on native images, separators, submenu arrows, aligned custom section/header rows, and right-side state indicators for custom toggle rows.
 - Feature behavior is unchanged: updater completion behavior, diagnostics output, Launch at Login, permission refresh, click-focus toggles, Quit/Cmd+Q, event tap mask, and mouse semantics are preserved.
 - No `Info.plist`, script, appcast, release asset, signing identity, bundle identifier, app name, version/build, release workflow, Hover Click Assist UI, or README reduction change is part of v1.1 menu UI/UX refactor.
@@ -156,12 +156,12 @@
 
 - The v0.8.0 permission onboarding branch adds first-launch Accessibility guidance without changing app identity, signing, event tap inputs, Sparkle settings, updater behavior, or release packaging.
 - On launch, if Accessibility is missing, HoverClick calls `AXIsProcessTrustedWithOptions` with `kAXTrustedCheckOptionPrompt` once for that launch and shows a native onboarding alert explaining why the permission is needed.
-- Permission state refreshes without prompting on launch, when the app becomes active, and immediately before the status menu opens. Explicit `Refresh Permission Status` still performs the user-initiated prompt-capable refresh.
+- Permission state refreshes without prompting on launch, when the app becomes active, and immediately before the status menu opens. Explicit `Refresh Status` still performs the user-initiated prompt-capable refresh.
 - The Accessibility onboarding alert is retained as a non-modal alert so it can be dismissed automatically when permission becomes granted; duplicate onboarding alerts are not stacked.
 - Missing Accessibility keeps HoverClick open but leaves click focus inactive. `Left Click Focus` and `Right Click Focus` are disabled in the menu until permission is granted; saved checked states are preserved.
 - If Accessibility is revoked while HoverClick is already running, normal left/right mouse-down events fail open. The callback records permission-missing pass-through, returns the original event unchanged, schedules stale event-tap removal on the main queue, and performs no AX hit-testing, focus, raise, synthetic click, event replay, or cursor movement.
-- `Permissions` now includes `Accessibility: Required` or `Accessibility: Granted`, `Launch at Login`, `Refresh Permission Status`, and explicit `Open Accessibility Settings`.
-- `Open Accessibility Settings` remains user-initiated only. HoverClick does not automatically open System Settings.
+- `Permissions` now includes `Accessibility: Required` or `Accessibility: Granted`, `Launch at Login`, `Refresh Status`, and explicit `Accessibility Settings`.
+- `Accessibility Settings` remains user-initiated only. HoverClick does not automatically open System Settings.
 - If Launch at Login is not registered on macOS 13 or newer, HoverClick asks once whether to enable it. The app records the ask with `launchAtLoginOnboardingPromptShown` and only enables Launch at Login when the user chooses `Enable Launch at Login`.
 - Launch at Login onboarding does not change Accessibility permission and does not silently register the login item.
 
@@ -174,11 +174,11 @@
 - The menu header shows a green status dot, `HoverClick is running`, and right-aligned `v<short-version>`.
 - `Left Click Focus` defaults on.
 - `Right Click Focus` defaults off and is independent from left-click behavior.
-- `Permissions` contains Accessibility status, Launch at Login, `Refresh Permission Status`, and `Open Accessibility Settings`.
+- `Permissions` contains Accessibility status, Launch at Login, `Refresh Status`, and `Accessibility Settings`.
 - `Accessibility: Granted` shows a right-side state indicator when Accessibility permission is granted; `Accessibility: Required` is unchecked.
-- If Accessibility is missing, click-focus feature toggles are disabled until the user grants permission and chooses `Refresh Permission Status` or relaunches.
-- `Diagnostics` contains `Copy Diagnostics Summary` and `Verbose Diagnostics`.
-- `Updates` is a top-level section containing `Check for Updates...` and `Automatically Check for Updates`. The toggle controls Sparkle's automatic update checks only and does not enable automatic download/install.
+- If Accessibility is missing, click-focus feature toggles are disabled until the user grants permission and chooses `Refresh Status` or relaunches.
+- `Diagnostics` contains `Copy Summary` and `Verbose Mode`.
+- `Updates` is a top-level section containing `Check Now...` and `Automatically Check for Updates`. The toggle controls Sparkle's automatic update checks only and does not enable automatic download/install.
 - The top-level menu is grouped by subtle disabled section headers for Functions, Access, Info, and Updates.
 - `Help` contains GitHub, Contact, Release Notes, and safe uninstall instructions.
 - `About` is in the bottom group directly above `Quit`.
@@ -201,11 +201,11 @@
 
 v0.4.6 / build 32 is fully released, validated, and closed. It is a focused bugfix release after v0.4.5. It includes the overlay/system UI skip ordering fix so large transparent or otherwise non-interactive non-layer-0 windows do not suppress normal eligible AX app-window candidates underneath them.
 
-The release preserves menu/status/Bartender overlay protection while improving diagnostics for last non-menu focus action/skip, overlay/system UI skip reason, overlay/system UI candidate, and last eligible hit-test candidate. `Copy Diagnostics Summary` should preserve the useful last non-menu focus result instead of erasing it with later menu or overlay clicks.
+The release preserves menu/status/Bartender overlay protection while improving diagnostics for last non-menu focus action/skip, overlay/system UI skip reason, overlay/system UI candidate, and last eligible hit-test candidate. `Copy Summary` should preserve the useful last non-menu focus result instead of erasing it with later menu or overlay clicks.
 
 Manual main validation passed for Chrome as the eligible normal app/window target while a large overlay/system UI candidate was skipped appropriately. Background focus succeeded with activation attempted=yes, returnValue=yes, AX operations attempted:success, delayed verification passing after 0.20s, result success, and verification delayed passed.
 
-Post-release published DMG manual smoke validation passed for the GitHub v0.4.6 release asset `HoverClick-0.4.6.dmg`. The downloaded DMG SHA-256 matched `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`; launch worked; the menu opened; version showed `0.4.6` / build `32`; Accessibility status was correct; Left Click Focus worked; Right Click Focus worked when enabled; diagnostics background-focus fields worked; Finder context-menu follow-up left-click worked; Bartender/menu-bar overlay pass-through worked; Copy Diagnostics Summary worked; and Quit/Cmd+Q worked. The user confirmed the DMG-installed app worked normally.
+Post-release published DMG manual smoke validation passed for the GitHub v0.4.6 release asset `HoverClick-0.4.6.dmg`. The downloaded DMG SHA-256 matched `4e31b9196458e326bc794dbeb33525ce4a8d2b58fe463de0e9c3c789d3a6c076`; launch worked; the menu opened; version showed `0.4.6` / build `32`; Accessibility status was correct; Left Click Focus worked; Right Click Focus worked when enabled; diagnostics background-focus fields worked; Finder context-menu follow-up left-click worked; Bartender/menu-bar overlay pass-through worked; Copy Summary worked; and Quit/Cmd+Q worked. The user confirmed the DMG-installed app worked normally.
 
 v0.4.7 later shipped from the validated post-v0.4.6 maintenance/UI/docs polish state.
 
@@ -220,7 +220,7 @@ Included polish:
 - `About` is the native alert that shows Version, Build, bundle ID, and the description.
 - The visible top menu/header status combines `HoverClick is running` with dynamic right-aligned `v<short-version>` from `CFBundleShortVersionString` through the version helper, not hardcoded.
 - Tooltip wording stays release-independent: `HoverClick - Windows-like click focus for macOS`.
-- `Copy Diagnostics Summary` does not include a separate Version line.
+- `Copy Summary` does not include a separate Version line.
 - The Diagnostics submenu does not include a separate version/build row.
 - Documentation records the validated v0.4.6 state, the fresh Accessibility checklist, v0.4.7 guardrails, branch cleanup recommendations, and the failed background drag warning.
 
@@ -351,13 +351,13 @@ v0.8.0 / build 37 is the previous public release before v0.9.0. It publishes the
 
 Included in scope:
 
-- Sparkle 2.9.3 integration with the top-level manual `Check for Updates...` item.
+- Sparkle 2.9.3 integration with the top-level manual `Check Now...` item.
 - Sparkle appcast published through GitHub Pages at `https://gergoterek.github.io/HoverClick/appcast.xml`.
 - GitHub Release DMG payload `HoverClick-0.8.0.dmg`.
 - Automatic Sparkle checks disabled with `SUEnableAutomaticChecks = false`.
 - Automatic background download/install disabled with `SUAutomaticallyUpdate = false` and `SUAllowsAutomaticUpdates = false`.
 - First-launch Accessibility onboarding and permission-gated click-focus controls while Accessibility is missing.
-- `Refresh Permission Status`, with permission refresh on launch, app activation, and status menu open.
+- `Refresh Status`, with permission refresh on launch, app activation, and status menu open.
 - Onboarding popup dismissal after Accessibility permission is granted.
 - Runtime Accessibility revocation fail-open pass-through.
 - Launch at Login consent-only onboarding.
@@ -486,13 +486,13 @@ Manual Finder UI validation -- not run automatically.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.7.0` on the same header row after a manual relaunch of that release.
 - Confirm the status menu shows `HoverClick` and dynamic `v0.8.0` on the same header row after a manual relaunch.
 - Confirm the status menu shows `HoverClick` and dynamic `v1.0.0` on the same header row after a manual relaunch.
-- For v1.0 readiness, confirm the signed `.app` launches, Accessibility permission remains stable, the menu opens and items work, mouse movement over background windows does not focus them, left-click focus works, right-click focus works when enabled and context menus remain normal, `Check for Updates...` works without a 404, `Automatically Check for Updates` persists, no silent/background automatic install occurs, diagnostics copy works and reports updater automatic-check/download/install state, no Hover Click Assist UI remains visible, and event semantics are unchanged.
+- For v1.0 readiness, confirm the signed `.app` launches, Accessibility permission remains stable, the menu opens and items work, mouse movement over background windows does not focus them, left-click focus works, right-click focus works when enabled and context menus remain normal, `Check Now...` works without a 404, `Automatically Check for Updates` persists, no silent/background automatic install occurs, diagnostics copy works and reports updater automatic-check/download/install state, no Hover Click Assist UI remains visible, and event semantics are unchanged.
 - For v0.5.0 icon smoke validation, confirm the built `HoverClick.app` shows the branded app icon in normal macOS icon surfaces after a manual relaunch or install. Manual Finder UI validation -- not run automatically.
 - Confirm `Left Click Focus` is checked by default.
 - Confirm `Right Click Focus` is unchecked by default.
-- Confirm `Permissions` contains Accessibility status, Launch at Login, Refresh Permission Status, and Open Accessibility Settings.
+- Confirm `Permissions` contains Accessibility status, Launch at Login, Refresh Status, and Accessibility Settings.
 - Confirm no `Hover` submenu or `Hover Click Assist` placeholder is visible in the current v1.0.0 product surface.
-- Confirm `Diagnostics` contains `Verbose Diagnostics` and `Copy Diagnostics Summary`.
+- Confirm `Diagnostics` contains `Verbose Mode` and `Copy Summary`.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.6, Build 32, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.4.7, Build 33, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
 - Confirm `About HoverClick...` shows HoverClick, Version 0.5.0, Build 34, Bundle ID `com.gergoterek.HoverClick`, and the description `Windows-like click focus for macOS.` without opening any external UI.
@@ -503,7 +503,7 @@ Manual Finder UI validation -- not run automatically.
 - Confirm the status menu groups items under Functions, Access, Info, and Updates section headers, with `About` above `Quit` in the bottom group and no Quit section header.
 - Confirm action rows use native menu item images without text-icon prefixes or leading title padding.
 - Confirm `Quit` preserves Cmd+Q.
-- Confirm `Copy Diagnostics Summary` includes the event tap lifecycle fields: requested, object exists, port valid, run loop source exists, run loop source valid, installed/enabled believed state, detected enabled state, last callback, last left/right mouse-down, last recovery attempt/result, last focus action/skip, last background-focus trigger/target/frontmost-before/activation/AX/immediate/delayed/final verification/failure reason, and last verified successful background focus.
+- Confirm `Copy Summary` includes the event tap lifecycle fields: requested, object exists, port valid, run loop source exists, run loop source valid, installed/enabled believed state, detected enabled state, last callback, last left/right mouse-down, last recovery attempt/result, last focus action/skip, last background-focus trigger/target/frontmost-before/activation/AX/immediate/delayed/final verification/failure reason, and last verified successful background focus.
 - Move the pointer over background windows without clicking; no focus change should occur.
 - With `Left Click Focus` checked, click visible background windows; target focus should occur before the original click passes through.
 - With `Right Click Focus` checked, right-click visible background windows; target focus should occur before the original right-click passes through and the normal context menu works.
