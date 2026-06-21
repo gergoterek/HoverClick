@@ -120,11 +120,11 @@
 
 - v1.1 updater completion is implemented on `feature-v1.1-updater-completion`.
 - Manual `Check Now...` remains a visible Sparkle update action and uses Sparkle's standard user-visible update flow.
-- `Automatically Check for Updates` remains a toggle backed by Sparkle's `automaticallyChecksForUpdates` state.
+- `Auto Check Updates` remains a toggle backed by Sparkle's `automaticallyChecksForUpdates` state.
 - Toggling automatic update checks reasserts `automaticallyDownloadsUpdates = NO`, records the change for diagnostics, and does not enable silent/background automatic install.
 - Copied diagnostics now distinguish manual update check availability, appcast URL, Sparkle public key presence, automatic-check defaults, current automatic-check state, last automatic-check toggle, automatic download/install defaults, current automatic download/install state, whether automatic install is allowed, and the updater safety policy.
 - No `Info.plist`, script, appcast, release asset, signing identity, bundle identifier, app name, version/build, event tap mask, mouse semantics, or Hover Click Assist UI change is part of v1.1 updater completion.
-- Manual validation still needs to confirm the menu items are clear, `Automatically Check for Updates` persists across relaunch, diagnostics report the expected updater rows, `Check Now...` reaches the live appcast, and left/right click-focus behavior remains unchanged.
+- Manual validation still needs to confirm the menu items are clear, `Auto Check Updates` persists across relaunch, diagnostics report the expected updater rows, `Check Now...` reaches the live appcast, and left/right click-focus behavior remains unchanged.
 
 ## v1.1 Menu UI/UX Refactor State
 
@@ -134,7 +134,7 @@
 - Functions contains `Left Click Focus` and `Right Click Focus`.
 - Access contains a `Permissions` submenu with Accessibility status, `Launch at Login`, a separator, `Refresh Status`, and `Accessibility Settings`.
 - Info contains `Help` and `Diagnostics` submenus. Help contains `GitHub`, `Contact`, `Release Notes`, a separator, and `Uninstall...`; Diagnostics contains `Copy Summary` and `Verbose Mode`.
-- Updates contains `Check Now...` and `Automatically Check for Updates`.
+- Updates contains `Check Now...` and `Auto Check Updates`.
 - Menu rows use native `NSMenuItem.image` icons with SF Symbols where available; this avoids text-icon prefixes, manual title padding, and the old `icon + space + label` look while leaning on native images, separators, submenu arrows, aligned custom section/header rows, and right-side state indicators for custom toggle rows.
 - Feature behavior is unchanged: updater completion behavior, diagnostics output, Launch at Login, permission refresh, click-focus toggles, Quit/Cmd+Q, event tap mask, and mouse semantics are preserved.
 - No `Info.plist`, script, appcast, release asset, signing identity, bundle identifier, app name, version/build, release workflow, Hover Click Assist UI, or README reduction change is part of v1.1 menu UI/UX refactor.
@@ -178,7 +178,7 @@
 - `Accessibility: Granted` shows a right-side state indicator when Accessibility permission is granted; `Accessibility: Required` is unchecked.
 - If Accessibility is missing, click-focus feature toggles are disabled until the user grants permission and chooses `Refresh Status` or relaunches.
 - `Diagnostics` contains `Copy Summary` and `Verbose Mode`.
-- `Updates` is a top-level section containing `Check Now...` and `Automatically Check for Updates`. The toggle controls Sparkle's automatic update checks only and does not enable automatic download/install.
+- `Updates` is a top-level section containing `Check Now...` and `Auto Check Updates`. The toggle controls Sparkle's automatic update checks only and does not enable automatic download/install.
 - The top-level menu is grouped by subtle disabled section headers for Functions, Access, Info, and Updates.
 - `Help` contains GitHub, Contact, Release Notes, and safe uninstall instructions.
 - `About` is in the bottom group directly above `Quit`.

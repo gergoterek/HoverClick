@@ -136,7 +136,7 @@ Current menu controls expose:
 
 - Left Click Focus
 - Right Click Focus
-- Automatically Check for Updates
+- Auto Check Updates
 
 The event tap should continue to observe only the current stable click inputs: `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`.
 
