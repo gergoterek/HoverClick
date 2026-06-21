@@ -511,7 +511,7 @@ static CGFloat HoverClickMeasureMenuTitleWidth(NSString *title) {
     return ceil([title sizeWithAttributes:attrs].width);
 }
 
-static const CGFloat HoverClickSubmenuMinWidth = 200.0;
+static const CGFloat HoverClickSubmenuMinWidth = 160.0;
 static const CGFloat HoverClickSubmenuSafetyPadding = 10.0;
 
 static CGFloat HoverClickCalculatedSubmenuWidth(NSArray<NSString *> *titles) {
