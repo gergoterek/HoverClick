@@ -632,7 +632,8 @@ static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
 }
 
 static NSMenuItem *HoverClickCreateInfoSectionHeaderMenuItem(void) {
-    NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Info")
+    NSString *appVersionTitle = [@"App Version: " stringByAppendingString:HoverClickDisplayVersion()];
+    NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(appVersionTitle)
                                                         action:nil
                                                  keyEquivalent:@""];
     headerItem.enabled = NO;
@@ -643,26 +644,11 @@ static NSMenuItem *HoverClickCreateInfoSectionHeaderMenuItem(void) {
                                                                   0.0,
                                                                   HoverClickMenuContentWidth,
                                                                   HoverClickSectionHeaderHeight)];
-    CGFloat versionWidth = 100.0;
-    CGFloat versionX = HoverClickMenuContentWidth - HoverClickMenuTrailingInset - versionWidth;
-    NSString *versionString = [@"Version " stringByAppendingString:HoverClickDisplayVersion()];
 
-    NSTextField *versionLabel = [NSTextField labelWithString:versionString];
-    versionLabel.frame = NSMakeRect(versionX,
-                                    HoverClickSectionHeaderLabelY,
-                                    versionWidth,
-                                    HoverClickSectionHeaderLabelHeight);
-    versionLabel.alignment = NSTextAlignmentRight;
-    versionLabel.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize
-                                          weight:NSFontWeightRegular];
-    versionLabel.textColor = [NSColor disabledControlTextColor];
-    versionLabel.lineBreakMode = NSLineBreakByClipping;
-    [headerView addSubview:versionLabel];
-
-    NSTextField *label = [NSTextField labelWithString:HoverClickMenuItemTitle(@"Info")];
+    NSTextField *label = [NSTextField labelWithString:appVersionTitle];
     label.frame = NSMakeRect(HoverClickSectionHeaderLeadingInset,
                              HoverClickSectionHeaderLabelY,
-                             versionX - HoverClickSectionHeaderLeadingInset - 4.0,
+                             HoverClickMenuContentWidth - HoverClickSectionHeaderLeadingInset - HoverClickMenuTrailingInset,
                              HoverClickSectionHeaderLabelHeight);
     label.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize
                                    weight:NSFontWeightRegular];
