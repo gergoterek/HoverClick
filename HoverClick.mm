@@ -270,6 +270,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 @property(nonatomic) BOOL highlighted;
 @property(nonatomic) BOOL closesMenuAfterAction;
 @property(nonatomic) BOOL showsSubmenuArrow;
+@property(nonatomic) BOOL useSubtleAccessory;
 - (instancetype)initWithMenuItem:(NSMenuItem *)menuItem
                            image:(NSImage *)image
                   accessoryTitle:(NSString *)accessoryTitle
@@ -414,7 +415,11 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     }
     self.titleField.textColor = textColor;
     self.stateField.textColor = textColor;
-    self.accessoryField.textColor = textColor;
+    NSColor *accessoryColor = textColor;
+    if (self.useSubtleAccessory && !(self.highlighted && self.rowEnabled)) {
+        accessoryColor = [NSColor tertiaryLabelColor];
+    }
+    self.accessoryField.textColor = accessoryColor;
 
     self.iconView.alphaValue = self.rowEnabled ? 1.0 : 0.35;
     self.stateField.alphaValue = self.rowEnabled ? 1.0 : 0.35;
@@ -638,10 +643,11 @@ static NSMenuItem *HoverClickCreateInfoSectionHeaderMenuItem(void) {
                                                                   0.0,
                                                                   HoverClickMenuContentWidth,
                                                                   HoverClickSectionHeaderHeight)];
-    CGFloat versionWidth = HoverClickHeaderVersionWidth;
+    CGFloat versionWidth = 100.0;
     CGFloat versionX = HoverClickMenuContentWidth - HoverClickMenuTrailingInset - versionWidth;
+    NSString *versionString = [@"Version " stringByAppendingString:HoverClickDisplayVersion()];
 
-    NSTextField *versionLabel = [NSTextField labelWithString:HoverClickDisplayVersion()];
+    NSTextField *versionLabel = [NSTextField labelWithString:versionString];
     versionLabel.frame = NSMakeRect(versionX,
                                     HoverClickSectionHeaderLabelY,
                                     versionWidth,
@@ -672,12 +678,20 @@ static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
     NSView *headerView = [[NSView alloc] initWithFrame:headerFrame];
     headerView.toolTip = HoverClickStableHelp;
 
-    NSImageView *statusDotView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickHeaderStatusDotX,
-                                                                               8.0,
-                                                                               HoverClickHeaderStatusDotSize,
-                                                                               HoverClickHeaderStatusDotSize)];
-    statusDotView.image = HoverClickStatusDotImage();
+    CGFloat statusIconSize = HoverClickMenuImageSize;
+    CGFloat statusIconY = (HoverClickHeaderHeight - statusIconSize) / 2.0;
+    NSImage *statusSymbol = HoverClickMenuSystemImage(@"checkmark.circle.fill", @"checkmark.circle");
+    NSImageView *statusDotView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickMenuLeadingInset,
+                                                                               statusIconY,
+                                                                               statusIconSize,
+                                                                               statusIconSize)];
+    statusDotView.image = statusSymbol ?: HoverClickStatusDotImage();
     statusDotView.imageScaling = NSImageScaleProportionallyDown;
+    if (@available(macOS 10.14, *)) {
+        if (statusSymbol != nil) {
+            statusDotView.contentTintColor = [NSColor disabledControlTextColor];
+        }
+    }
     statusDotView.toolTip = HoverClickStableHelp;
     [headerView addSubview:statusDotView];
 
@@ -1309,6 +1323,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     quitItem.state = NSControlStateValueOff;
     quitItem.toolTip = HoverClickQuitHelp;
     HoverClickUseClosingPlainMenuRow(quitItem, @"\u2318Q");
+    if ([quitItem.view isKindOfClass:[HoverClickMenuRowView class]]) {
+        ((HoverClickMenuRowView *)quitItem.view).useSubtleAccessory = YES;
+    }
     [menu addItem:quitItem];
 
     self.statusItem.menu = menu;
