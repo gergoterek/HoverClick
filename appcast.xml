@@ -3,13 +3,13 @@
     <channel>
         <title>HoverClick</title>
         <item>
-            <title>1.1.0</title>
-            <pubDate>Mon, 22 Jun 2026 10:21:04 +0200</pubDate>
-            <sparkle:version>40</sparkle:version>
-            <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+            <title>1.1.1</title>
+            <pubDate>Mon, 22 Jun 2026 20:27:05 +0200</pubDate>
+            <sparkle:version>41</sparkle:version>
+            <sparkle:shortVersionString>1.1.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/gergoterek/HoverClick/releases/download/v1.1.0/HoverClick-1.1.0.dmg" length="4520872" type="application/octet-stream" sparkle:edSignature="eDKpN78FYnW7o0lmpYEJtZjmXZF55bmxjTImTtp5TEqxK+4RCFOPOvDrti4ZNj8GBzDHLEZAFu3S6N+LULO4Aw=="/>
+            <enclosure url="https://github.com/gergoterek/HoverClick/releases/download/v1.1.1/HoverClick-1.1.1.dmg" length="4521825" type="application/octet-stream" sparkle:edSignature="n6Y08lHQnpe9Zg6qvrkTegcJZxp+qeSdEUVz8l5ioxr9h3cCq7zH4b0QS1wSNvb/pbt1J0jKo3XY2zqcuXHnAg=="/>
         </item>
     </channel>
 </rss>
