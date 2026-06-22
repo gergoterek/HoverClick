@@ -2889,6 +2889,24 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
+    if ([self pointIsInScreenMenuBarArea:axPoint]) {
+        HoverClickLog("HoverClick: click #%llu skipped reason=menu-bar-area point=(%.1f,%.1f); event passed through unchanged",
+                      clickID, axPoint.x, axPoint.y);
+        [self recordFocusDecisionWithTrigger:"click"
+                                  sequenceID:clickID
+                                    decision:@"skipped"
+                                      detail:@"click point is in screen menu bar area; no focus attempt; original event passed through unchanged"];
+        [self recordClickThroughInvestigationForSequenceID:clickID
+                                               focusStatus:@"skipped: click in screen menu bar area"
+                                                 finalNote:@"original left mouse-down returned unchanged; swallowed=no"];
+        _totalMenuStatusUISkips++;
+        [self completeRecentDecisionForSequenceID:clickID
+                                      finalResult:@"skipped: click in screen menu bar area"
+                 keepActiveForDelayedVerification:NO];
+        [self setLastClickResult:@"Ignored Menu/UI"];
+        return;
+    }
+
     NSDictionary *topmostWindowInfo = [self topmostWindowInfoAtPoint:axPoint];
     [self logTopmostWindowInfo:topmostWindowInfo atPoint:axPoint sequenceID:clickID trigger:"click"];
     [self updateRecentDecisionForSequenceID:clickID
@@ -2967,6 +2985,24 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                 decision:@"observed"
                                   detail:@"Right Click Focus enabled; resolving target window/app"];
 
+    if ([self pointIsInScreenMenuBarArea:axPoint]) {
+        HoverClickLog("HoverClick: right-click #%llu skipped reason=menu-bar-area point=(%.1f,%.1f); event passed through unchanged",
+                      clickID, axPoint.x, axPoint.y);
+        [self recordFocusDecisionWithTrigger:"right-click"
+                                  sequenceID:clickID
+                                    decision:@"skipped"
+                                      detail:@"click point is in screen menu bar area; no focus attempt; original event passed through unchanged"];
+        [self recordClickThroughInvestigationForSequenceID:clickID
+                                               focusStatus:@"skipped: click in screen menu bar area"
+                                                 finalNote:@"original right mouse-down returned unchanged; swallowed=no"];
+        _totalMenuStatusUISkips++;
+        [self completeRecentDecisionForSequenceID:clickID
+                                      finalResult:@"skipped: click in screen menu bar area"
+                 keepActiveForDelayedVerification:NO];
+        [self setLastClickResult:@"Ignored Menu/UI"];
+        return;
+    }
+
     NSDictionary *topmostWindowInfo = [self topmostWindowInfoAtPoint:axPoint];
     [self logTopmostWindowInfo:topmostWindowInfo atPoint:axPoint sequenceID:clickID trigger:"right-click"];
     [self updateRecentDecisionForSequenceID:clickID
@@ -3004,6 +3040,28 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (CGPoint)accessibilityPointForEventPoint:(CGPoint)eventPoint {
     return eventPoint;
+}
+
+- (BOOL)pointIsInScreenMenuBarArea:(CGPoint)cgPoint {
+    NSArray<NSScreen *> *screens = [NSScreen screens];
+    if (screens.count == 0) {
+        return NO;
+    }
+    // CGEvent coordinates: origin top-left of main screen, y increases downward.
+    // NSScreen frame: origin bottom-left of main screen, y increases upward.
+    CGFloat mainScreenHeight = screens.firstObject.frame.size.height;
+    NSPoint appKitPoint = NSMakePoint(cgPoint.x, mainScreenHeight - cgPoint.y - 1.0);
+    for (NSScreen *screen in screens) {
+        if (!NSPointInRect(appKitPoint, screen.frame)) {
+            continue;
+        }
+        // Point is on this screen. Menu bar occupies the area above the visible frame top edge.
+        if (appKitPoint.y >= NSMaxY(screen.visibleFrame)) {
+            return YES;
+        }
+        break;
+    }
+    return NO;
 }
 
 - (AXUIElementRef)copyElementAtAccessibilityPoint:(CGPoint)point {
