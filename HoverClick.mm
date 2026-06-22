@@ -879,6 +879,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     NSString *_lastLaunchAtLoginOnboardingDecision;
     NSString *_lastPermissionCheckResult;
     NSString *_lastPermissionMissingPassThroughDescription;
+    NSString *_lastMenuBarCheckDescription;
     NSString *_lastAutomaticUpdateChecksChangeDescription;
     CFAbsoluteTime _lastAutomaticUpdateChecksChangeTime;
     NSMutableArray<NSMutableDictionary<NSString *, NSString *> *> *_recentDecisionHistory;
@@ -2512,6 +2513,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last right mouse down seen: %@\n"
              "Last tap recovery attempt: %@\n"
              "Last tap recovery result: %@\n"
+             "Last menu-bar/top-strip check: %@\n"
              "Counters: mouse callbacks=%llu left=%llu right=%llu non-menu decisions=%llu focus attempts=%llu successful verifications=%llu policy skips=%llu overlay/system UI skips=%llu compact-popup skips=%llu menu/status UI skips=%llu\n"
              "Recent non-menu mouse-down decisions (newest first):\n- %@\n"
              "Diagnostics copy/menu note: volatile last handled/focus fields may reflect the status/menu click used to copy diagnostics; stable real/background fields and recent non-menu history ignore HoverClick menu/status UI clicks.\n"
@@ -2585,6 +2587,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             HoverClickDiagnosticTimestamp(_lastRightMouseDownSeenTime),
             HoverClickDiagnosticTimestamp(_lastEventTapRecoveryAttemptTime),
             _lastEventTapRecoveryResult ?: @"none",
+            _lastMenuBarCheckDescription ?: @"never",
             _totalMouseCallbacksSeen,
             _totalLeftMouseCallbacksSeen,
             _totalRightMouseCallbacksSeen,
@@ -2900,6 +2903,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                focusStatus:@"skipped: click in screen menu bar area"
                                                  finalNote:@"original left mouse-down returned unchanged; swallowed=no"];
         _totalMenuStatusUISkips++;
+        [self includeRecentDecisionInHistoryForSequenceID:clickID];
         [self completeRecentDecisionForSequenceID:clickID
                                       finalResult:@"skipped: click in screen menu bar area"
                  keepActiveForDelayedVerification:NO];
@@ -2996,6 +3000,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                focusStatus:@"skipped: click in screen menu bar area"
                                                  finalNote:@"original right mouse-down returned unchanged; swallowed=no"];
         _totalMenuStatusUISkips++;
+        [self includeRecentDecisionInHistoryForSequenceID:clickID];
         [self completeRecentDecisionForSequenceID:clickID
                                       finalResult:@"skipped: click in screen menu bar area"
                  keepActiveForDelayedVerification:NO];
@@ -3045,6 +3050,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 - (BOOL)pointIsInScreenMenuBarArea:(CGPoint)cgPoint {
     NSArray<NSScreen *> *screens = [NSScreen screens];
     if (screens.count == 0) {
+        _lastMenuBarCheckDescription = [NSString stringWithFormat:
+            @"click #%llu cg=(%.1f,%.1f) noScreensAvailable result=NO-not-menu-bar bypassed=NO",
+            _clickSequence, cgPoint.x, cgPoint.y];
         return NO;
     }
     // CGEvent coordinates: origin top-left of primary screen, y increases downward.
@@ -3075,19 +3083,42 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         CGFloat effectiveMenuBarHeight = (menuBarThickness > 1.0)
             ? MAX(visibleFrameMenuBarHeight, menuBarThickness)
             : visibleFrameMenuBarHeight;
-        BOOL inMenuBar = (effectiveMenuBarHeight > 0.0 &&
-                          appKitPoint.y >= NSMaxY(frame) - effectiveMenuBarHeight);
-        [self diagnosticLog:"HoverClick: menu-bar-check cg=(%.1f,%.1f) appKit=(%.1f,%.1f) frame=(%.0f,%.0f %.0fx%.0f) visibleFrame=(%.0f,%.0f %.0fx%.0f) visibleFrameMenuBarH=%.1f statusBarThickness=%.1f effectiveH=%.1f boundary=%.1f result=%s",
+        CGFloat boundary = NSMaxY(frame) - effectiveMenuBarHeight;
+        BOOL inMenuBar = (effectiveMenuBarHeight > 0.0 && appKitPoint.y >= boundary);
+        _lastMenuBarCheckDescription = [NSString stringWithFormat:
+            @"click #%llu cg=(%.1f,%.1f) appKit=(%.1f,%.1f) mainScreenH=%.0f "
+             "matchedFrame=(%.0f,%.0f %.0fx%.0f) visibleFrame=(%.0f,%.0f %.0fx%.0f) "
+             "visibleFrameMenuBarH=%.1f statusBarThickness=%.1f effectiveH=%.1f "
+             "boundary=%.1f pointAppKitY=%.1f result=%@ bypassed=%@",
+            _clickSequence, cgPoint.x, cgPoint.y, appKitPoint.x, appKitPoint.y,
+            mainScreenHeight,
+            frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
+            visibleFrame.origin.x, visibleFrame.origin.y, visibleFrame.size.width, visibleFrame.size.height,
+            visibleFrameMenuBarHeight, menuBarThickness, effectiveMenuBarHeight,
+            boundary, appKitPoint.y,
+            inMenuBar ? @"YES-menu-bar" : @"NO-not-menu-bar",
+            inMenuBar ? @"YES" : @"NO"];
+        [self diagnosticLog:"HoverClick: menu-bar-check cg=(%.1f,%.1f) appKit=(%.1f,%.1f) "
+                              "frame=(%.0f,%.0f %.0fx%.0f) visibleFrame=(%.0f,%.0f %.0fx%.0f) "
+                              "visibleFrameMenuBarH=%.1f statusBarThickness=%.1f effectiveH=%.1f "
+                              "boundary=%.1f result=%s",
                     cgPoint.x, cgPoint.y, appKitPoint.x, appKitPoint.y,
                     frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
                     visibleFrame.origin.x, visibleFrame.origin.y, visibleFrame.size.width, visibleFrame.size.height,
                     visibleFrameMenuBarHeight, menuBarThickness, effectiveMenuBarHeight,
-                    NSMaxY(frame) - effectiveMenuBarHeight,
-                    inMenuBar ? "YES-menu-bar" : "NO-not-menu-bar"];
+                    boundary, inMenuBar ? "YES-menu-bar" : "NO-not-menu-bar"];
         if (inMenuBar) {
             return YES;
         }
         break;
+    }
+    if (_lastMenuBarCheckDescription == nil) {
+        // No screen matched the point (edge case at exact screen boundary).
+        _lastMenuBarCheckDescription = [NSString stringWithFormat:
+            @"click #%llu cg=(%.1f,%.1f) appKit=(%.1f,%.1f) mainScreenH=%.0f "
+             "noMatchingScreen result=NO-not-menu-bar bypassed=NO",
+            _clickSequence, cgPoint.x, cgPoint.y, appKitPoint.x, appKitPoint.y,
+            mainScreenHeight];
     }
     return NO;
 }
