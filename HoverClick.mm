@@ -3047,16 +3047,44 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (screens.count == 0) {
         return NO;
     }
-    // CGEvent coordinates: origin top-left of main screen, y increases downward.
-    // NSScreen frame: origin bottom-left of main screen, y increases upward.
+    // CGEvent coordinates: origin top-left of primary screen, y increases downward.
+    // NSScreen/AppKit coordinates: origin bottom-left of primary screen, y increases upward.
+    // The -1.0 keeps the converted point inside NSPointInRect's exclusive-upper-bound check
+    // for clicks at the absolute top pixel of any screen (cgY == 0).
     CGFloat mainScreenHeight = screens.firstObject.frame.size.height;
     NSPoint appKitPoint = NSMakePoint(cgPoint.x, mainScreenHeight - cgPoint.y - 1.0);
+
+    // NSStatusBar.systemStatusBar.thickness is the authoritative menu bar height.
+    // When "Automatically hide and show the menu bar" is enabled, NSScreen.visibleFrame
+    // equals NSScreen.frame for every screen (the auto-hidden menu bar doesn't permanently
+    // occupy screen space), so a visibleFrame-only check silently returns NO for all clicks.
+    // Using thickness as the definitive fallback fixes detection in that configuration.
+    CGFloat menuBarThickness = [[NSStatusBar systemStatusBar] thickness];
+
     for (NSScreen *screen in screens) {
-        if (!NSPointInRect(appKitPoint, screen.frame)) {
+        NSRect frame = screen.frame;
+        if (!NSPointInRect(appKitPoint, frame)) {
             continue;
         }
-        // Point is on this screen. Menu bar occupies the area above the visible frame top edge.
-        if (appKitPoint.y >= NSMaxY(screen.visibleFrame)) {
+        // Point is on this screen. Determine the effective menu bar strip height.
+        NSRect visibleFrame = screen.visibleFrame;
+        CGFloat visibleFrameMenuBarHeight = NSMaxY(frame) - NSMaxY(visibleFrame);
+        // Take the larger of the two measurements. visibleFrameMenuBarHeight is exact when
+        // the menu bar is visible and not auto-hidden; when it is zero (auto-hidden or
+        // per-display secondary-screen reporting gap), menuBarThickness provides the fallback.
+        CGFloat effectiveMenuBarHeight = (menuBarThickness > 1.0)
+            ? MAX(visibleFrameMenuBarHeight, menuBarThickness)
+            : visibleFrameMenuBarHeight;
+        BOOL inMenuBar = (effectiveMenuBarHeight > 0.0 &&
+                          appKitPoint.y >= NSMaxY(frame) - effectiveMenuBarHeight);
+        [self diagnosticLog:"HoverClick: menu-bar-check cg=(%.1f,%.1f) appKit=(%.1f,%.1f) frame=(%.0f,%.0f %.0fx%.0f) visibleFrame=(%.0f,%.0f %.0fx%.0f) visibleFrameMenuBarH=%.1f statusBarThickness=%.1f effectiveH=%.1f boundary=%.1f result=%s",
+                    cgPoint.x, cgPoint.y, appKitPoint.x, appKitPoint.y,
+                    frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
+                    visibleFrame.origin.x, visibleFrame.origin.y, visibleFrame.size.width, visibleFrame.size.height,
+                    visibleFrameMenuBarHeight, menuBarThickness, effectiveMenuBarHeight,
+                    NSMaxY(frame) - effectiveMenuBarHeight,
+                    inMenuBar ? "YES-menu-bar" : "NO-not-menu-bar"];
+        if (inMenuBar) {
             return YES;
         }
         break;

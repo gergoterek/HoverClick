@@ -28,7 +28,7 @@ Event tap lifecycle guards:
 For each click, HoverClick:
 
 1. Reads the global click point from `CGEventGetLocation`.
-2. Checks whether the click point is within the menu bar area of any connected screen via `pointIsInScreenMenuBarArea:` (converts CGEvent coordinates to AppKit coordinates and compares against each `NSScreen.visibleFrame` top edge). If yes, the focus attempt is skipped immediately and the original event is returned unchanged. This prevents the multi-monitor menu bar double-click bug where an AX lookup on Display B's menu bar area could resolve to a background app window under the menu bar rather than the menu bar item itself.
+2. Checks whether the click point is within the menu bar area of any connected screen via `pointIsInScreenMenuBarArea:`. Converts the CGEvent point to AppKit coordinates, then for the matched screen computes the effective menu bar strip height as `MAX(NSScreen.visibleFrame-derived height, NSStatusBar.systemStatusBar.thickness)`. The `thickness` fallback is necessary when "Automatically hide and show the menu bar" is enabled: in that state `NSScreen.visibleFrame == NSScreen.frame` for every screen so the visibleFrame-derived height is zero and visibleFrame-only detection silently fails. If the point is within the top strip, the focus attempt is skipped immediately and the original event is returned unchanged. A `menu-bar-check` diagnostic log line is emitted on every click showing the computed values.
 3. Uses `AXUIElementCreateSystemWide` and `AXUIElementCopyElementAtPosition` to resolve the element under the cursor.
 4. Reads the target pid and app name.
 5. Records the topmost CoreGraphics window under the point for overlay diagnostics.
