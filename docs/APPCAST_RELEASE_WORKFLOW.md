@@ -80,6 +80,13 @@ Before v1.0 release work starts, docs and manual validation should confirm:
 - The appcast item uses version `1.0.0`, build `39`, and `https://github.com/gergoterek/HoverClick/releases/download/v1.0.0/HoverClick-1.0.0.dmg`.
 - The appcast is published only after the GitHub Release exists, the final asset URL is known, exactly one public DMG asset is attached, and the SHA-256 has been computed.
 
+## v1.1.0 Release Target
+
+- The public appcast remains `https://gergoterek.github.io/HoverClick/appcast.xml`.
+- The public asset is `HoverClick-1.1.0.dmg`.
+- The appcast item uses version `1.1.0`, build `40`, and `https://github.com/gergoterek/HoverClick/releases/download/v1.1.0/HoverClick-1.1.0.dmg`.
+- The appcast is published only after the GitHub Release exists, the final asset URL is known, exactly one public DMG asset is attached, and the SHA-256 has been computed.
+
 ## Preflight Tool
 
 Use the non-publishing helper only after a real release DMG and public GitHub Release asset URL exist:
