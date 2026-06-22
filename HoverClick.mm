@@ -490,6 +490,9 @@ static void HoverClickUseCustomMenuRow(NSMenuItem *item,
                                                                       accessoryTitle:accessoryTitle
                                                                       showsStateView:showsStateView];
     rowView.closesMenuAfterAction = closesMenuAfterAction;
+    if (item.toolTip.length > 0) {
+        rowView.toolTip = item.toolTip;
+    }
     item.view = rowView;
 }
 
@@ -552,6 +555,9 @@ static void HoverClickUseCustomSubmenuRow(NSMenuItem *item,
                                                                       showsStateView:showsStateView
                                                                             rowWidth:rowWidth];
     rowView.closesMenuAfterAction = closesMenuAfterAction;
+    if (item.toolTip.length > 0) {
+        rowView.toolTip = item.toolTip;
+    }
     item.view = rowView;
 }
 
@@ -620,8 +626,48 @@ static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
     return headerItem;
 }
 
+static NSMenuItem *HoverClickCreateInfoSectionHeaderMenuItem(void) {
+    NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Info")
+                                                        action:nil
+                                                 keyEquivalent:@""];
+    headerItem.enabled = NO;
+    headerItem.indentationLevel = 0;
+    headerItem.state = NSControlStateValueOff;
+
+    NSView *headerView = [[NSView alloc] initWithFrame:NSMakeRect(0.0,
+                                                                  0.0,
+                                                                  HoverClickMenuContentWidth,
+                                                                  HoverClickSectionHeaderHeight)];
+    CGFloat versionWidth = HoverClickHeaderVersionWidth;
+    CGFloat versionX = HoverClickMenuContentWidth - HoverClickMenuTrailingInset - versionWidth;
+
+    NSTextField *versionLabel = [NSTextField labelWithString:HoverClickDisplayVersion()];
+    versionLabel.frame = NSMakeRect(versionX,
+                                    HoverClickSectionHeaderLabelY,
+                                    versionWidth,
+                                    HoverClickSectionHeaderLabelHeight);
+    versionLabel.alignment = NSTextAlignmentRight;
+    versionLabel.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize
+                                          weight:NSFontWeightRegular];
+    versionLabel.textColor = [NSColor disabledControlTextColor];
+    versionLabel.lineBreakMode = NSLineBreakByClipping;
+    [headerView addSubview:versionLabel];
+
+    NSTextField *label = [NSTextField labelWithString:HoverClickMenuItemTitle(@"Info")];
+    label.frame = NSMakeRect(HoverClickSectionHeaderLeadingInset,
+                             HoverClickSectionHeaderLabelY,
+                             versionX - HoverClickSectionHeaderLeadingInset - 4.0,
+                             HoverClickSectionHeaderLabelHeight);
+    label.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize
+                                   weight:NSFontWeightRegular];
+    label.textColor = [NSColor disabledControlTextColor];
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    [headerView addSubview:label];
+    headerItem.view = headerView;
+    return headerItem;
+}
+
 static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
-    NSString *headerVersion = HoverClickHeaderVersion();
     NSRect headerFrame = NSMakeRect(0.0, 0.0, HoverClickHeaderWidth, HoverClickHeaderHeight);
     NSView *headerView = [[NSView alloc] initWithFrame:headerFrame];
     headerView.toolTip = HoverClickStableHelp;
@@ -638,23 +684,12 @@ static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
     NSTextField *statusLabel = [NSTextField labelWithString:@"HoverClick is running"];
     statusLabel.frame = NSMakeRect(HoverClickHeaderTextX,
                                    HoverClickHeaderLabelY,
-                                   HoverClickHeaderVersionX - HoverClickHeaderTextX - HoverClickMenuIconTitleSpacing,
+                                   HoverClickHeaderWidth - HoverClickHeaderTextX - HoverClickMenuTrailingInset,
                                    HoverClickHeaderLabelHeight);
     statusLabel.font = [NSFont menuFontOfSize:0.0];
     statusLabel.textColor = [NSColor disabledControlTextColor];
     statusLabel.toolTip = HoverClickStableHelp;
     [headerView addSubview:statusLabel];
-
-    NSTextField *versionLabel = [NSTextField labelWithString:headerVersion];
-    versionLabel.frame = NSMakeRect(HoverClickHeaderVersionX,
-                                    HoverClickHeaderLabelY,
-                                    HoverClickHeaderVersionWidth,
-                                    HoverClickHeaderLabelHeight);
-    versionLabel.alignment = NSTextAlignmentRight;
-    versionLabel.font = [NSFont menuFontOfSize:0.0];
-    versionLabel.textColor = [NSColor disabledControlTextColor];
-    versionLabel.toolTip = HoverClickStableHelp;
-    [headerView addSubview:versionLabel];
 
     NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:@""
                                                         action:nil
@@ -1145,7 +1180,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Info")];
+    [menu addItem:HoverClickCreateInfoSectionHeaderMenuItem()];
 
     NSMenuItem *helpItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Help")
                                                       action:nil
@@ -1254,7 +1289,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About")
+    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"About...")
                                                        action:@selector(showAboutHoverClick:)
                                                 keyEquivalent:@""];
     aboutItem.target = self;
