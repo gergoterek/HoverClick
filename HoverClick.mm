@@ -21,6 +21,8 @@ static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
 static NSString * const HoverClickFallbackBuildVersion = @"unknown";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
 static NSString * const HoverClickLaunchAtLoginOnboardingPromptShownDefaultsKey = @"launchAtLoginOnboardingPromptShown";
+static NSString * const HoverClickClickTimeOverrideEnabledKey = @"clickTimeOverrideEnabled";
+static NSString * const HoverClickClickTimeOverrideDelayMsKey = @"clickTimeOverrideDelayMs";
 static NSString * const HoverClickStableHelp = @"HoverClick - Windows-like click focus for macOS.";
 static NSString * const HoverClickLeftClickFocusHelp = @"Activates a background window before passing through your original left click.";
 static NSString * const HoverClickRightClickFocusHelp = @"Activates a background window before opening its normal right-click menu.";
@@ -38,6 +40,8 @@ static NSString * const HoverClickContactHelp = @"Opens a new email addressed to
 static NSString * const HoverClickReleaseNotesHelp = @"Opens the HoverClick GitHub releases page.";
 static NSString * const HoverClickUninstallHelp = @"Shows safe manual uninstall instructions.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
+static NSString * const HoverClickClickTimeOverrideHelp = @"Experimental: when a left-click lands on a different display's menu bar, schedules a delayed synthetic re-click so the first click triggers the menu item. Off by default. Use for testing only.";
+static NSString * const HoverClickClickTimeOverrideDelayHelp = @"How long to wait before the synthetic re-click fires. Longer delays give macOS more time to complete cross-display menu-bar activation.";
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
 static const CGFloat HoverClickMenuContentWidth = 286.0;
@@ -70,6 +74,10 @@ static const CGFloat HoverClickSectionHeaderLabelHeight = 15.0;
 static const CGFloat HoverClickSectionHeaderFontSize = 11.0;
 static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
 static const NSUInteger HoverClickRecentDecisionHistoryLimit = 10;
+static const NSInteger HoverClickCDMBADefaultDelayMs = 500;
+static const NSInteger HoverClickCDMBADelayPresets[] = {100, 250, 500, 750, 1000};
+static const NSUInteger HoverClickCDMBADelayPresetsCount = 5;
+static const CGFloat HoverClickCDMBACursorDriftThreshold = 40.0;
 
 static NSString *HoverClickDisplayVersion(void) {
     NSString *shortVersion = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
@@ -770,6 +778,9 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 @property(nonatomic, strong) NSMenuItem *checkForUpdatesItem;
 @property(nonatomic, strong) NSMenuItem *automaticUpdateChecksItem;
 @property(nonatomic, strong) NSMenuItem *diagnosticsCopyItem;
+@property(nonatomic, strong) NSMenuItem *clickTimeOverrideItem;
+@property(nonatomic, strong) NSMenuItem *clickTimeOverrideDelayItem;
+@property(nonatomic, strong) NSArray<NSMenuItem *> *clickTimeOverrideDelayPresetItems;
 @property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
 @property(nonatomic, strong) NSAlert *accessibilityOnboardingAlert;
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
@@ -888,6 +899,17 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     CFAbsoluteTime _lastAutomaticUpdateChecksChangeTime;
     NSMutableArray<NSMutableDictionary<NSString *, NSString *> *> *_recentDecisionHistory;
     NSMutableDictionary<NSNumber *, NSMutableDictionary<NSString *, NSString *> *> *_activeDecisionHistory;
+    BOOL _clickTimeOverrideEnabled;
+    NSInteger _clickTimeOverrideDelayMs;
+    uint64_t _pendingCDMBAClickID;
+    CGPoint _pendingCDMBAClickPoint;
+    BOOL _cdmbaSuppressRecursion;
+    CFAbsoluteTime _cdmbaSyntheticPostTime;
+    NSString *_lastCDMBADescription;
+    uint64_t _totalCDMBAAttempts;
+    uint64_t _totalCDMBAFired;
+    uint64_t _totalCDMBACancelled;
+    uint64_t _totalCDMBARecursionSuppressed;
 }
 
 static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
@@ -974,6 +996,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _totalOverlaySystemUISkips = 0;
     _totalCompactPopupSkips = 0;
     _totalMenuStatusUISkips = 0;
+    _totalCDMBAAttempts = 0;
+    _totalCDMBAFired = 0;
+    _totalCDMBACancelled = 0;
+    _totalCDMBARecursionSuppressed = 0;
+    _pendingCDMBAClickID = 0;
+    _pendingCDMBAClickPoint = CGPointZero;
+    _cdmbaSuppressRecursion = NO;
+    _cdmbaSyntheticPostTime = 0;
     _eventTapPermissionMissingPassThroughCount = 0;
     _lastPermissionCheckTime = 0;
     _lastEventTapCallbackDescription = @"none";
@@ -1010,6 +1040,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastMenuBarFastPassthroughPoint = CGPointZero;
     _lastMenuBarFastPassthroughIsLeft = YES;
     _lastAutomaticUpdateChecksChangeDescription = @"never";
+    _lastCDMBADescription = @"never";
+    _clickTimeOverrideEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickClickTimeOverrideEnabledKey];
+    NSInteger savedCDMBADelay = [[NSUserDefaults standardUserDefaults] integerForKey:HoverClickClickTimeOverrideDelayMsKey];
+    _clickTimeOverrideDelayMs = (savedCDMBADelay > 0) ? savedCDMBADelay : HoverClickCDMBADefaultDelayMs;
     _recentDecisionHistory = [NSMutableArray arrayWithCapacity:HoverClickRecentDecisionHistoryLimit];
     _activeDecisionHistory = [NSMutableDictionary dictionary];
 
@@ -1295,6 +1329,64 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.verboseItem.toolTip = HoverClickVerboseDiagnosticsHelp;
     HoverClickUseNonClosingSubmenuRow(self.verboseItem, @"list.bullet.rectangle", @"list.bullet", YES, diagnosticsWidth);
     [diagnosticsMenu addItem:self.verboseItem];
+
+    NSMenuItem *experimentalItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Experimental")
+                                                              action:nil
+                                                       keyEquivalent:@""];
+    experimentalItem.enabled = YES;
+    experimentalItem.indentationLevel = 0;
+    experimentalItem.state = NSControlStateValueOff;
+    HoverClickUseSubmenuMenuRow(experimentalItem, @"exclamationmark.triangle", @"wand.and.stars");
+    NSMenu *experimentalMenu = [[NSMenu alloc] initWithTitle:@"Experimental"];
+    [experimentalMenu setAutoenablesItems:NO];
+    experimentalItem.submenu = experimentalMenu;
+    [menu addItem:experimentalItem];
+
+    CGFloat experimentalWidth = HoverClickCalculatedSubmenuWidth(@[
+        @"Click-Time Override",
+        @"Override Delay"
+    ]);
+
+    self.clickTimeOverrideItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Click-Time Override")
+                                                            action:@selector(toggleClickTimeOverride:)
+                                                     keyEquivalent:@""];
+    self.clickTimeOverrideItem.target = self;
+    self.clickTimeOverrideItem.enabled = YES;
+    self.clickTimeOverrideItem.indentationLevel = 0;
+    self.clickTimeOverrideItem.toolTip = HoverClickClickTimeOverrideHelp;
+    HoverClickUseNonClosingSubmenuRow(self.clickTimeOverrideItem, @"timer", @"clock", YES, experimentalWidth);
+    [experimentalMenu addItem:self.clickTimeOverrideItem];
+
+    self.clickTimeOverrideDelayItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Override Delay")
+                                                                 action:nil
+                                                          keyEquivalent:@""];
+    self.clickTimeOverrideDelayItem.enabled = YES;
+    self.clickTimeOverrideDelayItem.indentationLevel = 0;
+    self.clickTimeOverrideDelayItem.toolTip = HoverClickClickTimeOverrideDelayHelp;
+    HoverClickUseSubmenuMenuRow(self.clickTimeOverrideDelayItem, @"slider.horizontal.3", @"clock");
+    NSMenu *delayMenu = [[NSMenu alloc] initWithTitle:@"Override Delay"];
+    [delayMenu setAutoenablesItems:NO];
+    self.clickTimeOverrideDelayItem.submenu = delayMenu;
+    [experimentalMenu addItem:self.clickTimeOverrideDelayItem];
+
+    NSMutableArray<NSMenuItem *> *delayPresetItems = [NSMutableArray arrayWithCapacity:HoverClickCDMBADelayPresetsCount];
+    CGFloat delayWidth = HoverClickCalculatedSubmenuWidth(@[@"100 ms", @"250 ms", @"500 ms", @"750 ms", @"1000 ms"]);
+    for (NSUInteger pi = 0; pi < HoverClickCDMBADelayPresetsCount; pi++) {
+        NSInteger presetMs = HoverClickCDMBADelayPresets[pi];
+        NSString *presetTitle = [NSString stringWithFormat:@"%ld ms", (long)presetMs];
+        NSMenuItem *presetItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(presetTitle)
+                                                            action:@selector(setClickTimeOverrideDelay:)
+                                                     keyEquivalent:@""];
+        presetItem.target = self;
+        presetItem.enabled = YES;
+        presetItem.indentationLevel = 0;
+        presetItem.tag = presetMs;
+        presetItem.state = (presetMs == _clickTimeOverrideDelayMs) ? NSControlStateValueOn : NSControlStateValueOff;
+        HoverClickUseNonClosingSubmenuRow(presetItem, @"timer", @"clock", YES, delayWidth);
+        [delayMenu addItem:presetItem];
+        [delayPresetItems addObject:presetItem];
+    }
+    self.clickTimeOverrideDelayPresetItems = [delayPresetItems copy];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
@@ -2272,6 +2364,41 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateMenuTitles];
 }
 
+- (void)toggleClickTimeOverride:(id)sender {
+    (void)sender;
+    _clickTimeOverrideEnabled = !_clickTimeOverrideEnabled;
+    [[NSUserDefaults standardUserDefaults] setBool:_clickTimeOverrideEnabled
+                                            forKey:HoverClickClickTimeOverrideEnabledKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    if (!_clickTimeOverrideEnabled) {
+        _pendingCDMBAClickID = 0;
+        _cdmbaSuppressRecursion = NO;
+    }
+    HoverClickLog("HoverClick: Click-Time Override %s", _clickTimeOverrideEnabled ? "enabled" : "disabled");
+    [self setLastClickResult:_clickTimeOverrideEnabled ? @"Click-Time Override Enabled" : @"Click-Time Override Disabled"];
+}
+
+- (void)setClickTimeOverrideDelay:(id)sender {
+    NSMenuItem *item = (NSMenuItem *)sender;
+    NSInteger delayMs = item.tag;
+    BOOL valid = NO;
+    for (NSUInteger pi = 0; pi < HoverClickCDMBADelayPresetsCount; pi++) {
+        if (HoverClickCDMBADelayPresets[pi] == delayMs) {
+            valid = YES;
+            break;
+        }
+    }
+    if (!valid) {
+        HoverClickLog("HoverClick: CDMBA: ignoring invalid delay preset %ld", (long)delayMs);
+        return;
+    }
+    _clickTimeOverrideDelayMs = delayMs;
+    [[NSUserDefaults standardUserDefaults] setInteger:delayMs forKey:HoverClickClickTimeOverrideDelayMsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    HoverClickLog("HoverClick: Click-Time Override delay set to %ldms", (long)delayMs);
+    [self setLastClickResult:@"Override Delay Set"];
+}
+
 - (NSString *)launchAtLoginStatusForDiagnostics {
 #if HOVERCLICK_HAS_SERVICE_MANAGEMENT
     if (@available(macOS 13.0, *)) {
@@ -2445,6 +2572,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             _lastMenuBarFastPassthroughPoint.y];
     }
     NSString *recentDecisionHistory = [self recentDecisionHistoryDescription];
+    NSString *cdmbaStatus = [NSString stringWithFormat:@"%@ delay=%ldms",
+                             _clickTimeOverrideEnabled ? @"enabled" : @"disabled",
+                             (long)_clickTimeOverrideDelayMs];
     SPUUpdater *updater = self.updaterController.updater;
     NSString *automaticUpdateChecksStatus = updater.automaticallyChecksForUpdates ? @"enabled" : @"disabled";
     NSString *automaticDownloadInstallStatus = updater.automaticallyDownloadsUpdates ? @"enabled" : @"disabled";
@@ -2532,6 +2662,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last tap recovery result: %@\n"
              "Last ultra-fast menu-bar passthrough: %@\n"
              "Last menu-bar/top-strip check: %@\n"
+             "Click-Time Override (experimental): %@\n"
+             "Last cross-display menu-bar assist: %@\n"
+             "CDMBA counters: attempts=%llu fired=%llu cancelled=%llu recursion-suppressed=%llu\n"
              "Counters: mouse callbacks=%llu left=%llu right=%llu non-menu decisions=%llu focus attempts=%llu successful verifications=%llu policy skips=%llu overlay/system UI skips=%llu compact-popup skips=%llu menu/status UI skips=%llu\n"
              "Recent non-menu mouse-down decisions (newest first):\n- %@\n"
              "Diagnostics copy/menu note: volatile last handled/focus fields may reflect the status/menu click used to copy diagnostics; stable real/background fields and recent non-menu history ignore HoverClick menu/status UI clicks.\n"
@@ -2539,7 +2672,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Right Click Focus: %@\n"
              "Verbose Diagnostics: %@\n"
              "Event tap mask: left mouse down + right mouse down only\n"
-             "Safety note: HoverClick returns original click events unchanged; no synthetic clicks, event replay, or cursor movement\n"
+             "Safety note: normal left/right clicks return the original event unchanged; no synthetic clicks for normal window clicks; Click-Time Override (experimental, off by default) adds a delayed synthetic re-click for cross-display menu-bar left-clicks only when enabled\n"
              "Known limitations: Finder may show a right-click context-target highlight without changing actual selection; HoverClick does not force Finder selection.\n"
              "Known limitations: Background text first-drag may require a second drag in some apps because the first mouse-down can be activation-only.",
             HoverClickAppName(),
@@ -2607,6 +2740,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             _lastEventTapRecoveryResult ?: @"none",
             lastMenuBarFastPassthrough,
             _lastMenuBarCheckDescription ?: @"never",
+            cdmbaStatus,
+            _lastCDMBADescription ?: @"never",
+            _totalCDMBAAttempts,
+            _totalCDMBAFired,
+            _totalCDMBACancelled,
+            _totalCDMBARecursionSuppressed,
             _totalMouseCallbacksSeen,
             _totalLeftMouseCallbacksSeen,
             _totalRightMouseCallbacksSeen,
@@ -2742,6 +2881,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.automaticUpdateChecksItem.state = self.updaterController.updater.automaticallyChecksForUpdates ? NSControlStateValueOn : NSControlStateValueOff;
     self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
     HoverClickSyncMenuRowView(self.automaticUpdateChecksItem);
+
+    self.clickTimeOverrideItem.title = HoverClickMenuItemTitle(@"Click-Time Override");
+    self.clickTimeOverrideItem.enabled = YES;
+    self.clickTimeOverrideItem.state = _clickTimeOverrideEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    HoverClickSyncMenuRowView(self.clickTimeOverrideItem);
+
+    for (NSMenuItem *presetItem in self.clickTimeOverrideDelayPresetItems) {
+        presetItem.state = (presetItem.tag == _clickTimeOverrideDelayMs) ? NSControlStateValueOn : NSControlStateValueOff;
+        HoverClickSyncMenuRowView(presetItem);
+    }
 }
 
 - (void)setLastClickResult:(NSString *)result {
@@ -2775,7 +2924,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         @"Right Click Focus Enabled",
         @"Right Click Focus Disabled",
         @"Automatic Update Checks Enabled",
-        @"Automatic Update Checks Disabled"
+        @"Automatic Update Checks Disabled",
+        @"Click-Time Override Enabled",
+        @"Click-Time Override Disabled",
+        @"Override Delay Set"
     ]];
 
     return ![volatileMenuOrSetupResults containsObject:result];
@@ -2883,6 +3035,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
 
     if ([self pointIsInScreenMenuBarArea:axPoint]) {
+        if (_cdmbaSuppressRecursion) {
+            if (now - _cdmbaSyntheticPostTime < 1.0) {
+                _totalCDMBARecursionSuppressed++;
+            }
+            _cdmbaSuppressRecursion = NO;
+            _pendingCDMBAClickID = 0;
+        } else if (_clickTimeOverrideEnabled && [self isCrossDisplayMenuBarPoint:axPoint]) {
+            [self scheduleCDMBAForPoint:rawPoint clickID:clickID now:now];
+        }
         _totalMenuStatusUISkips++;
         _lastMenuBarFastPassthroughSequence = clickID;
         _lastMenuBarFastPassthroughTime = now;
@@ -3122,6 +3283,122 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             mainScreenHeight];
     }
     return NO;
+}
+
+- (BOOL)isCrossDisplayMenuBarPoint:(CGPoint)cgPoint {
+    NSArray<NSScreen *> *screens = [NSScreen screens];
+    if (screens.count < 2) {
+        return NO;
+    }
+    NSScreen *mainScreen = [NSScreen mainScreen];
+    if (mainScreen == nil) {
+        return NO;
+    }
+    CGFloat mainScreenHeight = screens.firstObject.frame.size.height;
+    NSPoint appKitPoint = NSMakePoint(cgPoint.x, mainScreenHeight - cgPoint.y - 1.0);
+    for (NSScreen *screen in screens) {
+        if (NSPointInRect(appKitPoint, screen.frame)) {
+            return (screen != mainScreen);
+        }
+    }
+    return NO;
+}
+
+- (void)scheduleCDMBAForPoint:(CGPoint)rawPoint clickID:(uint64_t)clickID now:(CFAbsoluteTime)now {
+    _totalCDMBAAttempts++;
+    _pendingCDMBAClickID = clickID;
+    _pendingCDMBAClickPoint = rawPoint;
+
+    NSTimeInterval delaySeconds = _clickTimeOverrideDelayMs / 1000.0;
+    CGFloat capturedX = rawPoint.x;
+    CGFloat capturedY = rawPoint.y;
+    uint64_t capturedClickID = clickID;
+    NSTimeInterval capturedDelay = delaySeconds;
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delaySeconds * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [self fireCDMBASyntheticClickAtX:capturedX y:capturedY clickID:capturedClickID delay:capturedDelay];
+    });
+
+    _lastCDMBADescription = [NSString stringWithFormat:
+        @"scheduled #%llu at raw=(%.1f,%.1f) delay=%ldms pending",
+        clickID, rawPoint.x, rawPoint.y, (long)_clickTimeOverrideDelayMs];
+    HoverClickLog("HoverClick: CDMBA: scheduled synthetic re-click #%llu at (%.1f,%.1f) delay=%ldms",
+                  clickID, rawPoint.x, rawPoint.y, (long)_clickTimeOverrideDelayMs);
+}
+
+- (void)fireCDMBASyntheticClickAtX:(CGFloat)x y:(CGFloat)y clickID:(uint64_t)clickID delay:(NSTimeInterval)delay {
+    if (!_clickTimeOverrideEnabled) {
+        _totalCDMBACancelled++;
+        _lastCDMBADescription = [NSString stringWithFormat:@"cancelled #%llu: override disabled", clickID];
+        HoverClickLog("HoverClick: CDMBA: cancelled #%llu: override disabled", clickID);
+        return;
+    }
+
+    if (_pendingCDMBAClickID != clickID) {
+        _totalCDMBACancelled++;
+        _lastCDMBADescription = [NSString stringWithFormat:@"cancelled #%llu: superseded by #%llu",
+                                  clickID, _pendingCDMBAClickID];
+        HoverClickLog("HoverClick: CDMBA: cancelled #%llu: superseded by #%llu", clickID, _pendingCDMBAClickID);
+        return;
+    }
+
+    NSArray<NSScreen *> *screens = [NSScreen screens];
+    CGFloat mainH = screens.count > 0 ? screens.firstObject.frame.size.height : 0;
+    NSPoint cursorAppKit = [NSEvent mouseLocation];
+    CGFloat driftX = cursorAppKit.x - x;
+    CGFloat cursorCGY = mainH - cursorAppKit.y - 1.0;
+    CGFloat driftY = cursorCGY - y;
+    CGFloat driftSq = driftX * driftX + driftY * driftY;
+    if (driftSq > HoverClickCDMBACursorDriftThreshold * HoverClickCDMBACursorDriftThreshold) {
+        _totalCDMBACancelled++;
+        _lastCDMBADescription = [NSString stringWithFormat:@"cancelled #%llu: cursor drift=%.1f > %.0f",
+                                  clickID, sqrt((double)driftSq), HoverClickCDMBACursorDriftThreshold];
+        HoverClickLog("HoverClick: CDMBA: cancelled #%llu: cursor drift=%.1f > %.0f",
+                      clickID, sqrt((double)driftSq), HoverClickCDMBACursorDriftThreshold);
+        return;
+    }
+
+    CGPoint originalPoint = CGPointMake(x, y);
+    if (![self pointIsInScreenMenuBarArea:originalPoint]) {
+        _totalCDMBACancelled++;
+        _lastCDMBADescription = [NSString stringWithFormat:@"cancelled #%llu: point not in menu bar at fire time", clickID];
+        HoverClickLog("HoverClick: CDMBA: cancelled #%llu: point not in menu bar at fire time", clickID);
+        return;
+    }
+
+    CGEventRef downEvent = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown, originalPoint, kCGMouseButtonLeft);
+    if (downEvent == NULL) {
+        _totalCDMBACancelled++;
+        _lastCDMBADescription = [NSString stringWithFormat:@"cancelled #%llu: CGEventCreateMouseEvent down failed", clickID];
+        HoverClickLog("HoverClick: CDMBA: cancelled #%llu: CGEventCreateMouseEvent down failed", clickID);
+        return;
+    }
+    CGEventRef upEvent = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseUp, originalPoint, kCGMouseButtonLeft);
+    if (upEvent == NULL) {
+        CFRelease(downEvent);
+        _totalCDMBACancelled++;
+        _lastCDMBADescription = [NSString stringWithFormat:@"cancelled #%llu: CGEventCreateMouseEvent up failed", clickID];
+        HoverClickLog("HoverClick: CDMBA: cancelled #%llu: CGEventCreateMouseEvent up failed", clickID);
+        return;
+    }
+
+    _cdmbaSuppressRecursion = YES;
+    _cdmbaSyntheticPostTime = CFAbsoluteTimeGetCurrent();
+    _pendingCDMBAClickID = 0;
+    _totalCDMBAFired++;
+
+    CGEventPost(kCGHIDEventTap, downEvent);
+    CGEventPost(kCGHIDEventTap, upEvent);
+    CFRelease(downEvent);
+    CFRelease(upEvent);
+
+    CGFloat drift = sqrt((double)driftSq);
+    _lastCDMBADescription = [NSString stringWithFormat:
+        @"fired #%llu at (%.1f,%.1f) delay=%.0fms drift=%.1f",
+        clickID, x, y, delay * 1000.0, drift];
+    HoverClickLog("HoverClick: CDMBA: fired synthetic re-click #%llu at (%.1f,%.1f) delay=%.0fms drift=%.1f",
+                  clickID, x, y, delay * 1000.0, drift);
 }
 
 - (AXUIElementRef)copyElementAtAccessibilityPoint:(CGPoint)point {
