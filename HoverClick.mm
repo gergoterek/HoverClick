@@ -38,6 +38,11 @@ static NSString * const HoverClickContactHelp = @"Opens a new email addressed to
 static NSString * const HoverClickReleaseNotesHelp = @"Opens the HoverClick GitHub releases page.";
 static NSString * const HoverClickUninstallHelp = @"Shows safe manual uninstall instructions.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
+static NSString * const HoverClickBypassKeyHelp = @"When held at click time, this modifier key makes HoverClick skip its focus behavior and return the original event unchanged.";
+static const NSInteger HoverClickBypassKeyOff = 0;
+static const NSInteger HoverClickBypassKeyOption = 1;
+static const NSInteger HoverClickBypassKeyShift = 2;
+static NSString * const HoverClickBypassKeyDefaultsKey = @"bypassKey";
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
 static const CGFloat HoverClickMenuContentWidth = 286.0;
@@ -441,6 +446,15 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     }
     self.stateField.stringValue = stateGlyph;
     self.stateField.hidden = (stateGlyph.length == 0);
+    if (self.showsSubmenuArrow) {
+        if (self.highlighted && self.rowEnabled) {
+            self.stateField.textColor = [NSColor selectedMenuItemTextColor];
+        } else if (self.rowEnabled) {
+            self.stateField.textColor = [NSColor colorWithWhite:1.0 alpha:0.65];
+        } else {
+            self.stateField.textColor = [NSColor colorWithWhite:1.0 alpha:0.3];
+        }
+    }
 }
 
 - (void)mouseDown:(NSEvent *)event {
@@ -632,29 +646,42 @@ static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
 }
 
 static NSMenuItem *HoverClickCreateInfoSectionHeaderMenuItem(void) {
-    NSString *appVersionTitle = [@"App Version: " stringByAppendingString:HoverClickDisplayVersion()];
-    NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(appVersionTitle)
+    return HoverClickCreateSectionHeaderMenuItem(@"Info");
+}
+
+static NSMenuItem *HoverClickCreateUpdatesSectionHeaderMenuItem(void) {
+    NSString *versionText = [NSString stringWithFormat:@"Version: %@", HoverClickDisplayVersion()];
+    NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Updates")
                                                         action:nil
                                                  keyEquivalent:@""];
     headerItem.enabled = NO;
     headerItem.indentationLevel = 0;
     headerItem.state = NSControlStateValueOff;
 
-    NSView *headerView = [[NSView alloc] initWithFrame:NSMakeRect(0.0,
-                                                                  0.0,
-                                                                  HoverClickMenuContentWidth,
-                                                                  HoverClickSectionHeaderHeight)];
+    CGFloat fullLabelWidth = HoverClickMenuContentWidth - HoverClickSectionHeaderLeadingInset - HoverClickMenuTrailingInset;
+    NSView *headerView = [[NSView alloc] initWithFrame:NSMakeRect(0.0, 0.0, HoverClickMenuContentWidth, HoverClickSectionHeaderHeight)];
 
-    NSTextField *label = [NSTextField labelWithString:appVersionTitle];
-    label.frame = NSMakeRect(HoverClickSectionHeaderLeadingInset,
-                             HoverClickSectionHeaderLabelY,
-                             HoverClickMenuContentWidth - HoverClickSectionHeaderLeadingInset - HoverClickMenuTrailingInset,
-                             HoverClickSectionHeaderLabelHeight);
-    label.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize
-                                   weight:NSFontWeightRegular];
-    label.textColor = [NSColor disabledControlTextColor];
-    label.lineBreakMode = NSLineBreakByTruncatingTail;
-    [headerView addSubview:label];
+    NSTextField *leftLabel = [NSTextField labelWithString:@"Updates"];
+    leftLabel.frame = NSMakeRect(HoverClickSectionHeaderLeadingInset,
+                                 HoverClickSectionHeaderLabelY,
+                                 fullLabelWidth,
+                                 HoverClickSectionHeaderLabelHeight);
+    leftLabel.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize weight:NSFontWeightRegular];
+    leftLabel.textColor = [NSColor disabledControlTextColor];
+    leftLabel.lineBreakMode = NSLineBreakByClipping;
+    [headerView addSubview:leftLabel];
+
+    NSTextField *rightLabel = [NSTextField labelWithString:versionText];
+    rightLabel.frame = NSMakeRect(HoverClickSectionHeaderLeadingInset,
+                                  HoverClickSectionHeaderLabelY,
+                                  fullLabelWidth,
+                                  HoverClickSectionHeaderLabelHeight);
+    rightLabel.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize weight:NSFontWeightRegular];
+    rightLabel.textColor = [NSColor disabledControlTextColor];
+    rightLabel.alignment = NSTextAlignmentRight;
+    rightLabel.lineBreakMode = NSLineBreakByTruncatingHead;
+    [headerView addSubview:rightLabel];
+
     headerItem.view = headerView;
     return headerItem;
 }
@@ -770,6 +797,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 @property(nonatomic, strong) NSMenuItem *checkForUpdatesItem;
 @property(nonatomic, strong) NSMenuItem *automaticUpdateChecksItem;
 @property(nonatomic, strong) NSMenuItem *diagnosticsCopyItem;
+@property(nonatomic, strong) NSMenuItem *bypassKeyItem;
 @property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
 @property(nonatomic, strong) NSAlert *accessibilityOnboardingAlert;
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
@@ -799,6 +827,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)showAccessibilityOnboardingIfNeeded;
 - (void)offerLaunchAtLoginOnboardingIfNeeded;
 - (void)showAboutHoverClick:(id)sender;
+- (void)selectBypassKey:(id)sender;
 - (void)openURLString:(NSString *)urlString label:(NSString *)label;
 - (void)openGitHub:(id)sender;
 - (void)openContact:(id)sender;
@@ -881,6 +910,8 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     NSString *_lastPermissionMissingPassThroughDescription;
     NSString *_lastAutomaticUpdateChecksChangeDescription;
     CFAbsoluteTime _lastAutomaticUpdateChecksChangeTime;
+    NSInteger _bypassKey;
+    NSString *_lastBypassDecision;
     NSMutableArray<NSMutableDictionary<NSString *, NSString *> *> *_recentDecisionHistory;
     NSMutableDictionary<NSNumber *, NSMutableDictionary<NSString *, NSString *> *> *_activeDecisionHistory;
 }
@@ -935,6 +966,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _eventTapEnabled = NO;
     _clickToFocusEnabled = YES;
     _rightClickFocusEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickRightClickFocusDefaultsKey];
+    _bypassKey = [[NSUserDefaults standardUserDefaults] integerForKey:HoverClickBypassKeyDefaultsKey];
+    if (_bypassKey < HoverClickBypassKeyOff || _bypassKey > HoverClickBypassKeyShift) {
+        _bypassKey = HoverClickBypassKeyOff;
+    }
     _verboseDiagnostics = YES;
     _accessibilityOnboardingShownThisLaunch = NO;
     _accessibilityTrustPromptRequestedThisLaunch = NO;
@@ -1001,6 +1036,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastPermissionCheckResult = @"not checked";
     _lastPermissionMissingPassThroughDescription = @"none";
     _lastAutomaticUpdateChecksChangeDescription = @"never";
+    _lastBypassDecision = @"none";
     _recentDecisionHistory = [NSMutableArray arrayWithCapacity:HoverClickRecentDecisionHistoryLimit];
     _activeDecisionHistory = [NSMutableDictionary dictionary];
 
@@ -1056,10 +1092,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [menu setAutoenablesItems:NO];
     menu.delegate = self;
 
-    [menu addItem:HoverClickCreateHeaderMenuItem()];
-
-    [menu addItem:[NSMenuItem separatorItem]];
-
     [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Functions")];
 
     self.clickToFocusItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Left Click Focus")
@@ -1081,6 +1113,49 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.rightClickFocusItem.toolTip = HoverClickRightClickFocusHelp;
     HoverClickUseNonClosingMenuRow(self.rightClickFocusItem, @"contextualmenu.and.cursorarrow", @"cursorarrow", YES);
     [menu addItem:self.rightClickFocusItem];
+
+    self.bypassKeyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Bypass Key")
+                                                    action:nil
+                                             keyEquivalent:@""];
+    self.bypassKeyItem.enabled = YES;
+    self.bypassKeyItem.indentationLevel = 0;
+    self.bypassKeyItem.state = NSControlStateValueOff;
+    self.bypassKeyItem.toolTip = HoverClickBypassKeyHelp;
+    HoverClickUseSubmenuMenuRow(self.bypassKeyItem, @"keyboard", @"command");
+
+    NSMenu *bypassMenu = [[NSMenu alloc] initWithTitle:@"Bypass Key"];
+    [bypassMenu setAutoenablesItems:NO];
+    self.bypassKeyItem.submenu = bypassMenu;
+    [menu addItem:self.bypassKeyItem];
+
+    CGFloat bypassWidth = HoverClickCalculatedSubmenuWidth(@[@"Off", @"Option", @"Shift"]);
+
+    NSMenuItem *bypassOffItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Off")
+                                                           action:@selector(selectBypassKey:)
+                                                    keyEquivalent:@""];
+    bypassOffItem.target = self;
+    bypassOffItem.enabled = YES;
+    bypassOffItem.tag = HoverClickBypassKeyOff;
+    HoverClickUseNonClosingSubmenuRow(bypassOffItem, @"xmark.circle", @"minus.circle", YES, bypassWidth);
+    [bypassMenu addItem:bypassOffItem];
+
+    NSMenuItem *bypassOptionItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Option")
+                                                              action:@selector(selectBypassKey:)
+                                                       keyEquivalent:@""];
+    bypassOptionItem.target = self;
+    bypassOptionItem.enabled = YES;
+    bypassOptionItem.tag = HoverClickBypassKeyOption;
+    HoverClickUseNonClosingSubmenuRow(bypassOptionItem, @"option", @"keyboard", YES, bypassWidth);
+    [bypassMenu addItem:bypassOptionItem];
+
+    NSMenuItem *bypassShiftItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Shift")
+                                                             action:@selector(selectBypassKey:)
+                                                      keyEquivalent:@""];
+    bypassShiftItem.target = self;
+    bypassShiftItem.enabled = YES;
+    bypassShiftItem.tag = HoverClickBypassKeyShift;
+    HoverClickUseNonClosingSubmenuRow(bypassShiftItem, @"shift", @"arrow.up", YES, bypassWidth);
+    [bypassMenu addItem:bypassShiftItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
@@ -1155,7 +1230,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Updates")];
+    [menu addItem:HoverClickCreateUpdatesSectionHeaderMenuItem()];
 
     self.checkForUpdatesItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Check Now...")
                                                           action:@selector(checkForUpdates:)
@@ -1300,7 +1375,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickUseClosingPlainMenuRow(aboutItem, nil);
     [menu addItem:aboutItem];
 
-    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quit")
+    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quit HoverClick")
                                                       action:@selector(quitApplication:)
                                                keyEquivalent:@"q"];
     quitItem.target = self;
@@ -1333,12 +1408,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickLog("HoverClick: bundle id = %s", HoverClickBundleID.UTF8String);
     HoverClickLog("HoverClick: version = %s", HoverClickDisplayVersion().UTF8String);
     HoverClickLog("HoverClick: accessibility trusted = %s", trusted ? "YES" : "NO");
-    HoverClickLog("HoverClick: launch state leftClickFocus=%s rightClickFocus=%s automaticUpdateChecks=%s automaticDownloadInstall=%s rightClickDefaultsKey=%s",
+    HoverClickLog("HoverClick: launch state leftClickFocus=%s rightClickFocus=%s bypassKey=%s automaticUpdateChecks=%s automaticDownloadInstall=%s",
                   _clickToFocusEnabled ? "ON" : "OFF",
                   _rightClickFocusEnabled ? "ON" : "OFF",
+                  _bypassKey == HoverClickBypassKeyOption ? "option" : _bypassKey == HoverClickBypassKeyShift ? "shift" : "off",
                   self.updaterController.updater.automaticallyChecksForUpdates ? "ON" : "OFF",
-                  self.updaterController.updater.automaticallyDownloadsUpdates ? "ON" : "OFF",
-                  HoverClickRightClickFocusDefaultsKey.UTF8String);
+                  self.updaterController.updater.automaticallyDownloadsUpdates ? "ON" : "OFF");
 }
 
 - (void)logLaunchAtLoginStatus:(NSString *)statusDescription force:(BOOL)force {
@@ -2263,6 +2338,21 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateMenuTitles];
 }
 
+- (void)selectBypassKey:(id)sender {
+    NSMenuItem *item = (NSMenuItem *)sender;
+    NSInteger newKey = item.tag;
+    if (newKey < HoverClickBypassKeyOff || newKey > HoverClickBypassKeyShift) {
+        newKey = HoverClickBypassKeyOff;
+    }
+    _bypassKey = newKey;
+    [[NSUserDefaults standardUserDefaults] setInteger:_bypassKey forKey:HoverClickBypassKeyDefaultsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    const char *keyName = _bypassKey == HoverClickBypassKeyOption ? "option" :
+                          _bypassKey == HoverClickBypassKeyShift ? "shift" : "off";
+    HoverClickLog("HoverClick: bypass key set to %s", keyName);
+    [self updateMenuTitles];
+}
+
 - (NSString *)launchAtLoginStatusForDiagnostics {
 #if HOVERCLICK_HAS_SERVICE_MANAGEMENT
     if (@available(macOS 13.0, *)) {
@@ -2517,6 +2607,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Diagnostics copy/menu note: volatile last handled/focus fields may reflect the status/menu click used to copy diagnostics; stable real/background fields and recent non-menu history ignore HoverClick menu/status UI clicks.\n"
              "Left Click Focus: %@\n"
              "Right Click Focus: %@\n"
+             "Bypass Key: %@\n"
+             "Last bypass decision: %@\n"
              "Verbose Diagnostics: %@\n"
              "Event tap mask: left mouse down + right mouse down only\n"
              "Safety note: HoverClick returns original click events unchanged; no synthetic clicks, event replay, or cursor movement\n"
@@ -2598,6 +2690,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             recentDecisionHistory,
             _clickToFocusEnabled ? @"enabled" : @"disabled",
             _rightClickFocusEnabled ? @"enabled" : @"disabled",
+            _bypassKey == HoverClickBypassKeyOption ? @"option" : _bypassKey == HoverClickBypassKeyShift ? @"shift" : @"off",
+            _lastBypassDecision ?: @"none",
             _verboseDiagnostics ? @"enabled" : @"disabled"];
 }
 
@@ -2720,6 +2814,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.automaticUpdateChecksItem.state = self.updaterController.updater.automaticallyChecksForUpdates ? NSControlStateValueOn : NSControlStateValueOff;
     self.automaticUpdateChecksItem.toolTip = HoverClickAutomaticUpdateChecksHelp;
     HoverClickSyncMenuRowView(self.automaticUpdateChecksItem);
+
+    if (self.bypassKeyItem != nil && self.bypassKeyItem.submenu != nil) {
+        for (NSMenuItem *bypassItem in self.bypassKeyItem.submenu.itemArray) {
+            bypassItem.state = (bypassItem.tag == _bypassKey) ? NSControlStateValueOn : NSControlStateValueOff;
+            HoverClickSyncMenuRowView(bypassItem);
+        }
+    }
 }
 
 - (void)setLastClickResult:(NSString *)result {
@@ -2854,6 +2955,20 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
     _lastMouseDownLogTime = now;
+
+    if (_bypassKey != HoverClickBypassKeyOff) {
+        CGEventFlags flags = CGEventGetFlags(event);
+        BOOL bypass = (_bypassKey == HoverClickBypassKeyOption && (flags & kCGEventFlagMaskAlternate) != 0) ||
+                      (_bypassKey == HoverClickBypassKeyShift && (flags & kCGEventFlagMaskShift) != 0);
+        if (bypass) {
+            _lastBypassDecision = (_bypassKey == HoverClickBypassKeyOption) ? @"bypassed-by-option" : @"bypassed-by-shift";
+            HoverClickLog("HoverClick: left click bypass active modifier=%s; original event returned unchanged",
+                          _bypassKey == HoverClickBypassKeyOption ? "option" : "shift");
+            return;
+        }
+        _lastBypassDecision = @"not-bypassed";
+    }
+
     _clickSequence++;
     uint64_t clickID = _clickSequence;
 
@@ -2930,6 +3045,20 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
     _lastRightMouseDownLogTime = now;
+
+    if (_bypassKey != HoverClickBypassKeyOff) {
+        CGEventFlags flags = CGEventGetFlags(event);
+        BOOL bypass = (_bypassKey == HoverClickBypassKeyOption && (flags & kCGEventFlagMaskAlternate) != 0) ||
+                      (_bypassKey == HoverClickBypassKeyShift && (flags & kCGEventFlagMaskShift) != 0);
+        if (bypass) {
+            _lastBypassDecision = (_bypassKey == HoverClickBypassKeyOption) ? @"bypassed-by-option" : @"bypassed-by-shift";
+            HoverClickLog("HoverClick: right click bypass active modifier=%s; original event returned unchanged",
+                          _bypassKey == HoverClickBypassKeyOption ? "option" : "shift");
+            return;
+        }
+        _lastBypassDecision = @"not-bypassed";
+    }
+
     _clickSequence++;
     uint64_t clickID = _clickSequence;
 
