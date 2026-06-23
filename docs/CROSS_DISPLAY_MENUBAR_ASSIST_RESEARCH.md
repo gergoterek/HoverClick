@@ -2,9 +2,37 @@
 
 ## Status
 
-Research-only. Not implemented. No production code changed.
+Phase 2 prototype (synthetic re-click) implemented as proof-of-concept on
+`bugfix-multimonitor-menubar-click`. Readiness signal investigation in progress.
+Fixed-delay approach confirmed as proof-of-concept only — not shippable.
 
-Branch at investigation: `bugfix-multimonitor-menubar-click` / HEAD `0a8c62e`
+Branch at investigation: `bugfix-multimonitor-menubar-click`
+Latest HEAD at readiness-probe phase: `304fda5`
+
+### Phase 2 Prototype Manual Test Results
+
+| Delay | Result |
+|-------|--------|
+| 100 ms | FAIL — fires before macOS display-context activation completes |
+| 250 ms | FAIL |
+| 500 ms | WORKS |
+
+**Conclusion:** A fixed delay is not shippable. The required delay depends on machine
+speed, system load, and display-activation timing. 500 ms is the proof-of-concept
+threshold on one machine; other machines may need more or less.
+
+### Current Branch State Warning
+
+`bugfix-multimonitor-menubar-click` contains:
+- Failed passthrough experiments (not production-relevant)
+- The experimental synthetic-click prototype (off by default, hidden in Experimental menu)
+- Readiness probe diagnostics
+
+A clean-branch / cherry-pick strategy will be needed before any merge.
+
+---
+
+Branch at initial investigation: `bugfix-multimonitor-menubar-click` / HEAD `0a8c62e`
 
 ## Root-Cause Confirmation
 
@@ -433,3 +461,174 @@ After Phase 0 (answering the open questions above), choose exactly one prototype
 | App menus only | Yes | Phase 1 (AX only), modifier-gated |
 | Status items needed | Yes (recommended) | Phase 1 AX + modifier, then Phase 2 synthetic after AX validation |
 | Status items needed | No | Phase 2 synthetic (riskier — not recommended as first step) |
+
+---
+
+## Readiness Signal Investigation
+
+### Why Fixed Delay Is Not Shippable
+
+The proof-of-concept proved the concept: a synthetic re-click after a fixed delay can
+compensate for macOS display-context activation. But the required delay is machine-dependent
+and load-dependent. 100 ms and 250 ms failed; 500 ms worked on one machine. A user-facing
+slider or preset is bad UX. The adaptive goal: fire the synthetic click when the display
+context is actually ready, not after a fixed wait.
+
+### The Core Challenge
+
+There is **no public macOS API** that directly signals "the clicked display's menu bar is
+now ready to accept clicks." The display-context activation is an internal macOS state
+machine with no explicit completion callback exposed to third-party apps.
+
+### Candidate Readiness Signals Evaluated
+
+#### Signal 1: `NSScreen.mainScreen` polling
+
+`NSScreen.mainScreen` returns the screen containing the currently active app's key window.
+After a cross-display menu-bar click (with "Displays have separate Spaces" ON), the
+display context switches to the clicked display's Space. This may cause `mainScreen` to
+change from screen A (original active display) to screen B (clicked display).
+
+**Cost:** Very cheap — no IPC; reads cached screen state in userspace.
+**Timing uncertainty:** Unknown whether `mainScreen` changes before or after the menu bar
+becomes ready. It may change at "activation started" (too early) or "activation complete"
+(at readiness).
+**Polling approach:** Start a repeating 50 ms check after the original click; fire when
+`mainScreen == clickedScreen`.
+**Problem:** If `mainScreen` never changes (e.g., the user is clicking a status item on
+the secondary display without a frontmost-app window on that display), this signal never
+arrives and the polling would fall through to a timeout fallback.
+
+#### Signal 2: `NSWorkspaceActiveSpaceDidChangeNotification` (most promising)
+
+Posted through `[[NSWorkspace sharedWorkspace] notificationCenter]` when the active Space
+changes. With "Displays have separate Spaces" ON, clicking another display's menu bar
+activates that display's Space → the notification fires.
+
+**Cost:** Zero polling overhead; purely event-driven.
+**Key property:** The notification fires on the main queue when macOS begins the Space
+transition. It aligns with the activation event rather than a fixed wall-clock offset.
+**Timing uncertainty:** The notification fires when the Space transition starts, but the
+menu bar may not be responsive yet. A small fixed padding (e.g., 50–100 ms) after the
+notification may still be needed.
+**Concern:** The notification can also fire for unrelated Space changes (Mission Control,
+Cmd+` app switching, Exposé, etc.). The CDMBA handler must validate that the notification
+is plausibly related to the pending CDMBA click (correct display, pending click ID still
+valid, cursor hasn't drifted).
+
+**Verdict:** Best available signal. Event-driven, aligns with activation. Pairs well with
+a small post-notification padding to handle the gap between "activation started" and "menu
+bar responsive."
+
+#### Signal 3: `CGWindowListCopyWindowInfo` state changes
+
+After cross-display activation, the CGWindowList state changes (windows move between
+layers, SystemUIServer updates the menu bar windows). We could poll the window list
+looking for state changes.
+
+**Cost:** One IPC call per poll cycle — significantly heavier than `mainScreen` polling.
+**Problem:** The menu bar is owned by SystemUIServer; detecting meaningful state changes
+in the window list without deep knowledge of the internal state transitions is fragile.
+**Verdict:** Not recommended. Expensive, fragile, no clear "ready" signal.
+
+#### Signal 4: AX element resolution at the clicked coordinates
+
+Before firing the synthetic click, call `AXUIElementCopyElementAtPosition` at the menu-bar
+coordinates. If an AX element resolves, the menu bar may be ready; if it returns null,
+it's not yet. Poll every 50 ms.
+
+**Cost:** One AX IPC call per poll cycle — heaviest option.
+**Problem:** AX resolution of a menu-bar element may not reliably indicate click-readiness.
+An element may be resolvable before the menu bar's click handlers are active.
+**Verdict:** Too expensive for polling. Useful as a pre-fire one-shot validation, not as a
+readiness signal.
+
+#### Signal 5: `NSScreen.screens.firstObject` vs `mainScreen` gap
+
+A simpler `mainScreen` check: test whether the clicked screen is `[NSScreen mainScreen]`
+at fire time. If yes, macOS has at least started the context switch. This is a one-shot
+check at the current fixed-delay fire time, not a polling approach.
+
+**Verdict:** Already partially captured by the `fire-mainScreen` readiness probe. Useful
+to understand whether the delay we're using happens to fire after or before `mainScreen`
+has changed.
+
+---
+
+### Adaptive Approach Design (Not Yet Implemented)
+
+Based on the signal analysis, the most viable adaptive approach is:
+
+```
+1. Original click detected as cross-display menu-bar → pass through unchanged
+2. Register one-shot NSWorkspaceActiveSpaceDidChangeNotification observer
+3. On notification arrival:
+   a. Record elapsed time since original click
+   b. Cancel existing fixed-delay dispatch_after (if still pending)
+   c. Dispatch a short padding delay (e.g., 80 ms) on the main queue
+   d. Apply existing cancellation guards (cursor drift, override disabled,
+      superseded click, point no longer in menu bar)
+   e. Fire synthetic click
+4. Timeout fallback: if notification never arrives within 2 s, fire at a
+   maximum delay (e.g., 600 ms) to preserve the proof-of-concept behavior
+5. Cancellation: any subsequent click, cursor drift, or override-off → cancel
+   both the pending notification observer and the pending dispatch
+```
+
+**Expected result:** On typical hardware, the Space notification fires within ~150–300 ms
+of the original click. A 80 ms padding would fire the synthetic click at ~230–380 ms total,
+which is:
+- Faster than the current fixed 500 ms on fast machines
+- Adaptive to slower machines (fires after actual notification arrival, not fixed wall clock)
+- Eliminates the need for user-facing delay presets
+
+**Open questions before implementing:**
+1. Does the Space notification reliably fire for cross-display menu-bar clicks?
+   (Not all cross-display menu bar scenarios may trigger a Space change.)
+2. Is 80 ms post-notification padding sufficient, or does the menu bar need more
+   settling time after the Space change notification?
+3. The readiness probe diagnostics (commit `304fda5`) will answer both questions
+   from Copy Diagnostics Summary after manual testing.
+
+---
+
+### Readiness Probe Diagnostics (Implemented in Commit `304fda5`)
+
+The following fields are now captured per CDMBA assist attempt and shown in
+Copy Diagnostics Summary under `CDMBA readiness probes:`:
+
+| Field | Description |
+|-------|-------------|
+| `click-mainScreen` | `NSScreen.mainScreen.localizedName` at the moment the original cross-display click is detected. Baseline: before activation. |
+| `space-notification` | Whether `NSWorkspaceActiveSpaceDidChangeNotification` fired before the fixed-delay timer ran, how many ms after the click it arrived, and what `mainScreen` was at that point. |
+| `fire-mainScreen` | `NSScreen.mainScreen.localizedName` at fire time (before cancellation checks). Shows whether the display context has already shifted. |
+
+**How to use for investigation:**
+1. Enable Click-Time Override in Info > Experimental
+2. Set delay to 500 ms (known-working)
+3. Click a cross-display menu bar item
+4. Copy Diagnostics Summary
+5. Look at `CDMBA readiness probes:` line:
+   - If `space-notification: not-received` → the notification doesn't fire for menu-bar activation → notification-based approach not viable
+   - If `space-notification: received +Xms` → note X. This is when adaptation would fire. If X < 500 ms, adaptation would be faster than fixed delay.
+   - If `click-mainScreen` == `fire-mainScreen` → `mainScreen` did not change by fire time → polling mainScreen is also not viable
+   - If `click-mainScreen` != `fire-mainScreen` → `mainScreen` changed during the delay → polling mainScreen is a candidate signal
+
+---
+
+### Strategy Classification
+
+| Approach | Verdict |
+|----------|---------|
+| A. Keep fixed delay as hidden experimental only | **Current state.** Not shippable as release feature. |
+| B. Replace presets with adaptive `NSWorkspaceActiveSpaceDidChangeNotification` | **Most promising.** Needs probe data to confirm notification fires and calibrate post-notification padding. |
+| C. Poll `NSScreen.mainScreen` until clicked screen becomes active | **Possible fallback.** Cheap polling. Needs probe data to confirm mainScreen changes. |
+| D. Poll `CGWindowList` for state changes | **Not recommended.** Expensive IPC, fragile signal. |
+| E. Poll AX menu-bar state | **Not recommended.** Expensive IPC per poll cycle. |
+| F. Bounded retry (fire at 300 ms, retry at 500 ms if menu didn't open) | **Risky.** Two synthetic clicks; detecting "menu didn't open" is not reliable from HoverClick. Do not implement without explicit approval. |
+| G. Wontfix / public limitation with hidden experimental override | **Fallback if no reliable signal found.** The feature remains opt-in experimental. |
+
+**Recommended next step:** Run the readiness probe with the existing 500 ms fixed delay,
+copy diagnostics, and evaluate the `CDMBA readiness probes:` output. The data from
+`space-notification` and `fire-mainScreen` directly answers whether the adaptive approach
+is viable.
