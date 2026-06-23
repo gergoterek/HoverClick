@@ -41,6 +41,7 @@ static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch
 static NSString * const HoverClickBypassKeyHelp = @"When held at click time, this modifier key makes HoverClick skip its focus behavior and return the original event unchanged.";
 static const NSInteger HoverClickBypassKeyOff = 0;
 static const NSInteger HoverClickBypassKeyShift = 2;
+static const NSInteger HoverClickBypassKeyFn = 3;
 static NSString * const HoverClickBypassKeyDefaultsKey = @"bypassKey";
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
@@ -62,11 +63,14 @@ static const CGFloat HoverClickHeaderVersionX = HoverClickMenuRightAccessoryX + 
 static const CGFloat HoverClickHeaderLabelY = 4.0;
 static const CGFloat HoverClickHeaderLabelHeight = 18.0;
 static const CGFloat HoverClickMenuRowWidth = HoverClickMenuContentWidth;
-static const CGFloat HoverClickMenuRowHeight = 22.0;
+static const CGFloat HoverClickMenuRowHeight = 28.0;
 static const CGFloat HoverClickMenuRowIconX = HoverClickMenuLeadingInset;
+static const CGFloat HoverClickMenuRowIconY = (HoverClickMenuRowHeight - HoverClickMenuImageSize) / 2.0;
 static const CGFloat HoverClickMenuRowTextX = HoverClickMenuRowIconX + HoverClickMenuImageSize + HoverClickMenuIconTitleSpacing;
+static const CGFloat HoverClickMenuRowTextY = (HoverClickMenuRowHeight - 18.0) / 2.0;
 static const CGFloat HoverClickMenuRowStateSize = 13.0;
 static const CGFloat HoverClickMenuRowStateX = HoverClickMenuRightAccessoryX + ((HoverClickMenuRightAccessoryWidth - HoverClickMenuRowStateSize) / 2.0);
+static const CGFloat HoverClickMenuArrowFontSize = 15.0;
 static const CGFloat HoverClickSectionHeaderHeight = 18.0;
 static const CGFloat HoverClickSectionHeaderLeadingInset = HoverClickMenuLeadingInset;
 static const CGFloat HoverClickSectionHeaderLabelY = 2.0;
@@ -319,7 +323,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     CGFloat titleX = HoverClickMenuLeadingInset;
     if (image != nil) {
         _iconView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickMenuRowIconX,
-                                                                  3.0,
+                                                                  HoverClickMenuRowIconY,
                                                                   HoverClickMenuImageSize,
                                                                   HoverClickMenuImageSize)];
         _iconView.image = image;
@@ -330,7 +334,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 
     _titleField = [NSTextField labelWithString:menuItem.title ?: @""];
     _titleField.frame = NSMakeRect(titleX,
-                                   2.0,
+                                   HoverClickMenuRowTextY,
                                    rightAccessoryX - titleX - HoverClickMenuIconTitleSpacing,
                                    18.0);
     _titleField.font = [NSFont menuFontOfSize:0.0];
@@ -340,7 +344,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     if (accessoryTitle.length > 0) {
         _accessoryField = [NSTextField labelWithString:accessoryTitle];
         _accessoryField.frame = NSMakeRect(rightAccessoryX - 36.0,
-                                           2.0,
+                                           HoverClickMenuRowTextY,
                                            HoverClickMenuRightAccessoryWidth + 36.0,
                                            18.0);
         _accessoryField.alignment = NSTextAlignmentRight;
@@ -351,7 +355,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 
     _stateField = [NSTextField labelWithString:@""];
     _stateField.frame = NSMakeRect(rightAccessoryX - 36.0,
-                                   2.0,
+                                   HoverClickMenuRowTextY,
                                    HoverClickMenuRightAccessoryWidth + 36.0,
                                    18.0);
     _stateField.alignment = NSTextAlignmentRight;
@@ -371,6 +375,11 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 - (void)setHighlighted:(BOOL)highlighted {
     _highlighted = highlighted;
     [self setNeedsDisplay:YES];
+    [self syncFromMenuItem];
+}
+
+- (void)setUseSubtleAccessory:(BOOL)useSubtleAccessory {
+    _useSubtleAccessory = useSubtleAccessory;
     [self syncFromMenuItem];
 }
 
@@ -438,10 +447,14 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     NSString *stateGlyph = @"";
     if (self.showsSubmenuArrow) {
         stateGlyph = @"▸";
-    } else if (item.state == NSControlStateValueOn) {
-        stateGlyph = @"✓";
-    } else if (item.state == NSControlStateValueMixed) {
-        stateGlyph = @"–";
+        self.stateField.font = [NSFont systemFontOfSize:HoverClickMenuArrowFontSize];
+    } else {
+        self.stateField.font = [NSFont menuFontOfSize:0.0];
+        if (item.state == NSControlStateValueOn) {
+            stateGlyph = @"✓";
+        } else if (item.state == NSControlStateValueMixed) {
+            stateGlyph = @"–";
+        }
     }
     self.stateField.stringValue = stateGlyph;
     self.stateField.hidden = (stateGlyph.length == 0);
@@ -962,7 +975,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _clickToFocusEnabled = YES;
     _rightClickFocusEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickRightClickFocusDefaultsKey];
     _bypassKey = [[NSUserDefaults standardUserDefaults] integerForKey:HoverClickBypassKeyDefaultsKey];
-    if (_bypassKey != HoverClickBypassKeyOff && _bypassKey != HoverClickBypassKeyShift) {
+    if (_bypassKey != HoverClickBypassKeyOff && _bypassKey != HoverClickBypassKeyShift && _bypassKey != HoverClickBypassKeyFn) {
         _bypassKey = HoverClickBypassKeyOff;
     }
     _verboseDiagnostics = YES;
@@ -1123,7 +1136,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.bypassKeyItem.submenu = bypassMenu;
     [menu addItem:self.bypassKeyItem];
 
-    CGFloat bypassWidth = HoverClickCalculatedSubmenuWidth(@[@"Off", @"Shift"]);
+    CGFloat bypassWidth = HoverClickCalculatedSubmenuWidth(@[@"Off", @"Shift", @"Fn"]);
 
     NSMenuItem *bypassOffItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Off")
                                                            action:@selector(selectBypassKey:)
@@ -1142,6 +1155,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     bypassShiftItem.tag = HoverClickBypassKeyShift;
     HoverClickUseNonClosingSubmenuRow(bypassShiftItem, @"shift", @"arrow.up", YES, bypassWidth);
     [bypassMenu addItem:bypassShiftItem];
+
+    NSMenuItem *bypassFnItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Fn")
+                                                          action:@selector(selectBypassKey:)
+                                                   keyEquivalent:@""];
+    bypassFnItem.target = self;
+    bypassFnItem.enabled = YES;
+    bypassFnItem.tag = HoverClickBypassKeyFn;
+    HoverClickUseNonClosingSubmenuRow(bypassFnItem, @"globe", @"keyboard", YES, bypassWidth);
+    [bypassMenu addItem:bypassFnItem];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
@@ -1397,7 +1419,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickLog("HoverClick: launch state leftClickFocus=%s rightClickFocus=%s bypassKey=%s automaticUpdateChecks=%s automaticDownloadInstall=%s",
                   _clickToFocusEnabled ? "ON" : "OFF",
                   _rightClickFocusEnabled ? "ON" : "OFF",
-                  _bypassKey == HoverClickBypassKeyShift ? "shift" : "off",
+                  _bypassKey == HoverClickBypassKeyShift ? "shift" : _bypassKey == HoverClickBypassKeyFn ? "fn" : "off",
                   self.updaterController.updater.automaticallyChecksForUpdates ? "ON" : "OFF",
                   self.updaterController.updater.automaticallyDownloadsUpdates ? "ON" : "OFF");
 }
@@ -2327,13 +2349,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 - (void)selectBypassKey:(id)sender {
     NSMenuItem *item = (NSMenuItem *)sender;
     NSInteger newKey = item.tag;
-    if (newKey != HoverClickBypassKeyOff && newKey != HoverClickBypassKeyShift) {
+    if (newKey != HoverClickBypassKeyOff && newKey != HoverClickBypassKeyShift && newKey != HoverClickBypassKeyFn) {
         newKey = HoverClickBypassKeyOff;
     }
     _bypassKey = newKey;
     [[NSUserDefaults standardUserDefaults] setInteger:_bypassKey forKey:HoverClickBypassKeyDefaultsKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
-    const char *keyName = _bypassKey == HoverClickBypassKeyShift ? "shift" : "off";
+    const char *keyName = _bypassKey == HoverClickBypassKeyShift ? "shift" :
+                          _bypassKey == HoverClickBypassKeyFn ? "fn" : "off";
     HoverClickLog("HoverClick: bypass key set to %s", keyName);
     [self updateMenuTitles];
 }
@@ -2675,7 +2698,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             recentDecisionHistory,
             _clickToFocusEnabled ? @"enabled" : @"disabled",
             _rightClickFocusEnabled ? @"enabled" : @"disabled",
-            _bypassKey == HoverClickBypassKeyShift ? @"shift" : @"off",
+            _bypassKey == HoverClickBypassKeyShift ? @"shift" : _bypassKey == HoverClickBypassKeyFn ? @"fn" : @"off",
             _lastBypassDecision ?: @"none",
             _verboseDiagnostics ? @"enabled" : @"disabled"];
 }
@@ -2941,11 +2964,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
     _lastMouseDownLogTime = now;
 
-    if (_bypassKey == HoverClickBypassKeyShift) {
+    if (_bypassKey == HoverClickBypassKeyShift || _bypassKey == HoverClickBypassKeyFn) {
         CGEventFlags flags = CGEventGetFlags(event);
-        if (flags & kCGEventFlagMaskShift) {
-            _lastBypassDecision = @"bypassed-by-shift";
-            HoverClickLog("HoverClick: left click bypass active modifier=shift; original event returned unchanged");
+        BOOL bypass = (_bypassKey == HoverClickBypassKeyShift && (flags & kCGEventFlagMaskShift) != 0) ||
+                      (_bypassKey == HoverClickBypassKeyFn && (flags & kCGEventFlagMaskSecondaryFn) != 0);
+        if (bypass) {
+            _lastBypassDecision = (_bypassKey == HoverClickBypassKeyShift) ? @"bypassed-by-shift" : @"bypassed-by-fn";
+            HoverClickLog("HoverClick: left click bypass active modifier=%s; original event returned unchanged",
+                          _bypassKey == HoverClickBypassKeyShift ? "shift" : "fn");
             return;
         }
         _lastBypassDecision = @"not-bypassed";
@@ -3028,11 +3054,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
     _lastRightMouseDownLogTime = now;
 
-    if (_bypassKey == HoverClickBypassKeyShift) {
+    if (_bypassKey == HoverClickBypassKeyShift || _bypassKey == HoverClickBypassKeyFn) {
         CGEventFlags flags = CGEventGetFlags(event);
-        if (flags & kCGEventFlagMaskShift) {
-            _lastBypassDecision = @"bypassed-by-shift";
-            HoverClickLog("HoverClick: right click bypass active modifier=shift; original event returned unchanged");
+        BOOL bypass = (_bypassKey == HoverClickBypassKeyShift && (flags & kCGEventFlagMaskShift) != 0) ||
+                      (_bypassKey == HoverClickBypassKeyFn && (flags & kCGEventFlagMaskSecondaryFn) != 0);
+        if (bypass) {
+            _lastBypassDecision = (_bypassKey == HoverClickBypassKeyShift) ? @"bypassed-by-shift" : @"bypassed-by-fn";
+            HoverClickLog("HoverClick: right click bypass active modifier=%s; original event returned unchanged",
+                          _bypassKey == HoverClickBypassKeyShift ? "shift" : "fn");
             return;
         }
         _lastBypassDecision = @"not-bypassed";
