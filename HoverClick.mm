@@ -75,8 +75,8 @@ static const CGFloat HoverClickSectionHeaderFontSize = 11.0;
 static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
 static const NSUInteger HoverClickRecentDecisionHistoryLimit = 10;
 static const NSInteger HoverClickCDMBADefaultDelayMs = 500;
-static const NSInteger HoverClickCDMBADelayPresets[] = {100, 250, 500, 750, 1000};
-static const NSUInteger HoverClickCDMBADelayPresetsCount = 5;
+static const NSInteger HoverClickCDMBADelayPresets[] = {250, 300, 350, 400, 450, 500};
+static const NSUInteger HoverClickCDMBADelayPresetsCount = 6;
 static const CGFloat HoverClickCDMBACursorDriftThreshold = 40.0;
 
 static NSString *HoverClickDisplayVersion(void) {
@@ -906,6 +906,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     BOOL _cdmbaSuppressRecursion;
     CFAbsoluteTime _cdmbaSyntheticPostTime;
     NSString *_lastCDMBADescription;
+    NSString *_lastCDMBADecisionDescription;
     uint64_t _totalCDMBAAttempts;
     uint64_t _totalCDMBAFired;
     uint64_t _totalCDMBACancelled;
@@ -1041,6 +1042,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastMenuBarFastPassthroughIsLeft = YES;
     _lastAutomaticUpdateChecksChangeDescription = @"never";
     _lastCDMBADescription = @"never";
+    _lastCDMBADecisionDescription = @"never";
     _clickTimeOverrideEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickClickTimeOverrideEnabledKey];
     NSInteger savedCDMBADelay = [[NSUserDefaults standardUserDefaults] integerForKey:HoverClickClickTimeOverrideDelayMsKey];
     _clickTimeOverrideDelayMs = (savedCDMBADelay > 0) ? savedCDMBADelay : HoverClickCDMBADefaultDelayMs;
@@ -1370,7 +1372,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [experimentalMenu addItem:self.clickTimeOverrideDelayItem];
 
     NSMutableArray<NSMenuItem *> *delayPresetItems = [NSMutableArray arrayWithCapacity:HoverClickCDMBADelayPresetsCount];
-    CGFloat delayWidth = HoverClickCalculatedSubmenuWidth(@[@"100 ms", @"250 ms", @"500 ms", @"750 ms", @"1000 ms"]);
+    CGFloat delayWidth = HoverClickCalculatedSubmenuWidth(@[@"250 ms", @"300 ms", @"350 ms", @"400 ms", @"450 ms", @"500 ms"]);
     for (NSUInteger pi = 0; pi < HoverClickCDMBADelayPresetsCount; pi++) {
         NSInteger presetMs = HoverClickCDMBADelayPresets[pi];
         NSString *presetTitle = [NSString stringWithFormat:@"%ld ms", (long)presetMs];
@@ -2663,7 +2665,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last ultra-fast menu-bar passthrough: %@\n"
              "Last menu-bar/top-strip check: %@\n"
              "Click-Time Override (experimental): %@\n"
-             "Last cross-display menu-bar assist: %@\n"
+             "Last CDMBA decision: %@\n"
+             "Last CDMBA assist result: %@\n"
              "CDMBA counters: attempts=%llu fired=%llu cancelled=%llu recursion-suppressed=%llu\n"
              "Counters: mouse callbacks=%llu left=%llu right=%llu non-menu decisions=%llu focus attempts=%llu successful verifications=%llu policy skips=%llu overlay/system UI skips=%llu compact-popup skips=%llu menu/status UI skips=%llu\n"
              "Recent non-menu mouse-down decisions (newest first):\n- %@\n"
@@ -2741,6 +2744,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             lastMenuBarFastPassthrough,
             _lastMenuBarCheckDescription ?: @"never",
             cdmbaStatus,
+            _lastCDMBADecisionDescription ?: @"never",
             _lastCDMBADescription ?: @"never",
             _totalCDMBAAttempts,
             _totalCDMBAFired,
@@ -3034,14 +3038,36 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
 
+    _lastCDMBADecisionDescription = [NSString stringWithFormat:
+        @"left #%llu at (%.0f,%.0f): not menu-bar/top-strip",
+        clickID, rawPoint.x, rawPoint.y];
+
     if ([self pointIsInScreenMenuBarArea:axPoint]) {
         if (_cdmbaSuppressRecursion) {
             if (now - _cdmbaSyntheticPostTime < 1.0) {
                 _totalCDMBARecursionSuppressed++;
+                _lastCDMBADecisionDescription = [NSString stringWithFormat:
+                    @"left #%llu at (%.0f,%.0f): recursion-suppressed (our synthetic re-click)",
+                    clickID, rawPoint.x, rawPoint.y];
+            } else {
+                _lastCDMBADecisionDescription = [NSString stringWithFormat:
+                    @"left #%llu at (%.0f,%.0f): recursion flag stale (cleared)",
+                    clickID, rawPoint.x, rawPoint.y];
             }
             _cdmbaSuppressRecursion = NO;
             _pendingCDMBAClickID = 0;
-        } else if (_clickTimeOverrideEnabled && [self isCrossDisplayMenuBarPoint:axPoint]) {
+        } else if (!_clickTimeOverrideEnabled) {
+            _lastCDMBADecisionDescription = [NSString stringWithFormat:
+                @"left #%llu at (%.0f,%.0f): menu-bar: override-disabled: no assist",
+                clickID, rawPoint.x, rawPoint.y];
+        } else if (![self isCrossDisplayMenuBarPoint:axPoint]) {
+            _lastCDMBADecisionDescription = [NSString stringWithFormat:
+                @"left #%llu at (%.0f,%.0f): same-display menu-bar: no assist",
+                clickID, rawPoint.x, rawPoint.y];
+        } else {
+            _lastCDMBADecisionDescription = [NSString stringWithFormat:
+                @"left #%llu at (%.0f,%.0f): cross-display menu-bar: ACCEPTED delay=%ldms",
+                clickID, rawPoint.x, rawPoint.y, (long)_clickTimeOverrideDelayMs];
             [self scheduleCDMBAForPoint:rawPoint clickID:clickID now:now];
         }
         _totalMenuStatusUISkips++;
@@ -3130,6 +3156,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
 
     if ([self pointIsInScreenMenuBarArea:axPoint]) {
+        _lastCDMBADecisionDescription = [NSString stringWithFormat:
+            @"right #%llu at (%.0f,%.0f): not left click: no assist",
+            clickID, rawPoint.x, rawPoint.y];
         _totalMenuStatusUISkips++;
         _lastMenuBarFastPassthroughSequence = clickID;
         _lastMenuBarFastPassthroughTime = now;
