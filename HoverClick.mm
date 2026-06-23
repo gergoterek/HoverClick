@@ -63,14 +63,11 @@ static const CGFloat HoverClickHeaderVersionX = HoverClickMenuRightAccessoryX + 
 static const CGFloat HoverClickHeaderLabelY = 4.0;
 static const CGFloat HoverClickHeaderLabelHeight = 18.0;
 static const CGFloat HoverClickMenuRowWidth = HoverClickMenuContentWidth;
-static const CGFloat HoverClickMenuRowHeight = 28.0;
+static const CGFloat HoverClickMenuRowHeight = 22.0;
 static const CGFloat HoverClickMenuRowIconX = HoverClickMenuLeadingInset;
-static const CGFloat HoverClickMenuRowIconY = (HoverClickMenuRowHeight - HoverClickMenuImageSize) / 2.0;
 static const CGFloat HoverClickMenuRowTextX = HoverClickMenuRowIconX + HoverClickMenuImageSize + HoverClickMenuIconTitleSpacing;
-static const CGFloat HoverClickMenuRowTextY = (HoverClickMenuRowHeight - 18.0) / 2.0;
 static const CGFloat HoverClickMenuRowStateSize = 13.0;
 static const CGFloat HoverClickMenuRowStateX = HoverClickMenuRightAccessoryX + ((HoverClickMenuRightAccessoryWidth - HoverClickMenuRowStateSize) / 2.0);
-static const CGFloat HoverClickMenuArrowFontSize = 15.0;
 static const CGFloat HoverClickSectionHeaderHeight = 18.0;
 static const CGFloat HoverClickSectionHeaderLeadingInset = HoverClickMenuLeadingInset;
 static const CGFloat HoverClickSectionHeaderLabelY = 2.0;
@@ -323,7 +320,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     CGFloat titleX = HoverClickMenuLeadingInset;
     if (image != nil) {
         _iconView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickMenuRowIconX,
-                                                                  HoverClickMenuRowIconY,
+                                                                  3.0,
                                                                   HoverClickMenuImageSize,
                                                                   HoverClickMenuImageSize)];
         _iconView.image = image;
@@ -334,7 +331,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 
     _titleField = [NSTextField labelWithString:menuItem.title ?: @""];
     _titleField.frame = NSMakeRect(titleX,
-                                   HoverClickMenuRowTextY,
+                                   2.0,
                                    rightAccessoryX - titleX - HoverClickMenuIconTitleSpacing,
                                    18.0);
     _titleField.font = [NSFont menuFontOfSize:0.0];
@@ -344,7 +341,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     if (accessoryTitle.length > 0) {
         _accessoryField = [NSTextField labelWithString:accessoryTitle];
         _accessoryField.frame = NSMakeRect(rightAccessoryX - 36.0,
-                                           HoverClickMenuRowTextY,
+                                           2.0,
                                            HoverClickMenuRightAccessoryWidth + 36.0,
                                            18.0);
         _accessoryField.alignment = NSTextAlignmentRight;
@@ -355,7 +352,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 
     _stateField = [NSTextField labelWithString:@""];
     _stateField.frame = NSMakeRect(rightAccessoryX - 36.0,
-                                   HoverClickMenuRowTextY,
+                                   2.0,
                                    HoverClickMenuRightAccessoryWidth + 36.0,
                                    18.0);
     _stateField.alignment = NSTextAlignmentRight;
@@ -370,6 +367,21 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
 
 - (BOOL)isFlipped {
     return YES;
+}
+
+- (void)setFrameSize:(NSSize)newSize {
+    [super setFrameSize:newSize];
+    CGFloat w = newSize.width;
+    CGFloat rightAccessoryX = w - HoverClickMenuTrailingInset - HoverClickMenuRightAccessoryWidth;
+    CGFloat titleX = (_iconView != nil) ? HoverClickMenuRowTextX : HoverClickMenuLeadingInset;
+    _titleField.frame = NSMakeRect(titleX, 2.0,
+                                   rightAccessoryX - titleX - HoverClickMenuIconTitleSpacing, 18.0);
+    if (_accessoryField != nil) {
+        _accessoryField.frame = NSMakeRect(rightAccessoryX - 36.0, 2.0,
+                                           HoverClickMenuRightAccessoryWidth + 36.0, 18.0);
+    }
+    _stateField.frame = NSMakeRect(rightAccessoryX - 36.0, 2.0,
+                                   HoverClickMenuRightAccessoryWidth + 36.0, 18.0);
 }
 
 - (void)setHighlighted:(BOOL)highlighted {
@@ -447,14 +459,10 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     NSString *stateGlyph = @"";
     if (self.showsSubmenuArrow) {
         stateGlyph = @"▸";
-        self.stateField.font = [NSFont systemFontOfSize:HoverClickMenuArrowFontSize];
-    } else {
-        self.stateField.font = [NSFont menuFontOfSize:0.0];
-        if (item.state == NSControlStateValueOn) {
-            stateGlyph = @"✓";
-        } else if (item.state == NSControlStateValueMixed) {
-            stateGlyph = @"–";
-        }
+    } else if (item.state == NSControlStateValueOn) {
+        stateGlyph = @"✓";
+    } else if (item.state == NSControlStateValueMixed) {
+        stateGlyph = @"–";
     }
     self.stateField.stringValue = stateGlyph;
     self.stateField.hidden = (stateGlyph.length == 0);
