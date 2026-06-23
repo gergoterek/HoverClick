@@ -40,7 +40,6 @@ static NSString * const HoverClickUninstallHelp = @"Shows safe manual uninstall 
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static NSString * const HoverClickBypassKeyHelp = @"When held at click time, this modifier key makes HoverClick skip its focus behavior and return the original event unchanged.";
 static const NSInteger HoverClickBypassKeyOff = 0;
-static const NSInteger HoverClickBypassKeyOption = 1;
 static const NSInteger HoverClickBypassKeyShift = 2;
 static NSString * const HoverClickBypassKeyDefaultsKey = @"bypassKey";
 static const CGFloat HoverClickStatusItemLength = 23.0;
@@ -533,7 +532,6 @@ static CGFloat HoverClickMeasureMenuTitleWidth(NSString *title) {
     return ceil([title sizeWithAttributes:attrs].width);
 }
 
-static const CGFloat HoverClickSubmenuMinWidth = 160.0;
 static const CGFloat HoverClickSubmenuSafetyPadding = 10.0;
 
 static CGFloat HoverClickCalculatedSubmenuWidth(NSArray<NSString *> *titles) {
@@ -551,9 +549,6 @@ static CGFloat HoverClickCalculatedSubmenuWidth(NSArray<NSString *> *titles) {
                     + HoverClickMenuIconTitleSpacing
                     + HoverClickMenuRightAccessoryWidth
                     + HoverClickMenuTrailingInset;
-    if (width < HoverClickSubmenuMinWidth) {
-        width = HoverClickSubmenuMinWidth;
-    }
     if (width > HoverClickMenuContentWidth) {
         width = HoverClickMenuContentWidth;
     }
@@ -967,7 +962,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _clickToFocusEnabled = YES;
     _rightClickFocusEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickRightClickFocusDefaultsKey];
     _bypassKey = [[NSUserDefaults standardUserDefaults] integerForKey:HoverClickBypassKeyDefaultsKey];
-    if (_bypassKey < HoverClickBypassKeyOff || _bypassKey > HoverClickBypassKeyShift) {
+    if (_bypassKey != HoverClickBypassKeyOff && _bypassKey != HoverClickBypassKeyShift) {
         _bypassKey = HoverClickBypassKeyOff;
     }
     _verboseDiagnostics = YES;
@@ -1092,7 +1087,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [menu setAutoenablesItems:NO];
     menu.delegate = self;
 
-    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"Functions")];
+    [menu addItem:HoverClickCreateSectionHeaderMenuItem(@"HoverClick")];
 
     self.clickToFocusItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Left Click Focus")
                                                        action:@selector(toggleClickToFocus:)
@@ -1128,7 +1123,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.bypassKeyItem.submenu = bypassMenu;
     [menu addItem:self.bypassKeyItem];
 
-    CGFloat bypassWidth = HoverClickCalculatedSubmenuWidth(@[@"Off", @"Option", @"Shift"]);
+    CGFloat bypassWidth = HoverClickCalculatedSubmenuWidth(@[@"Off", @"Shift"]);
 
     NSMenuItem *bypassOffItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Off")
                                                            action:@selector(selectBypassKey:)
@@ -1138,15 +1133,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     bypassOffItem.tag = HoverClickBypassKeyOff;
     HoverClickUseNonClosingSubmenuRow(bypassOffItem, @"xmark.circle", @"minus.circle", YES, bypassWidth);
     [bypassMenu addItem:bypassOffItem];
-
-    NSMenuItem *bypassOptionItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Option")
-                                                              action:@selector(selectBypassKey:)
-                                                       keyEquivalent:@""];
-    bypassOptionItem.target = self;
-    bypassOptionItem.enabled = YES;
-    bypassOptionItem.tag = HoverClickBypassKeyOption;
-    HoverClickUseNonClosingSubmenuRow(bypassOptionItem, @"option", @"keyboard", YES, bypassWidth);
-    [bypassMenu addItem:bypassOptionItem];
 
     NSMenuItem *bypassShiftItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Shift")
                                                              action:@selector(selectBypassKey:)
@@ -1411,7 +1397,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickLog("HoverClick: launch state leftClickFocus=%s rightClickFocus=%s bypassKey=%s automaticUpdateChecks=%s automaticDownloadInstall=%s",
                   _clickToFocusEnabled ? "ON" : "OFF",
                   _rightClickFocusEnabled ? "ON" : "OFF",
-                  _bypassKey == HoverClickBypassKeyOption ? "option" : _bypassKey == HoverClickBypassKeyShift ? "shift" : "off",
+                  _bypassKey == HoverClickBypassKeyShift ? "shift" : "off",
                   self.updaterController.updater.automaticallyChecksForUpdates ? "ON" : "OFF",
                   self.updaterController.updater.automaticallyDownloadsUpdates ? "ON" : "OFF");
 }
@@ -2341,14 +2327,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 - (void)selectBypassKey:(id)sender {
     NSMenuItem *item = (NSMenuItem *)sender;
     NSInteger newKey = item.tag;
-    if (newKey < HoverClickBypassKeyOff || newKey > HoverClickBypassKeyShift) {
+    if (newKey != HoverClickBypassKeyOff && newKey != HoverClickBypassKeyShift) {
         newKey = HoverClickBypassKeyOff;
     }
     _bypassKey = newKey;
     [[NSUserDefaults standardUserDefaults] setInteger:_bypassKey forKey:HoverClickBypassKeyDefaultsKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
-    const char *keyName = _bypassKey == HoverClickBypassKeyOption ? "option" :
-                          _bypassKey == HoverClickBypassKeyShift ? "shift" : "off";
+    const char *keyName = _bypassKey == HoverClickBypassKeyShift ? "shift" : "off";
     HoverClickLog("HoverClick: bypass key set to %s", keyName);
     [self updateMenuTitles];
 }
@@ -2690,7 +2675,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             recentDecisionHistory,
             _clickToFocusEnabled ? @"enabled" : @"disabled",
             _rightClickFocusEnabled ? @"enabled" : @"disabled",
-            _bypassKey == HoverClickBypassKeyOption ? @"option" : _bypassKey == HoverClickBypassKeyShift ? @"shift" : @"off",
+            _bypassKey == HoverClickBypassKeyShift ? @"shift" : @"off",
             _lastBypassDecision ?: @"none",
             _verboseDiagnostics ? @"enabled" : @"disabled"];
 }
@@ -2956,14 +2941,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
     _lastMouseDownLogTime = now;
 
-    if (_bypassKey != HoverClickBypassKeyOff) {
+    if (_bypassKey == HoverClickBypassKeyShift) {
         CGEventFlags flags = CGEventGetFlags(event);
-        BOOL bypass = (_bypassKey == HoverClickBypassKeyOption && (flags & kCGEventFlagMaskAlternate) != 0) ||
-                      (_bypassKey == HoverClickBypassKeyShift && (flags & kCGEventFlagMaskShift) != 0);
-        if (bypass) {
-            _lastBypassDecision = (_bypassKey == HoverClickBypassKeyOption) ? @"bypassed-by-option" : @"bypassed-by-shift";
-            HoverClickLog("HoverClick: left click bypass active modifier=%s; original event returned unchanged",
-                          _bypassKey == HoverClickBypassKeyOption ? "option" : "shift");
+        if (flags & kCGEventFlagMaskShift) {
+            _lastBypassDecision = @"bypassed-by-shift";
+            HoverClickLog("HoverClick: left click bypass active modifier=shift; original event returned unchanged");
             return;
         }
         _lastBypassDecision = @"not-bypassed";
@@ -3046,14 +3028,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
     _lastRightMouseDownLogTime = now;
 
-    if (_bypassKey != HoverClickBypassKeyOff) {
+    if (_bypassKey == HoverClickBypassKeyShift) {
         CGEventFlags flags = CGEventGetFlags(event);
-        BOOL bypass = (_bypassKey == HoverClickBypassKeyOption && (flags & kCGEventFlagMaskAlternate) != 0) ||
-                      (_bypassKey == HoverClickBypassKeyShift && (flags & kCGEventFlagMaskShift) != 0);
-        if (bypass) {
-            _lastBypassDecision = (_bypassKey == HoverClickBypassKeyOption) ? @"bypassed-by-option" : @"bypassed-by-shift";
-            HoverClickLog("HoverClick: right click bypass active modifier=%s; original event returned unchanged",
-                          _bypassKey == HoverClickBypassKeyOption ? "option" : "shift");
+        if (flags & kCGEventFlagMaskShift) {
+            _lastBypassDecision = @"bypassed-by-shift";
+            HoverClickLog("HoverClick: right click bypass active modifier=shift; original event returned unchanged");
             return;
         }
         _lastBypassDecision = @"not-bypassed";
