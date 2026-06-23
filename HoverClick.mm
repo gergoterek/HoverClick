@@ -880,6 +880,10 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     NSString *_lastPermissionCheckResult;
     NSString *_lastPermissionMissingPassThroughDescription;
     NSString *_lastMenuBarCheckDescription;
+    uint64_t _lastMenuBarFastPassthroughSequence;
+    CFAbsoluteTime _lastMenuBarFastPassthroughTime;
+    CGPoint _lastMenuBarFastPassthroughPoint;
+    BOOL _lastMenuBarFastPassthroughIsLeft;
     NSString *_lastAutomaticUpdateChecksChangeDescription;
     CFAbsoluteTime _lastAutomaticUpdateChecksChangeTime;
     NSMutableArray<NSMutableDictionary<NSString *, NSString *> *> *_recentDecisionHistory;
@@ -1001,6 +1005,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastLaunchAtLoginOnboardingDecision = @"not offered";
     _lastPermissionCheckResult = @"not checked";
     _lastPermissionMissingPassThroughDescription = @"none";
+    _lastMenuBarFastPassthroughSequence = 0;
+    _lastMenuBarFastPassthroughTime = 0;
+    _lastMenuBarFastPassthroughPoint = CGPointZero;
+    _lastMenuBarFastPassthroughIsLeft = YES;
     _lastAutomaticUpdateChecksChangeDescription = @"never";
     _recentDecisionHistory = [NSMutableArray arrayWithCapacity:HoverClickRecentDecisionHistoryLimit];
     _activeDecisionHistory = [NSMutableDictionary dictionary];
@@ -2427,6 +2435,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                          _lastSuccessfulBackgroundFocusDescription ?: @"success",
                                          HoverClickDiagnosticTimestamp(_lastSuccessfulBackgroundFocusTime)];
     }
+    NSString *lastMenuBarFastPassthrough = @"never";
+    if (_lastMenuBarFastPassthroughSequence > 0) {
+        lastMenuBarFastPassthrough = [NSString stringWithFormat:@"%@ #%llu at %@ raw=(%.1f,%.1f) returned original event unchanged",
+            _lastMenuBarFastPassthroughIsLeft ? @"left" : @"right",
+            _lastMenuBarFastPassthroughSequence,
+            HoverClickDiagnosticTimestamp(_lastMenuBarFastPassthroughTime),
+            _lastMenuBarFastPassthroughPoint.x,
+            _lastMenuBarFastPassthroughPoint.y];
+    }
     NSString *recentDecisionHistory = [self recentDecisionHistoryDescription];
     SPUUpdater *updater = self.updaterController.updater;
     NSString *automaticUpdateChecksStatus = updater.automaticallyChecksForUpdates ? @"enabled" : @"disabled";
@@ -2513,6 +2530,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Last right mouse down seen: %@\n"
              "Last tap recovery attempt: %@\n"
              "Last tap recovery result: %@\n"
+             "Last ultra-fast menu-bar passthrough: %@\n"
              "Last menu-bar/top-strip check: %@\n"
              "Counters: mouse callbacks=%llu left=%llu right=%llu non-menu decisions=%llu focus attempts=%llu successful verifications=%llu policy skips=%llu overlay/system UI skips=%llu compact-popup skips=%llu menu/status UI skips=%llu\n"
              "Recent non-menu mouse-down decisions (newest first):\n- %@\n"
@@ -2587,6 +2605,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             HoverClickDiagnosticTimestamp(_lastRightMouseDownSeenTime),
             HoverClickDiagnosticTimestamp(_lastEventTapRecoveryAttemptTime),
             _lastEventTapRecoveryResult ?: @"none",
+            lastMenuBarFastPassthrough,
             _lastMenuBarCheckDescription ?: @"never",
             _totalMouseCallbacksSeen,
             _totalLeftMouseCallbacksSeen,
@@ -2862,6 +2881,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
+
+    if ([self pointIsInScreenMenuBarArea:axPoint]) {
+        _totalMenuStatusUISkips++;
+        _lastMenuBarFastPassthroughSequence = clickID;
+        _lastMenuBarFastPassthroughTime = now;
+        _lastMenuBarFastPassthroughPoint = rawPoint;
+        _lastMenuBarFastPassthroughIsLeft = YES;
+        return;
+    }
+
     [self beginRecentDecisionWithTrigger:"click" sequenceID:clickID rawPoint:rawPoint axPoint:axPoint];
     [self diagnosticLog:"HoverClick: click #%llu received leftClickFocus=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
                         clickID,
@@ -2889,25 +2918,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     if ([self passThroughRecentFinderRightClickFollowUpForClickID:clickID]) {
-        return;
-    }
-
-    if ([self pointIsInScreenMenuBarArea:axPoint]) {
-        HoverClickLog("HoverClick: click #%llu skipped reason=menu-bar-area point=(%.1f,%.1f); event passed through unchanged",
-                      clickID, axPoint.x, axPoint.y);
-        [self recordFocusDecisionWithTrigger:"click"
-                                  sequenceID:clickID
-                                    decision:@"skipped"
-                                      detail:@"click point is in screen menu bar area; no focus attempt; original event passed through unchanged"];
-        [self recordClickThroughInvestigationForSequenceID:clickID
-                                               focusStatus:@"skipped: click in screen menu bar area"
-                                                 finalNote:@"original left mouse-down returned unchanged; swallowed=no"];
-        _totalMenuStatusUISkips++;
-        [self includeRecentDecisionInHistoryForSequenceID:clickID];
-        [self completeRecentDecisionForSequenceID:clickID
-                                      finalResult:@"skipped: click in screen menu bar area"
-                 keepActiveForDelayedVerification:NO];
-        [self setLastClickResult:@"Ignored Menu/UI"];
         return;
     }
 
@@ -2957,6 +2967,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
+
+    if ([self pointIsInScreenMenuBarArea:axPoint]) {
+        _totalMenuStatusUISkips++;
+        _lastMenuBarFastPassthroughSequence = clickID;
+        _lastMenuBarFastPassthroughTime = now;
+        _lastMenuBarFastPassthroughPoint = rawPoint;
+        _lastMenuBarFastPassthroughIsLeft = NO;
+        return;
+    }
+
     [self beginRecentDecisionWithTrigger:"right-click" sequenceID:clickID rawPoint:rawPoint axPoint:axPoint];
     [self diagnosticLog:"HoverClick: right-click #%llu received rightClickFocus=%s leftClickFocus=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
                         clickID,
@@ -2988,25 +3008,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                               sequenceID:clickID
                                 decision:@"observed"
                                   detail:@"Right Click Focus enabled; resolving target window/app"];
-
-    if ([self pointIsInScreenMenuBarArea:axPoint]) {
-        HoverClickLog("HoverClick: right-click #%llu skipped reason=menu-bar-area point=(%.1f,%.1f); event passed through unchanged",
-                      clickID, axPoint.x, axPoint.y);
-        [self recordFocusDecisionWithTrigger:"right-click"
-                                  sequenceID:clickID
-                                    decision:@"skipped"
-                                      detail:@"click point is in screen menu bar area; no focus attempt; original event passed through unchanged"];
-        [self recordClickThroughInvestigationForSequenceID:clickID
-                                               focusStatus:@"skipped: click in screen menu bar area"
-                                                 finalNote:@"original right mouse-down returned unchanged; swallowed=no"];
-        _totalMenuStatusUISkips++;
-        [self includeRecentDecisionInHistoryForSequenceID:clickID];
-        [self completeRecentDecisionForSequenceID:clickID
-                                      finalResult:@"skipped: click in screen menu bar area"
-                 keepActiveForDelayedVerification:NO];
-        [self setLastClickResult:@"Ignored Menu/UI"];
-        return;
-    }
 
     NSDictionary *topmostWindowInfo = [self topmostWindowInfoAtPoint:axPoint];
     [self logTopmostWindowInfo:topmostWindowInfo atPoint:axPoint sequenceID:clickID trigger:"right-click"];
