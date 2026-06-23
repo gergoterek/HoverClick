@@ -907,6 +907,11 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     CFAbsoluteTime _cdmbaSyntheticPostTime;
     NSString *_lastCDMBADescription;
     NSString *_lastCDMBADecisionDescription;
+    CFAbsoluteTime _cdmbaLastScheduleTime;
+    NSString *_cdmbaClickMainScreenDesc;
+    NSString *_cdmbaSpaceNotifDesc;
+    NSString *_cdmbaFireMainScreenDesc;
+    id<NSObject> _cdmbaSpaceNotifObserver;
     uint64_t _totalCDMBAAttempts;
     uint64_t _totalCDMBAFired;
     uint64_t _totalCDMBACancelled;
@@ -1043,6 +1048,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastAutomaticUpdateChecksChangeDescription = @"never";
     _lastCDMBADescription = @"never";
     _lastCDMBADecisionDescription = @"never";
+    _cdmbaLastScheduleTime = 0;
+    _cdmbaClickMainScreenDesc = @"never";
+    _cdmbaSpaceNotifDesc = @"never";
+    _cdmbaFireMainScreenDesc = @"never";
+    _cdmbaSpaceNotifObserver = nil;
     _clickTimeOverrideEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:HoverClickClickTimeOverrideEnabledKey];
     NSInteger savedCDMBADelay = [[NSUserDefaults standardUserDefaults] integerForKey:HoverClickClickTimeOverrideDelayMsKey];
     _clickTimeOverrideDelayMs = (savedCDMBADelay > 0) ? savedCDMBADelay : HoverClickCDMBADefaultDelayMs;
@@ -2667,6 +2677,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Click-Time Override (experimental): %@\n"
              "Last CDMBA decision: %@\n"
              "Last CDMBA assist result: %@\n"
+             "CDMBA readiness probes: click-mainScreen=%@ space-notification=%@ fire-mainScreen=%@\n"
              "CDMBA counters: attempts=%llu fired=%llu cancelled=%llu recursion-suppressed=%llu\n"
              "Counters: mouse callbacks=%llu left=%llu right=%llu non-menu decisions=%llu focus attempts=%llu successful verifications=%llu policy skips=%llu overlay/system UI skips=%llu compact-popup skips=%llu menu/status UI skips=%llu\n"
              "Recent non-menu mouse-down decisions (newest first):\n- %@\n"
@@ -2746,6 +2757,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             cdmbaStatus,
             _lastCDMBADecisionDescription ?: @"never",
             _lastCDMBADescription ?: @"never",
+            _cdmbaClickMainScreenDesc ?: @"never",
+            _cdmbaSpaceNotifDesc ?: @"never",
+            _cdmbaFireMainScreenDesc ?: @"never",
             _totalCDMBAAttempts,
             _totalCDMBAFired,
             _totalCDMBACancelled,
@@ -3354,9 +3368,61 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         clickID, rawPoint.x, rawPoint.y, (long)_clickTimeOverrideDelayMs];
     HoverClickLog("HoverClick: CDMBA: scheduled synthetic re-click #%llu at (%.1f,%.1f) delay=%ldms",
                   clickID, rawPoint.x, rawPoint.y, (long)_clickTimeOverrideDelayMs);
+
+    // Readiness probes: record mainScreen at click time and observe Space changes.
+    _cdmbaLastScheduleTime = CFAbsoluteTimeGetCurrent();
+    NSScreen *clickScreen = [NSScreen mainScreen];
+    _cdmbaClickMainScreenDesc = clickScreen
+        ? [NSString stringWithFormat:@"%@ (%.0fx%.0f)", clickScreen.localizedName,
+           clickScreen.frame.size.width, clickScreen.frame.size.height]
+        : @"nil";
+    _cdmbaSpaceNotifDesc = @"not-received";
+    _cdmbaFireMainScreenDesc = @"pending";
+    if (_cdmbaSpaceNotifObserver) {
+        [[NSWorkspace sharedWorkspace].notificationCenter removeObserver:_cdmbaSpaceNotifObserver];
+        _cdmbaSpaceNotifObserver = nil;
+    }
+    CFAbsoluteTime probeStart = _cdmbaLastScheduleTime;
+    uint64_t probeClickID = clickID;
+    __weak HoverClickAppDelegate *weakSelf = self;
+    _cdmbaSpaceNotifObserver = [[NSWorkspace sharedWorkspace].notificationCenter
+        addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
+                    object:nil
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *note) {
+        HoverClickAppDelegate *strongSelf = weakSelf;
+        if (!strongSelf || strongSelf->_pendingCDMBAClickID != probeClickID) { return; }
+        CFAbsoluteTime elapsed = CFAbsoluteTimeGetCurrent() - probeStart;
+        NSScreen *notifScreen = [NSScreen mainScreen];
+        NSString *screenDesc = notifScreen
+            ? [NSString stringWithFormat:@"%@ (%.0fx%.0f)", notifScreen.localizedName,
+               notifScreen.frame.size.width, notifScreen.frame.size.height]
+            : @"nil";
+        strongSelf->_cdmbaSpaceNotifDesc = [NSString stringWithFormat:
+            @"received +%.0fms mainScreen=%@", elapsed * 1000.0, screenDesc];
+        HoverClickLog("HoverClick: CDMBA readiness: Space notification received +%.0fms mainScreen=%s",
+                      elapsed * 1000.0, [screenDesc UTF8String]);
+        [[NSWorkspace sharedWorkspace].notificationCenter removeObserver:strongSelf->_cdmbaSpaceNotifObserver];
+        strongSelf->_cdmbaSpaceNotifObserver = nil;
+    }];
 }
 
 - (void)fireCDMBASyntheticClickAtX:(CGFloat)x y:(CGFloat)y clickID:(uint64_t)clickID delay:(NSTimeInterval)delay {
+    // Readiness probes: clean up Space observer and record mainScreen at fire time.
+    if (_cdmbaSpaceNotifObserver) {
+        [[NSWorkspace sharedWorkspace].notificationCenter removeObserver:_cdmbaSpaceNotifObserver];
+        _cdmbaSpaceNotifObserver = nil;
+    }
+    NSScreen *fireScreen = [NSScreen mainScreen];
+    _cdmbaFireMainScreenDesc = fireScreen
+        ? [NSString stringWithFormat:@"%@ (%.0fx%.0f)", fireScreen.localizedName,
+           fireScreen.frame.size.width, fireScreen.frame.size.height]
+        : @"nil";
+    CFAbsoluteTime elapsed = (_cdmbaLastScheduleTime > 0)
+        ? (CFAbsoluteTimeGetCurrent() - _cdmbaLastScheduleTime) : 0;
+    HoverClickLog("HoverClick: CDMBA readiness: fire mainScreen=%s elapsed=%.0fms",
+                  [_cdmbaFireMainScreenDesc UTF8String], elapsed * 1000.0);
+
     if (!_clickTimeOverrideEnabled) {
         _totalCDMBACancelled++;
         _lastCDMBADescription = [NSString stringWithFormat:@"cancelled #%llu: override disabled", clickID];
