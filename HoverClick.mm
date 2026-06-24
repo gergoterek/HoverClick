@@ -564,10 +564,10 @@ static CGFloat HoverClickCalculatedSubmenuWidth(NSArray<NSString *> *titles) {
             maxTitleWidth = w;
         }
     }
-    // Submenu child rows have no icon: titleX = HoverClickMenuLeadingInset.
-    // rowWidth = titleText + safetyPad + leadingInset + accessory + trailing
+    // Submenu child rows have an icon: titleX = HoverClickMenuRowTextX (icon + spacing).
+    // rowWidth = titleText + safetyPad + textX + accessory + trailing
     CGFloat width = maxTitleWidth + HoverClickSubmenuSafetyPadding
-                    + HoverClickMenuLeadingInset
+                    + HoverClickMenuRowTextX
                     + HoverClickMenuRightAccessoryWidth
                     + HoverClickMenuTrailingInset;
     if (width > HoverClickMenuContentWidth) {
@@ -583,13 +583,9 @@ static void HoverClickUseCustomSubmenuRow(NSMenuItem *item,
                                            BOOL showsStateView,
                                            BOOL closesMenuAfterAction,
                                            CGFloat rowWidth) {
-    // Submenu child rows use a compact, icon-less layout so the column width
-    // follows the title text rather than reserving a root-menu-style icon slot.
-    // symbolName/fallbackSymbolName are accepted but unused; reserved for future
-    // per-item icon support.
-    (void)symbolName; (void)fallbackSymbolName;
+    NSImage *image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
     HoverClickMenuRowView *rowView = [[HoverClickMenuRowView alloc] initWithMenuItem:item
-                                                                               image:nil
+                                                                               image:image
                                                                       accessoryTitle:accessoryTitle
                                                                       showsStateView:showsStateView
                                                                             rowWidth:rowWidth];
