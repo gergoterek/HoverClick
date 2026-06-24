@@ -398,22 +398,6 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     [self syncFromMenuItem];
 }
 
-- (void)viewDidMoveToWindow {
-    [super viewDidMoveToWindow];
-    if (self.window == nil) {
-        return;
-    }
-    // Re-apply the tooltip now that the view is in a real window so that
-    // addToolTipRect:owner:userData: (called internally by setToolTip:) can
-    // register with the menu panel's tooltip manager.  NSMenuItem.toolTip is
-    // the source of truth; this covers every row type, including submenu
-    // openers that never set rowView.toolTip before the view had a window.
-    NSString *tip = self.menuItem.toolTip;
-    if (tip.length > 0) {
-        self.toolTip = tip;
-    }
-}
-
 - (void)updateTrackingAreas {
     [super updateTrackingAreas];
     for (NSTrackingArea *area in self.trackingAreas.copy) {
