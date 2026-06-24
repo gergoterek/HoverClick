@@ -158,6 +158,25 @@
 | Bypass Key does not react to mouse movement | Move the pointer while holding Shift or Fn with Bypass Key set. | No bypass path is triggered by mouse movement; the event tap observes only `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`; the event tap mask is unchanged. |
 | Bypass Key does not introduce Option, Control, or Caps Lock options | Inspect `HoverClick.mm` and the Bypass Key submenu. | `Option`, `Control`, and `Caps Lock` do not appear as Bypass Key options in the submenu or in any bypass flag check. |
 
+## Excluded Apps / Maccy Compatibility
+
+Manual Finder UI validation -- not run automatically.
+
+| Test | Method | Expected Result |
+| --- | --- | --- |
+| Maccy item click pastes with HoverClick enabled | With Maccy and HoverClick both running and Bypass Key Off, open Maccy, click a clipboard history item. | The selected item pastes/inserts into the frontmost app as expected; HoverClick does not steal focus from the paste target; logs show `excluded app Maccy bundleID=org.p0deje.Maccy; skipping focus/raise/activate; original event returned unchanged`; diagnostics show `Last bypass decision: bypassed-maccy`. |
+| Maccy item click pastes with Bypass Key Off | With Bypass Key set to Off, click a Maccy history item without holding any modifier key. | Maccy paste works correctly; HoverClick skips its focus path for Maccy without requiring the user to hold Shift or Fn. |
+| Maccy item click pastes when Bypass Key is Shift (not held) | With Bypass Key set to Shift and the Shift key NOT held, click a Maccy history item. | Maccy paste works correctly; HoverClick applies the Maccy excluded-app bypass (not the modifier bypass); diagnostics show `Last bypass decision: bypassed-maccy`. |
+| Maccy item click pastes when Bypass Key is Fn (not held) | With Bypass Key set to Fn and the Fn key NOT held, click a Maccy history item. | Maccy paste works correctly; HoverClick applies the Maccy excluded-app bypass; diagnostics show `Last bypass decision: bypassed-maccy`. |
+| Maccy bypass does not require holding Shift or Fn | With any Bypass Key setting, click Maccy items without holding any modifier. | Maccy clicks work in all Bypass Key configurations without requiring any held key. |
+| Non-Maccy left-click background focus is not regressed | With Maccy running and HoverClick enabled, click a background Finder/Chrome/iTerm window. | HoverClick focuses the background window normally; Maccy presence does not affect non-Maccy click focus behavior. |
+| Shift bypass still works in non-Maccy apps | With Bypass Key set to Shift, hold Shift and click a background non-Maccy window. | HoverClick skips focus; diagnostics show `Last bypass decision: bypassed-by-shift`. |
+| Fn bypass still works in non-Maccy apps | With Bypass Key set to Fn, hold Fn and click a background non-Maccy window. | HoverClick skips focus; diagnostics show `Last bypass decision: bypassed-by-fn`. |
+| Right Click Focus is not regressed | With Right Click Focus on, right-click a background non-Maccy window while Maccy is running. | HoverClick focuses the background window and returns the original right-click unchanged; context menu appears normally. |
+| Maccy bypass diagnostics appear in Copy Summary | After a Maccy item click, use `Info` > `Diagnostics` > `Copy Summary`. | Copied diagnostics include `Last bypass decision: bypassed-maccy`; no focus attempt, AX raise, or activation for Maccy clicks. |
+| Normal clicks are not delayed | With Maccy running, click between several non-Maccy background windows rapidly. | Clicks are not delayed; no synthetic event, replay, or cursor movement occurs. |
+| No CDMBA or Hover Assist UI appears | Inspect the HoverClick status menu while Maccy is running. | No CDMBA, Click-Time Override, Hover Click Assist, or Excluded Apps picker UI appears; the menu is unchanged from v1.2.0. |
+
 ## Chrome / Google Docs Background Click-Through Investigation
 
 Manual Finder UI validation -- not run automatically.

@@ -17,6 +17,7 @@
 static NSString * const HoverClickBundleID = @"com.gergoterek.HoverClick";
 static NSString * const HoverClickFinderBundleID = @"com.apple.finder";
 static NSString * const HoverClickChromeBundleID = @"com.google.Chrome";
+static NSString * const HoverClickMaccyBundleID = @"org.p0deje.Maccy";
 static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
 static NSString * const HoverClickFallbackBuildVersion = @"unknown";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
@@ -832,6 +833,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
 - (BOOL)isChromeApplication:(NSRunningApplication *)app;
+- (BOOL)isMaccyApplication:(NSRunningApplication *)app;
 - (NSString *)browserContentDiagnosticNoteForTargetApp:(NSRunningApplication *)targetApp
                                                appName:(NSString *)appName
                                                   role:(NSString *)role
@@ -2897,6 +2899,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return [app.bundleIdentifier isEqualToString:HoverClickChromeBundleID];
 }
 
+- (BOOL)isMaccyApplication:(NSRunningApplication *)app {
+    NSString *bundleID = app.bundleIdentifier;
+    if (bundleID.length > 0) {
+        return [bundleID isEqualToString:HoverClickMaccyBundleID];
+    }
+    return [app.localizedName isEqualToString:@"Maccy"];
+}
+
 - (NSString *)browserContentDiagnosticNoteForTargetApp:(NSRunningApplication *)targetApp
                                                appName:(NSString *)appName
                                                   role:(NSString *)role
@@ -3241,6 +3251,25 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickLog("HoverClick: %s #%llu target pid=%d app=%s", trigger, sequenceID, targetPid, appName.UTF8String);
     [self updateRecentDecisionForSequenceID:sequenceID key:@"targetBundleID" value:targetBundleID];
     [self updateRecentDecisionForSequenceID:sequenceID key:@"targetIsChrome" value:targetIsChrome ? @"yes" : @"no"];
+
+    if ([self isMaccyApplication:targetApp]) {
+        _lastBypassDecision = @"bypassed-maccy";
+        HoverClickLog("HoverClick: %s #%llu excluded app Maccy bundleID=%s; skipping focus/raise/activate; original event returned unchanged",
+                      trigger, sequenceID, targetBundleID.UTF8String);
+        [self recordFocusDecisionWithTrigger:trigger
+                                  sequenceID:sequenceID
+                                    decision:@"skipped"
+                                      detail:@"excluded app: Maccy; HoverClick skipped focus/raise/activate; original event returned unchanged"];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:@"skipped before focus attempt: excluded app (Maccy)"
+                                                 finalNote:@"original event returned unchanged; swallowed=no"];
+        [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:@"skipped: excluded app (Maccy)"
+                 keepActiveForDelayedVerification:NO];
+        [self setLastClickResult:@"Excluded App (Maccy)"];
+        return;
+    }
     [self updateRecentDecisionForSequenceID:sequenceID
                                         key:@"eventPassThrough"
                                       value:@"original event returned unchanged by callback; swallowed=no"];
