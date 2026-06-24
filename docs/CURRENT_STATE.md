@@ -9,9 +9,9 @@
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
 - Visible menu header: green status dot, `HoverClick is running`, and right-aligned dynamic `v1.1.0`
 - Full version/build UI surface: bottom `About` item above `Quit`
-- Bundle short version/build version: `1.1.0` / `40`
+- Bundle short version/build version: `1.2.0` / `42`
 - Latest fully validated baseline before v0.8.0 local DMG validation: `v0.7.0` / build `36`
-- Latest public release: `v1.1.0` / build `40`
+- Latest public release: `v1.2.0` / build `42`
 - Current v1.0 direction: conservative readiness polish, not a risky runtime feature release
 - Current updater implementation branch: merged to `main`
 - Current v0.9.0 planning branch: `design-v0.9.0-updater-completion-plan`
@@ -149,6 +149,17 @@
 - The v1.1.0 release includes updater completion, menu UI/UX refactor, and README reduction.
 - Public release publishing uses tag `v1.1.0`, DMG asset `HoverClick-1.1.0.dmg`, and a GitHub Pages appcast item for version `1.1.0` / build `40`.
 - No Hover Click Assist, Click-Time Hover Assist, Scroll Focus, Key Focus, mouse-move focus, synthetic click, event replay, delayed click delivery, cursor movement, app identity change, bundle identifier change, signing identity change, or Sparkle key change is part of v1.1.0.
+
+## v1.2.0 Release State
+
+- v1.2.0 / build 42 is the current public release.
+- Release prep sets `CFBundleShortVersionString = 1.2.0` and `CFBundleVersion = 42`.
+- The v1.2.0 release adds Bypass Key (Off / Shift / Fn), Maccy compatibility, and menu UI polish.
+- Bypass Key submenu order: Off / separator / Shift / Fn. Option was removed.
+- Maccy compatibility: clicks from `org.p0deje.Maccy` pass through without HoverClick focus steal.
+- Public release publishing uses tag `v1.2.0`, DMG asset `HoverClick-1.2.0.dmg`, and a GitHub Pages appcast item for version `1.2.0` / build `42`.
+- No tooltips, CDMBA, Click-Time Override, Hover Assist, broad Excluded Apps UI, or app picker UI are part of v1.2.0.
+- No Hover Click Assist, synthetic click, event replay, delayed click delivery, cursor movement, app identity change, bundle identifier change, signing identity change, or Sparkle key change is part of v1.2.0.
 
 ## v1.0 Readiness Planning State
 
