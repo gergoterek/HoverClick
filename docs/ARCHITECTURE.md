@@ -100,7 +100,7 @@ Intentional shipped behavior or UI changes should bump `CFBundleShortVersionStri
 
 ## Distribution Packaging
 
-HoverClick is distributed from GitHub. The latest public release is v1.0.0 / build 39, a conservative stable release rather than a runtime feature release.
+HoverClick is distributed from GitHub. The latest public release is v1.2.0 / build 42, which adds Bypass Key (Off / Shift / Fn), Maccy compatibility, and menu UI polish.
 
 `scripts/package-dmg.sh` remains an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a release-publishing path by itself.
 

@@ -12,7 +12,7 @@ When you click a background window, HoverClick focuses and raises that window be
 
 ## Download and Install
 
-The latest public release is `v1.0.0` / build `39`. Download from GitHub Releases. You can also build from source using `scripts/build-app.sh`.
+The latest public release is `v1.2.0` / build `42`. Download from GitHub Releases. You can also build from source using `scripts/build-app.sh`.
 
 After launching HoverClick:
 
@@ -36,7 +36,7 @@ If the app still shows **Accessibility: Required**, quit and relaunch the signed
 
 HoverClick runs as a status-bar item with no Dock icon. The menu is organized into sections:
 
-**Functions:** Left Click Focus · Right Click Focus
+**Functions:** Left Click Focus · Right Click Focus · Bypass Key
 
 **Access > Permissions:** Accessibility status · Launch at Login · Refresh Status · Accessibility Settings
 

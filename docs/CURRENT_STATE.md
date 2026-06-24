@@ -7,7 +7,7 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: green status dot, `HoverClick is running`, and right-aligned dynamic `v1.1.0`
+- Visible menu header: green status dot, `HoverClick is running`, and right-aligned dynamic `v1.2.0`
 - Full version/build UI surface: bottom `About` item above `Quit`
 - Bundle short version/build version: `1.2.0` / `42`
 - Latest fully validated baseline before v0.8.0 local DMG validation: `v0.7.0` / build `36`
@@ -23,8 +23,8 @@
 - Current v1.1.x planning branch: `plan-v1.1-updater-menu-readme`
 - Current v1.1.x planning doc: `docs/V1.1_PLANNING.md`
 - Main/origin-main v1.1.x planning baseline: `711a76d810f993b8c1c8e57730fd57c26476988d`
-- Public DMG: `HoverClick-1.1.0.dmg`
-- Public DMG SHA-256: computed during the v1.1.0 release workflow after `HoverClick-1.1.0.dmg` is packaged.
+- Public DMG: `HoverClick-1.2.0.dmg`
+- Public DMG SHA-256: computed during the v1.2.0 release workflow after `HoverClick-1.2.0.dmg` is packaged.
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
 - Generated bundle icon: `Resources/HoverClick.icns`
 - DMG volume icon source asset: `assets/HoverClickDMGVolumeIcon.png`
@@ -41,8 +41,8 @@
 
 ## Current Distribution
 
-- HoverClick is distributed from GitHub. The latest public release is `v1.0.0` / build `39`.
-- The current public release DMG is `HoverClick-1.0.0.dmg`.
+- HoverClick is distributed from GitHub. The latest public release is `v1.2.0` / build `42`.
+- The current public release DMG is `HoverClick-1.2.0.dmg`.
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a release-publishing path by itself.
 - The post-v0.5.0 DMG packaging polish batch stages `HoverClick.app`, adds an `Applications` symlink, uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns`, sets and verifies the custom DMG volume icon flag with command-line tooling, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for non-GUI verification.
@@ -50,7 +50,8 @@
 - v0.8.0 / build 37 is the previous public release before v0.9.0.
 - v0.9.0 / build 38 is the previous public release before v1.0.0.
 - v1.0.0 / build 39 is the stable public 1.0 release, superseded by v1.1.0.
-- v1.1.0 / build 40 is the current public release.
+- v1.1.0 / build 40 is a previous public release, superseded by v1.1.1 and then v1.2.0.
+- v1.2.0 / build 42 is the current public release.
 - The v0.9.0 DMG and appcast were published and manually validated.
 - DMG Finder window background and icon layout are not automated. They remain future optional polish unless a deterministic non-GUI implementation is proven safe.
 - There is no Mac App Store release or signed `.pkg` installer.
@@ -75,9 +76,9 @@
 
 ## Current Appcast Workflow State
 
-- v1.1.0 release publishing uses tag `v1.1.0`, DMG asset `HoverClick-1.1.0.dmg`, and a GitHub Pages appcast item for version `1.1.0` / build `40`.
-- The live appcast is verified during the v1.1.0 release workflow for version `1.1.0` / build `40`, the exact GitHub Release DMG URL, and Sparkle signature/enclosure metadata.
-- The v1.1.0 public DMG and appcast are the current released updater baseline after release workflow publication.
+- v1.2.0 release publishing uses tag `v1.2.0`, DMG asset `HoverClick-1.2.0.dmg`, and a GitHub Pages appcast item for version `1.2.0` / build `42`.
+- The live appcast is verified during the v1.2.0 release workflow for version `1.2.0` / build `42`, the exact GitHub Release DMG URL, and Sparkle signature/enclosure metadata.
+- The v1.2.0 public DMG and appcast are the current released updater baseline after release workflow publication.
 - GitHub Pages is configured from the `gh-pages` branch root.
 - Recommended hosting strategy: use a dedicated `gh-pages` branch with `appcast.xml` at the branch root so `https://gergoterek.github.io/HoverClick/appcast.xml` is stable while DMG payloads remain GitHub Release assets.
 - `docs/APPCAST_RELEASE_WORKFLOW.md` records the release workflow, hosting strategy, appcast safety gates, and stop conditions.
@@ -160,6 +161,48 @@
 - Public release publishing uses tag `v1.2.0`, DMG asset `HoverClick-1.2.0.dmg`, and a GitHub Pages appcast item for version `1.2.0` / build `42`.
 - No tooltips, CDMBA, Click-Time Override, Hover Assist, broad Excluded Apps UI, or app picker UI are part of v1.2.0.
 - No Hover Click Assist, synthetic click, event replay, delayed click delivery, cursor movement, app identity change, bundle identifier change, signing identity change, or Sparkle key change is part of v1.2.0.
+
+## Tooltip Incident (v1.2.0 Cycle)
+
+During the v1.2.0 development cycle, a tooltip branch `ui-menu-tooltips` was attempted and failed manual testing. Its commits were reverted and the failed tooltip feature was never merged into `main`, the `v1.2.0` tag, or the released DMG.
+
+Failed branch: `ui-menu-tooltips`
+
+Failed commits:
+- `5f12abc` — ui: add and update menu item tooltips
+- `4fe9e91` — fix: re-register tooltip in viewDidMoveToWindow for custom menu rows
+
+Revert commit on the branch: `8103ab8ba1fb1f4e44a5d1b6bbcf1840458c8b6b`
+
+Audit conclusion: tooltips did NOT ship in v1.2.0.
+
+Important distinction: old pre-existing `.toolTip` scaffold exists in `HoverClick.mm`, but the failed tooltip feature strings and `viewDidMoveToWindow` fix were not merged into `main`, the `v1.2.0` tag, or the released DMG.
+
+Hard rules:
+- Do not merge `ui-menu-tooltips` into `main` or any stable branch.
+- Do not use `ui-menu-tooltips` as the base for v1.3 tooltip work.
+- Future tooltip work must start on a new forward research/prototype branch (`research-menu-tooltips`).
+- Tooltip redesign is forward research/prototype work for v1.3 or later, not a continuation of the failed branch.
+
+## v1.3 Planning Direction
+
+v1.3 work begins from `post-v1.2.0-cleanup` and `main` at `86dc4f3bccea740d1795346e9fb264c1b1590c66`.
+
+Intended branch order for the v1.3 cycle:
+
+1. `post-v1.2.0-cleanup` — post-release cleanup, docs refresh, branch cleanup recommendation (this branch)
+2. `feature-compatibility-bypass-followup` — Maccy / Excluded Apps compatibility follow-up; no broad Excluded Apps UI or app picker UI unless explicitly justified by a concrete compatibility gap
+3. `research-menu-tooltips` — tooltip redesign as a proper forward research/prototype branch; not a continuation of the failed `ui-menu-tooltips` branch
+
+Deferred from v1.2.0 (remain out of scope for early v1.3 unless explicitly re-scoped by the user):
+
+- CDMBA / Click-Time Override
+- Hover Click Assist
+- Broad Excluded Apps UI or app picker UI
+- Arrow/chevron resizing
+- Scroll Focus
+- Background drag / text-drag fixes
+- Finder selection hacks
 
 ## v1.0 Readiness Planning State
 
