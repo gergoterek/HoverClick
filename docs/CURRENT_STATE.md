@@ -184,6 +184,16 @@ Hard rules:
 - Future tooltip work must start on a new forward research/prototype branch (`research-menu-tooltips`).
 - Tooltip redesign is forward research/prototype work for v1.3 or later, not a continuation of the failed branch.
 
+### Tooltip baseline audit (feature-excluded-apps, 2026-06-25)
+
+A focused regression audit compared tooltip-related code on `feature-excluded-apps` against `main` (`e2c1b9f`). Findings:
+
+- The tooltip infrastructure is byte-for-byte equivalent between `main` and the branch. The branch deleted no `.toolTip` assignment, no tracking area, and no `item.view` wiring; it only *added* `.toolTip` strings (`excludedAppsItem`, the `Ignored apps` info row, each user app row, and `Configure for...`).
+- `feature-excluded-apps` therefore did NOT cause a tooltip regression. The reported "all tooltips disappeared" reflects the pre-existing baseline, not a new break.
+- Baseline reality: in-menu rows are custom `NSView`-backed (`HoverClickMenuRowView`). Their tooltip strings are applied with `rowView.toolTip = item.toolTip` at build time, before the row view is attached to a window, so the internal `addToolTipRect:owner:userData:` registers against no window and never fires. NSMenu's modal tracking run loop also does not drive `NSView` tooltip display for menu-item views. The structurally correct fix (re-register in `viewDidMoveToWindow` once the row has a real window) was tried on `ui-menu-tooltips` (`4fe9e91`) and reverted (`135a786`), so it is intentionally NOT present on `main` or this branch. Net effect: native in-menu row tooltips do not visibly appear.
+- The status-bar icon tooltip (`NSStatusBarButton`, `button.toolTip`) is a normal control outside NSMenu and is unaffected by this limitation.
+- No source change was made by the audit. Making custom in-menu tooltips visibly fire is the job of the future `research-menu-tooltips` effort, not this branch. Claiming a fix here without `research-menu-tooltips` would be pretending native tooltips work when they do not.
+
 ## v1.3 Planning Direction
 
 Main baseline: `5dd94463` (after `feature-compatibility-bypass-followup` was merged).
@@ -216,7 +226,7 @@ Implemented Option D (Hybrid MVP), then revised to a LinearMouse-style app list 
 - Built-in Maccy bypass (`isBuiltInCompatibilityBypassApplication:`) remains always active and internal. It is no longer shown as a fixed visible menu row.
 - User-configurable excluded apps list stored as `NSArray<NSString *>` in `NSUserDefaults` key `excludedAppBundleIDs`.
 - `isExcludedApplication:` checks built-in Maccy first, then consults user list by bundle ID.
-- `Excluded Apps` submenu (Functions section, after Bypass Key) now shows: one compact disabled info row (`Ignored apps`, smaller secondary font, non-clickable, with tooltip `Click an app to remove it`), a separator, then user-added apps by friendly display name (each clickable to remove) or `No apps added`, a separator, then `Configure for...`.
+- `Excluded Apps` submenu (Functions section, after Bypass Key) now shows: one compact disabled info row (`Ignored apps`, smaller secondary font, non-clickable; its `NSMenuItem.toolTip` is set to `Click an app to remove it` but, like all in-menu custom-row tooltips, does not visibly appear under the current baseline — see Tooltip baseline audit above), a separator, then user-added apps by friendly display name (each clickable to remove) or `No apps added`, a separator, then `Configure for...`.
 - The custom menu rows track their own hover highlight. Because a closing row dismisses the menu with `cancelTracking`, a parent row (e.g. `Excluded Apps`) highlighted to open its submenu never receives `mouseExited:` and would stay stuck highlighted on the next open. `menuWillOpen:` now calls `resetMenuRowHighlightsInMenu:` to recursively clear the highlight flag on every `HoverClickMenuRowView` so the menu always shows a clean state.
 - `Configure for...` (`chooseExcludedApp:`) opens a dedicated app selector — an `NSAlert` with an `NSPopUpButton` listing installed apps by display name and icon, sorted alphabetically, deduplicated by bundle ID. It is a list picker, not a Finder/`NSOpenPanel` file browser. Presentation is deferred to the next run-loop turn via `dispatch_async(dispatch_get_main_queue(), ...)` so the status-bar menu finishes dismissing before the alert appears (fix for menu/selector overlap bug).
 - Installed apps are enumerated (`installedApplicationsForSelector`) from standard locations only: `/Applications`, `/Applications/Utilities`, `/System/Applications`, `/System/Applications/Utilities`, and `~/Applications` (shallow, no full-disk scan). Display name from `CFBundleDisplayName`/`CFBundleName`/file name; bundle ID from `NSBundle bundleWithURL:`; icon from `NSWorkspace iconForFile:`.
