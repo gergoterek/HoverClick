@@ -563,10 +563,10 @@ static CGFloat HoverClickCalculatedSubmenuWidth(NSArray<NSString *> *titles) {
             maxTitleWidth = w;
         }
     }
-    // All submenu rows carry an icon, so titleX = HoverClickMenuRowTextX.
-    // rowWidth = titleText + safetyPad + titleX + accessory + trailing
+    // Submenu child rows have no icon: titleX = HoverClickMenuLeadingInset.
+    // rowWidth = titleText + safetyPad + leadingInset + accessory + trailing
     CGFloat width = maxTitleWidth + HoverClickSubmenuSafetyPadding
-                    + HoverClickMenuRowTextX
+                    + HoverClickMenuLeadingInset
                     + HoverClickMenuRightAccessoryWidth
                     + HoverClickMenuTrailingInset;
     if (width > HoverClickMenuContentWidth) {
@@ -582,9 +582,13 @@ static void HoverClickUseCustomSubmenuRow(NSMenuItem *item,
                                            BOOL showsStateView,
                                            BOOL closesMenuAfterAction,
                                            CGFloat rowWidth) {
-    NSImage *image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
+    // Submenu child rows use a compact, icon-less layout so the column width
+    // follows the title text rather than reserving a root-menu-style icon slot.
+    // symbolName/fallbackSymbolName are accepted but unused; reserved for future
+    // per-item icon support.
+    (void)symbolName; (void)fallbackSymbolName;
     HoverClickMenuRowView *rowView = [[HoverClickMenuRowView alloc] initWithMenuItem:item
-                                                                               image:image
+                                                                               image:nil
                                                                       accessoryTitle:accessoryTitle
                                                                       showsStateView:showsStateView
                                                                             rowWidth:rowWidth];
