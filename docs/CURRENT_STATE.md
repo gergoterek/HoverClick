@@ -186,19 +186,32 @@ Hard rules:
 
 ## v1.3 Planning Direction
 
-v1.3 work begins from `post-v1.2.0-cleanup` and `main` at `86dc4f3bccea740d1795346e9fb264c1b1590c66`.
+Main baseline: `5dd94463` (after `feature-compatibility-bypass-followup` was merged).
 
-Intended branch order for the v1.3 cycle:
+Completed v1.3 branches:
+1. `post-v1.2.0-cleanup` — merged. Post-release cleanup, docs refresh, branch cleanup recommendation.
+2. `feature-compatibility-bypass-followup` — merged at `5dd9446`. Refactored Maccy bypass into `isCompatibilityBypassApplication:`; added README note.
+3. `plan-v1.3-excluded-apps` — planning only. See `docs/V1.3_EXCLUDED_APPS_PLAN.md`.
 
-1. `post-v1.2.0-cleanup` — post-release cleanup, docs refresh, branch cleanup recommendation (this branch)
-2. `feature-compatibility-bypass-followup` — Maccy / Excluded Apps compatibility follow-up; no broad Excluded Apps UI or app picker UI unless explicitly justified by a concrete compatibility gap
-3. `research-menu-tooltips` — tooltip redesign as a proper forward research/prototype branch; not a continuation of the failed `ui-menu-tooltips` branch
+Next v1.3 implementation branch:
+4. `feature-excluded-apps` — user-configurable Excluded Apps list. See `docs/V1.3_EXCLUDED_APPS_PLAN.md` for full scope, UI proposal, data model, safety constraints, and manual test plan.
 
-Deferred from v1.2.0 (remain out of scope for early v1.3 unless explicitly re-scoped by the user):
+User requirement (explicit): Excluded Apps must be included in v1.3, not only Maccy compatibility.
 
+Excluded Apps MVP scope (Option D — Hybrid):
+- Maccy remains a built-in compatibility bypass (always active, not user-removable).
+- User can add/remove apps by bundle ID via a new `Excluded Apps` submenu in Functions.
+- Bundle IDs stored in `NSUserDefaults` under `excludedAppBundleIDs`.
+- No broad app picker UI in MVP; app picker deferred to a later cycle.
+- Diagnostics show built-in bypass list, user list, and last excluded-app decision.
+
+Later v1.3 branches (order after feature-excluded-apps):
+5. `research-menu-tooltips` — tooltip redesign as a proper forward research/prototype branch; not a continuation of the failed `ui-menu-tooltips` branch.
+
+Explicitly deferred from early v1.3:
 - CDMBA / Click-Time Override
 - Hover Click Assist
-- Broad Excluded Apps UI or app picker UI
+- App picker UI (deferred from Excluded Apps MVP; future cycle)
 - Arrow/chevron resizing
 - Scroll Focus
 - Background drag / text-drag fixes
