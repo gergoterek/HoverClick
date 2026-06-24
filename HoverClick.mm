@@ -1155,6 +1155,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     bypassOffItem.tag = HoverClickBypassKeyOff;
     HoverClickUseNonClosingSubmenuRow(bypassOffItem, @"xmark.circle", @"minus.circle", YES, bypassWidth);
     [bypassMenu addItem:bypassOffItem];
+    [bypassMenu addItem:[NSMenuItem separatorItem]];
 
     NSMenuItem *bypassShiftItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Shift")
                                                              action:@selector(selectBypassKey:)
@@ -2834,6 +2835,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (self.bypassKeyItem != nil && self.bypassKeyItem.submenu != nil) {
         for (NSMenuItem *bypassItem in self.bypassKeyItem.submenu.itemArray) {
+            if (bypassItem.isSeparatorItem) continue;
             bypassItem.state = (bypassItem.tag == _bypassKey) ? NSControlStateValueOn : NSControlStateValueOff;
             HoverClickSyncMenuRowView(bypassItem);
         }
