@@ -23,23 +23,25 @@ static NSString * const HoverClickFallbackBuildVersion = @"unknown";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
 static NSString * const HoverClickLaunchAtLoginOnboardingPromptShownDefaultsKey = @"launchAtLoginOnboardingPromptShown";
 static NSString * const HoverClickStableHelp = @"HoverClick - Windows-like click focus for macOS.";
-static NSString * const HoverClickLeftClickFocusHelp = @"Activates a background window before passing through your original left click.";
-static NSString * const HoverClickRightClickFocusHelp = @"Activates a background window before opening its normal right-click menu.";
-static NSString * const HoverClickAccessibilityStatusHelp = @"Shows whether macOS currently allows HoverClick to inspect and focus windows.";
-static NSString * const HoverClickRefreshAccessibilityHelp = @"Checks whether Accessibility permission is now granted and starts click focus when possible.";
-static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Opens the macOS Accessibility privacy pane so you can review HoverClick access.";
-static NSString * const HoverClickLaunchAtLoginHelp = @"Starts HoverClick automatically after you log in, without changing click behavior.";
-static NSString * const HoverClickVerboseDiagnosticsHelp = @"Adds more detailed troubleshooting logs while HoverClick is running.";
-static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copies the current HoverClick status summary to the clipboard.";
-static NSString * const HoverClickCheckForUpdatesHelp = @"Checks for HoverClick updates now using Sparkle's visible update flow.";
-static NSString * const HoverClickAutomaticUpdateChecksHelp = @"Lets Sparkle periodically look for updates. Downloads and installs still require user action.";
+static NSString * const HoverClickLeftClickFocusHelp = @"Bring a background window to the front when you left-click it.";
+static NSString * const HoverClickRightClickFocusHelp = @"Bring a background window to the front with right-click before showing the context menu.";
+static NSString * const HoverClickBypassKeyHelp = @"Temporarily bypass HoverClick while holding the selected key.";
+static NSString * const HoverClickBypassKeyOffHelp = @"No modifier bypass is active.";
+static NSString * const HoverClickBypassKeyShiftHelp = @"Hold Shift while clicking to bypass HoverClick.";
+static NSString * const HoverClickBypassKeyFnHelp = @"Hold Fn/Globe while clicking to bypass HoverClick.";
+static NSString * const HoverClickAccessibilityStatusHelp = @"HoverClick needs Accessibility permission to focus background windows.";
+static NSString * const HoverClickRefreshAccessibilityHelp = @"Re-check macOS Accessibility permission status.";
+static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Open macOS Privacy & Security settings for Accessibility permission.";
+static NSString * const HoverClickLaunchAtLoginHelp = @"Start HoverClick automatically when you log in.";
+static NSString * const HoverClickCheckForUpdatesHelp = @"Look for a new HoverClick version.";
+static NSString * const HoverClickAutomaticUpdateChecksHelp = @"Allow HoverClick to periodically check for updates.";
+static NSString * const HoverClickCopyDiagnosticsSummaryHelp = @"Copy current HoverClick status and recent click decisions to the clipboard.";
+static NSString * const HoverClickVerboseDiagnosticsHelp = @"Include more detailed troubleshooting information in diagnostics.";
 static NSString * const HoverClickAboutHelp = @"Shows HoverClick version and bundle identity.";
-static NSString * const HoverClickGitHubHelp = @"Opens the HoverClick GitHub repository.";
-static NSString * const HoverClickContactHelp = @"Opens a new email addressed to HoverClick support.";
-static NSString * const HoverClickReleaseNotesHelp = @"Opens the HoverClick GitHub releases page.";
-static NSString * const HoverClickUninstallHelp = @"Shows safe manual uninstall instructions.";
-static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
-static NSString * const HoverClickBypassKeyHelp = @"When held at click time, this modifier key makes HoverClick skip its focus behavior and return the original event unchanged.";
+static NSString * const HoverClickGitHubHelp = @"Open the HoverClick GitHub page.";
+static NSString * const HoverClickContactHelp = @"Open contact/support information.";
+static NSString * const HoverClickReleaseNotesHelp = @"Open the latest HoverClick release notes.";
+static NSString * const HoverClickUninstallHelp = @"Open instructions for removing HoverClick.";
 static const NSInteger HoverClickBypassKeyOff = 0;
 static const NSInteger HoverClickBypassKeyShift = 2;
 static const NSInteger HoverClickBypassKeyFn = 3;
@@ -1153,6 +1155,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     bypassOffItem.target = self;
     bypassOffItem.enabled = YES;
     bypassOffItem.tag = HoverClickBypassKeyOff;
+    bypassOffItem.toolTip = HoverClickBypassKeyOffHelp;
     HoverClickUseNonClosingSubmenuRow(bypassOffItem, @"xmark.circle", @"minus.circle", YES, bypassWidth);
     [bypassMenu addItem:bypassOffItem];
     [bypassMenu addItem:[NSMenuItem separatorItem]];
@@ -1163,6 +1166,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     bypassShiftItem.target = self;
     bypassShiftItem.enabled = YES;
     bypassShiftItem.tag = HoverClickBypassKeyShift;
+    bypassShiftItem.toolTip = HoverClickBypassKeyShiftHelp;
     HoverClickUseNonClosingSubmenuRow(bypassShiftItem, @"shift", @"arrow.up", YES, bypassWidth);
     [bypassMenu addItem:bypassShiftItem];
 
@@ -1172,6 +1176,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     bypassFnItem.target = self;
     bypassFnItem.enabled = YES;
     bypassFnItem.tag = HoverClickBypassKeyFn;
+    bypassFnItem.toolTip = HoverClickBypassKeyFnHelp;
     HoverClickUseNonClosingSubmenuRow(bypassFnItem, @"globe", @"keyboard", YES, bypassWidth);
     [bypassMenu addItem:bypassFnItem];
 
@@ -1400,7 +1405,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     quitItem.enabled = YES;
     quitItem.indentationLevel = 0;
     quitItem.state = NSControlStateValueOff;
-    quitItem.toolTip = HoverClickQuitHelp;
     HoverClickUseClosingPlainMenuRow(quitItem, @"\u2318Q");
     if ([quitItem.view isKindOfClass:[HoverClickMenuRowView class]]) {
         ((HoverClickMenuRowView *)quitItem.view).useSubtleAccessory = YES;
