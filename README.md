@@ -54,6 +54,7 @@ HoverClick runs as a status-bar item with no Dock icon. The menu is organized in
 - **Not visible in Accessibility settings:** Confirm you launched the signed `.app` bundle, not the raw executable. Keep the app in a stable location such as Applications.
 - **Context menus:** **Right Click Focus** is off by default. When on, HoverClick focuses the target first and returns the original right-click unchanged.
 - **Launch at Login not working:** macOS may require user approval. Check **Permissions** > **Launch at Login** status.
+- **Maccy compatibility:** HoverClick automatically skips its focus behavior when you click a Maccy history item, so the paste always goes to the correct target app.
 
 ## Privacy and Safety
 

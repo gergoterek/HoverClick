@@ -829,7 +829,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
 - (BOOL)isChromeApplication:(NSRunningApplication *)app;
-- (BOOL)isMaccyApplication:(NSRunningApplication *)app;
+- (BOOL)isCompatibilityBypassApplication:(NSRunningApplication *)app;
 - (NSString *)browserContentDiagnosticNoteForTargetApp:(NSRunningApplication *)targetApp
                                                appName:(NSString *)appName
                                                   role:(NSString *)role
@@ -2897,12 +2897,18 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return [app.bundleIdentifier isEqualToString:HoverClickChromeBundleID];
 }
 
-- (BOOL)isMaccyApplication:(NSRunningApplication *)app {
+// Returns YES for apps that must receive the original click without any HoverClick
+// focus/raise/activate work. Maccy is a clipboard manager: clicking a history item
+// must paste into the previously active app, so focus-steal would break that paste.
+- (BOOL)isCompatibilityBypassApplication:(NSRunningApplication *)app {
     NSString *bundleID = app.bundleIdentifier;
     if (bundleID.length > 0) {
-        return [bundleID isEqualToString:HoverClickMaccyBundleID];
+        if ([bundleID isEqualToString:HoverClickMaccyBundleID]) return YES;
+    } else {
+        // Name fallback for apps that report an empty bundle ID at click time.
+        if ([app.localizedName isEqualToString:@"Maccy"]) return YES;
     }
-    return [app.localizedName isEqualToString:@"Maccy"];
+    return NO;
 }
 
 - (NSString *)browserContentDiagnosticNoteForTargetApp:(NSRunningApplication *)targetApp
@@ -3250,7 +3256,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateRecentDecisionForSequenceID:sequenceID key:@"targetBundleID" value:targetBundleID];
     [self updateRecentDecisionForSequenceID:sequenceID key:@"targetIsChrome" value:targetIsChrome ? @"yes" : @"no"];
 
-    if ([self isMaccyApplication:targetApp]) {
+    if ([self isCompatibilityBypassApplication:targetApp]) {
         _lastBypassDecision = @"bypassed-maccy";
         HoverClickLog("HoverClick: %s #%llu excluded app Maccy bundleID=%s; skipping focus/raise/activate; original event returned unchanged",
                       trigger, sequenceID, targetBundleID.UTF8String);
