@@ -332,7 +332,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     _titleField = [NSTextField labelWithString:menuItem.title ?: @""];
     _titleField.frame = NSMakeRect(titleX,
                                    2.0,
-                                   rightAccessoryX - titleX - HoverClickMenuIconTitleSpacing,
+                                   rightAccessoryX - titleX,
                                    18.0);
     _titleField.font = [NSFont menuFontOfSize:0.0];
     _titleField.lineBreakMode = NSLineBreakByTruncatingTail;
@@ -375,7 +375,7 @@ static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, N
     CGFloat rightAccessoryX = w - HoverClickMenuTrailingInset - HoverClickMenuRightAccessoryWidth;
     CGFloat titleX = (_iconView != nil) ? HoverClickMenuRowTextX : HoverClickMenuLeadingInset;
     _titleField.frame = NSMakeRect(titleX, 2.0,
-                                   rightAccessoryX - titleX - HoverClickMenuIconTitleSpacing, 18.0);
+                                   rightAccessoryX - titleX, 18.0);
     if (_accessoryField != nil) {
         _accessoryField.frame = NSMakeRect(rightAccessoryX - 36.0, 2.0,
                                            HoverClickMenuRightAccessoryWidth + 36.0, 18.0);
@@ -564,10 +564,9 @@ static CGFloat HoverClickCalculatedSubmenuWidth(NSArray<NSString *> *titles) {
         }
     }
     // All submenu rows carry an icon, so titleX = HoverClickMenuRowTextX.
-    // rowWidth = titleText + safetyPad + titleX + title-to-accessory gap + accessory + trailing
+    // rowWidth = titleText + safetyPad + titleX + accessory + trailing
     CGFloat width = maxTitleWidth + HoverClickSubmenuSafetyPadding
                     + HoverClickMenuRowTextX
-                    + HoverClickMenuIconTitleSpacing
                     + HoverClickMenuRightAccessoryWidth
                     + HoverClickMenuTrailingInset;
     if (width > HoverClickMenuContentWidth) {
