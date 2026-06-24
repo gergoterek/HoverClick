@@ -212,18 +212,18 @@ Explicitly deferred from early v1.3:
 
 Branch: `feature-excluded-apps` — implementation in progress; not yet merged.
 
-Implemented Option D (Hybrid MVP) plus a native app chooser follow-up:
-- Built-in Maccy bypass (`isBuiltInCompatibilityBypassApplication:`) remains always active, non-removable.
+Implemented Option D (Hybrid MVP), then revised to a LinearMouse-style app list selector:
+- Built-in Maccy bypass (`isBuiltInCompatibilityBypassApplication:`) remains always active and internal. It is no longer shown as a fixed visible menu row.
 - User-configurable excluded apps list stored as `NSArray<NSString *>` in `NSUserDefaults` key `excludedAppBundleIDs`.
 - `isExcludedApplication:` checks built-in Maccy first, then consults user list by bundle ID.
-- `Excluded Apps` submenu added to the Functions section (after Bypass Key, before the separator).
-- Submenu shows `Maccy (built-in)` as a non-interactive entry, then user-added bundle IDs (each clickable to remove), then `Choose Application...` and `Add by Bundle ID...`.
-- `Choose Application...` opens an `NSOpenPanel` app chooser starting in `/Applications`; only `.app` bundles are selectable (folders stay navigable via `panel:shouldEnableURL:`); the chosen app's bundle ID is read with `NSBundle bundleWithURL:` and added through the shared save path.
-- `Add by Bundle ID...` opens an `NSAlert` text-field dialog (renamed from `Add App...`) as a manual fallback; trims whitespace; rejects empty, duplicate, and built-in entries; saves to `NSUserDefaults` and rebuilds the submenu.
-- The manual input field uses an `HoverClickEditableTextField` (NSTextField subclass) that forwards Cmd+V/C/X/A through the responder chain, restoring keyboard paste in the accessory field even though the accessory app has no Edit menu. Right-click Paste is unaffected.
-- Add validation/save is centralized in `addExcludedBundleID:`; both the chooser and the manual dialog reuse it.
+- `Excluded Apps` submenu (Functions section, after Bypass Key) now shows: user-added apps by friendly display name (each clickable to remove) or `No apps added`, a separator, then `Configure for...`.
+- `Configure for...` (`chooseExcludedApp:`) opens a dedicated app selector — an `NSAlert` with an `NSPopUpButton` listing installed apps by display name and icon, sorted alphabetically, deduplicated by bundle ID. It is a list picker, not a Finder/`NSOpenPanel` file browser.
+- Installed apps are enumerated (`installedApplicationsForSelector`) from standard locations only: `/Applications`, `/Applications/Utilities`, `/System/Applications`, `/System/Applications/Utilities`, and `~/Applications` (shallow, no full-disk scan). Display name from `CFBundleDisplayName`/`CFBundleName`/file name; bundle ID from `NSBundle bundleWithURL:`; icon from `NSWorkspace iconForFile:`.
+- Selecting an app saves its bundle ID via the shared `addExcludedBundleID:`, which rejects missing bundle IDs and duplicates, and treats Maccy as already-handled (shows a friendly message rather than adding it).
+- Stored bundle IDs are shown in the submenu by friendly name via `displayNameForExcludedBundleID:` (resolved with `NSWorkspace URLForApplicationWithBundleIdentifier:`); if the app is not installed, the bundle ID is shown as a fallback.
+- `Choose Application...` (NSOpenPanel), `Add by Bundle ID...`, the `HoverClickEditableTextField` subclass, the `panel:shouldEnableURL:` delegate, and the visible `Maccy (built-in)` row were all removed.
 - Remove action updates `NSUserDefaults` and rebuilds the submenu without restart.
-- Diagnostics summary adds `Excluded Apps (built-in): Maccy (org.p0deje.Maccy)` and `Excluded Apps (user list): <count> app(s): [bundleIDs]` lines.
+- Diagnostics summary now shows `Excluded Apps (built-in compatibility): Maccy (org.p0deje.Maccy) installed|not installed` and `Excluded Apps (user list): <count> app(s): [bundleIDs]`.
 - Last bypass decision: `bypassed-maccy` for built-in Maccy; `excluded-app:<bundleID>` for user-added entries.
 - Persistence key/format unchanged (`excludedAppBundleIDs`, `NSArray<NSString *>`); no migration or reset.
 - Event tap mask, normal event pass-through, and all safety constraints unchanged.

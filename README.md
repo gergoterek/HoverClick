@@ -55,7 +55,7 @@ HoverClick runs as a status-bar item with no Dock icon. The menu is organized in
 - **Context menus:** **Right Click Focus** is off by default. When on, HoverClick focuses the target first and returns the original right-click unchanged.
 - **Launch at Login not working:** macOS may require user approval. Check **Permissions** > **Launch at Login** status.
 - **Maccy compatibility:** HoverClick automatically skips its focus behavior when you click a Maccy history item, so the paste always goes to the correct target app.
-- **Excluded Apps:** Open **Excluded Apps** in the menu to exclude any app from HoverClick focus behavior. Use **Choose Application...** to pick an installed app, or **Add by Bundle ID...** to type a bundle ID. Maccy is always excluded as a built-in default.
+- **Excluded Apps:** Open **Excluded Apps** > **Configure for...** to pick an installed app from a list and exclude it from HoverClick focus behavior. Excluded apps appear by name and can be removed by clicking them. Maccy is always handled automatically for clipboard compatibility.
 
 ## Privacy and Safety
 
