@@ -158,6 +158,33 @@
 | Bypass Key does not react to mouse movement | Move the pointer while holding Shift or Fn with Bypass Key set. | No bypass path is triggered by mouse movement; the event tap observes only `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`; the event tap mask is unchanged. |
 | Bypass Key does not introduce Option, Control, or Caps Lock options | Inspect `HoverClick.mm` and the Bypass Key submenu. | `Option`, `Control`, and `Caps Lock` do not appear as Bypass Key options in the submenu or in any bypass flag check. |
 
+## Excluded Apps (v1.3 feature-excluded-apps)
+
+Manual Finder UI validation -- not run automatically. All 20 tests below must pass before the branch is merge-ready.
+
+| # | Test | Method | Expected Result |
+| --- | --- | --- | --- |
+| 1 | App launches | Run `scripts/run-app.sh`. | Menubar icon visible; no crash. |
+| 2 | Accessibility permission stable | Open the menu after launch. | `Access` > `Permissions` shows `Accessibility: Granted`; no re-prompt. |
+| 3 | Excluded Apps submenu present | Open the HoverClick status menu. | `Excluded Apps` submenu appears in the HoverClick (Functions) section, after `Bypass Key` and before the separator. |
+| 4 | Maccy built-in entry visible and non-interactive | Open the `Excluded Apps` submenu. | `Maccy (built-in)` appears as a non-clickable/disabled entry at the top. |
+| 5 | Empty state when no user apps | Open the `Excluded Apps` submenu before adding any app. | Only `Maccy (built-in)`, `No apps added`, and `Add App...` are shown; no user-added entries. |
+| 6 | Add App... opens input dialog | Click `Add App...` in the submenu. | An `NSAlert`-style dialog appears with a title, message, text field, and `Add` / `Cancel` buttons. |
+| 7 | Empty input is rejected | Click `Add App...`, leave the text field empty, and click `Add`. | A follow-up alert says the bundle ID is required; no entry is added; the submenu is unchanged. |
+| 8 | Adding a valid bundle ID works | Click `Add App...`, enter `com.apple.finder`, click `Add`. | `com.apple.finder` appears in the submenu; dialog closes; menu is rebuilt. |
+| 9 | Duplicate bundle ID is rejected | Click `Add App...`, enter `com.apple.finder` again, click `Add`. | An alert says the bundle ID is already in the list; no duplicate entry is added. |
+| 10 | Bundle ID persists after relaunch | Add `com.apple.finder`, quit HoverClick (Cmd+Q), relaunch via `scripts/run-app.sh`, open the submenu. | `com.apple.finder` is still shown in the submenu. |
+| 11 | Removing a user-added entry works | Click `com.apple.finder` in the submenu. | The entry disappears from the submenu; the menu is rebuilt; the submenu shows `No apps added`. |
+| 12 | Removed entry gone after relaunch | Remove `com.apple.finder`, quit, relaunch, open the submenu. | `com.apple.finder` is not present; only `Maccy (built-in)`, `No apps added`, and `Add App...`. |
+| 13 | Excluded app click bypasses focus | Add `com.apple.finder` to the user list; with Left Click Focus ON, click a background Finder window. | Finder is NOT focused before click delivery; original click returns unchanged; no AX raise/activate attempt; logs show excluded-app bypass; diagnostics show `Last bypass decision: excluded-app:com.apple.finder`. |
+| 14 | Normal non-excluded app still focuses | With `com.apple.finder` excluded and a Chrome window in the background, click the Chrome window. | Chrome is focused normally before click delivery; diagnostics show normal focus path, not bypass. |
+| 15 | Left Click Focus OFF is not overridden by excluded apps | With Left Click Focus OFF and `com.apple.finder` excluded, click a background Finder window. | No focus attempt; click passes through unchanged; no excluded-app diagnostic decision. |
+| 16 | Right Click Focus OFF with excluded app | With Right Click Focus OFF, right-click a background excluded-app window. | Right-click passes through unchanged; no focus attempt. |
+| 17 | Drag still works | With an excluded app in the list, drag a window or text. | Drag behavior unchanged; no interference from excluded-apps logic. |
+| 18 | Double-click still works | Double-click a file in Finder (excluded). | Double-click works natively; no focus/raise from HoverClick. |
+| 19 | Copy Diagnostics Summary includes excluded apps | After adding a bundle ID, use `Info` > `Diagnostics` > `Copy Summary`. | Summary includes `Excluded Apps (built-in): Maccy (org.p0deje.Maccy)` and `Excluded Apps (user list): 1 app(s): com.apple.finder` (or whichever bundle IDs are in the list). |
+| 20 | Maccy bypass decision in diagnostics | If Maccy is installed, click a Maccy history item, then copy diagnostics. | `Last bypass decision: bypassed-maccy`; Maccy entry is not in the user list; built-in Maccy shows in diagnostics. |
+
 ## Excluded Apps / Maccy Compatibility
 
 Manual Finder UI validation -- not run automatically.

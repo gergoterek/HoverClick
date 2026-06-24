@@ -18,6 +18,7 @@ static NSString * const HoverClickBundleID = @"com.gergoterek.HoverClick";
 static NSString * const HoverClickFinderBundleID = @"com.apple.finder";
 static NSString * const HoverClickChromeBundleID = @"com.google.Chrome";
 static NSString * const HoverClickMaccyBundleID = @"org.p0deje.Maccy";
+static NSString * const HoverClickExcludedAppsDefaultsKey = @"excludedAppBundleIDs";
 static NSString * const HoverClickFallbackShortVersion = @"0.0.0";
 static NSString * const HoverClickFallbackBuildVersion = @"unknown";
 static NSString * const HoverClickRightClickFocusDefaultsKey = @"rightClickFocusEnabled";
@@ -40,6 +41,8 @@ static NSString * const HoverClickReleaseNotesHelp = @"Opens the HoverClick GitH
 static NSString * const HoverClickUninstallHelp = @"Shows safe manual uninstall instructions.";
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static NSString * const HoverClickBypassKeyHelp = @"When held at click time, this modifier key makes HoverClick skip its focus behavior and return the original event unchanged.";
+static NSString * const HoverClickExcludedAppsHelp = @"Apps in this list bypass HoverClick focus behavior. When you click a window belonging to an excluded app, HoverClick skips focus, raise, and activation and returns your click unchanged.";
+static NSString * const HoverClickAddExcludedAppHelp = @"Add an app to the excluded list by entering its bundle ID, for example: com.runningwithcrayons.Alfred";
 static const NSInteger HoverClickBypassKeyOff = 0;
 static const NSInteger HoverClickBypassKeyShift = 2;
 static const NSInteger HoverClickBypassKeyFn = 3;
@@ -814,6 +817,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 @property(nonatomic, strong) NSMenuItem *automaticUpdateChecksItem;
 @property(nonatomic, strong) NSMenuItem *diagnosticsCopyItem;
 @property(nonatomic, strong) NSMenuItem *bypassKeyItem;
+@property(nonatomic, strong) NSMenuItem *excludedAppsItem;
 @property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
 @property(nonatomic, strong) NSAlert *accessibilityOnboardingAlert;
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy;
@@ -828,8 +832,13 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)handleEventTapCallbackWithMissingAccessibilityForType:(CGEventType)type;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
+- (NSArray<NSString *> *)userExcludedBundleIDs;
+- (void)buildExcludedAppsSubmenu;
+- (void)addExcludedApp:(id)sender;
+- (void)removeExcludedApp:(id)sender;
 - (BOOL)isChromeApplication:(NSRunningApplication *)app;
-- (BOOL)isCompatibilityBypassApplication:(NSRunningApplication *)app;
+- (BOOL)isBuiltInCompatibilityBypassApplication:(NSRunningApplication *)app;
+- (BOOL)isExcludedApplication:(NSRunningApplication *)app;
 - (NSString *)browserContentDiagnosticNoteForTargetApp:(NSRunningApplication *)targetApp
                                                appName:(NSString *)appName
                                                   role:(NSString *)role
@@ -1174,6 +1183,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     bypassFnItem.tag = HoverClickBypassKeyFn;
     HoverClickUseNonClosingSubmenuRow(bypassFnItem, @"globe", @"keyboard", YES, bypassWidth);
     [bypassMenu addItem:bypassFnItem];
+
+    self.excludedAppsItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Excluded Apps")
+                                                       action:nil
+                                                keyEquivalent:@""];
+    self.excludedAppsItem.enabled = YES;
+    self.excludedAppsItem.indentationLevel = 0;
+    self.excludedAppsItem.state = NSControlStateValueOff;
+    self.excludedAppsItem.toolTip = HoverClickExcludedAppsHelp;
+    HoverClickUseSubmenuMenuRow(self.excludedAppsItem, @"hand.raised", @"nosign");
+    self.excludedAppsItem.submenu = [[NSMenu alloc] initWithTitle:@"Excluded Apps"];
+    [self.excludedAppsItem.submenu setAutoenablesItems:NO];
+    [menu addItem:self.excludedAppsItem];
+    [self buildExcludedAppsSubmenu];
 
     [menu addItem:[NSMenuItem separatorItem]];
 
@@ -2627,6 +2649,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Right Click Focus: %@\n"
              "Bypass Key: %@\n"
              "Last bypass decision: %@\n"
+             "Excluded Apps (built-in): Maccy (org.p0deje.Maccy)\n"
+             "Excluded Apps (user list): %@\n"
              "Verbose Diagnostics: %@\n"
              "Event tap mask: left mouse down + right mouse down only\n"
              "Safety note: HoverClick returns original click events unchanged; no synthetic clicks, event replay, or cursor movement\n"
@@ -2710,6 +2734,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             _rightClickFocusEnabled ? @"enabled" : @"disabled",
             _bypassKey == HoverClickBypassKeyShift ? @"shift" : _bypassKey == HoverClickBypassKeyFn ? @"fn" : @"off",
             _lastBypassDecision ?: @"none",
+            ({
+                NSArray<NSString *> *ids = [self userExcludedBundleIDs];
+                ids.count == 0 ? @"0 apps (none added)" : [NSString stringWithFormat:@"%lu app(s): %@", (unsigned long)ids.count, [ids componentsJoinedByString:@", "]];
+            }),
             _verboseDiagnostics ? @"enabled" : @"disabled"];
 }
 
@@ -2897,16 +2925,172 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return [app.bundleIdentifier isEqualToString:HoverClickChromeBundleID];
 }
 
-// Returns YES for apps that must receive the original click without any HoverClick
-// focus/raise/activate work. Maccy is a clipboard manager: clicking a history item
-// must paste into the previously active app, so focus-steal would break that paste.
-- (BOOL)isCompatibilityBypassApplication:(NSRunningApplication *)app {
+- (NSArray<NSString *> *)userExcludedBundleIDs {
+    NSArray *raw = [[NSUserDefaults standardUserDefaults] arrayForKey:HoverClickExcludedAppsDefaultsKey];
+    if (raw == nil) return @[];
+    NSMutableArray<NSString *> *result = [NSMutableArray array];
+    for (id entry in raw) {
+        if ([entry isKindOfClass:[NSString class]] && [(NSString *)entry length] > 0) {
+            [result addObject:(NSString *)entry];
+        }
+    }
+    return [result copy];
+}
+
+- (void)buildExcludedAppsSubmenu {
+    NSMenu *submenu = self.excludedAppsItem.submenu;
+    if (submenu == nil) return;
+
+    [submenu removeAllItems];
+
+    NSArray<NSString *> *titles = @[@"Maccy (built-in)", @"Add App..."];
+    NSArray<NSString *> *userIDs = [self userExcludedBundleIDs];
+    for (NSString *bid in userIDs) {
+        [titles arrayByAddingObject:bid];
+    }
+    CGFloat submenuWidth = HoverClickCalculatedSubmenuWidth([@[@"Maccy (built-in)", @"Add App..."] arrayByAddingObjectsFromArray:userIDs]);
+
+    NSMenuItem *maccyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Maccy (built-in)")
+                                                        action:nil
+                                                 keyEquivalent:@""];
+    maccyItem.enabled = NO;
+    HoverClickUseClosingSubmenuRow(maccyItem, @"checkmark.seal", @"checkmark.circle", submenuWidth);
+    [submenu addItem:maccyItem];
+
+    [submenu addItem:[NSMenuItem separatorItem]];
+
+    if (userIDs.count == 0) {
+        NSMenuItem *emptyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"No apps added")
+                                                           action:nil
+                                                    keyEquivalent:@""];
+        emptyItem.enabled = NO;
+        HoverClickUseClosingSubmenuRow(emptyItem, nil, nil, submenuWidth);
+        [submenu addItem:emptyItem];
+    } else {
+        for (NSString *bundleID in userIDs) {
+            NSMenuItem *entryItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(bundleID)
+                                                               action:@selector(removeExcludedApp:)
+                                                        keyEquivalent:@""];
+            entryItem.target = self;
+            entryItem.enabled = YES;
+            entryItem.representedObject = bundleID;
+            entryItem.toolTip = [NSString stringWithFormat:@"Click to remove %@ from the excluded apps list.", bundleID];
+            HoverClickUseClosingSubmenuRow(entryItem, @"minus.circle", @"xmark.circle", submenuWidth);
+            [submenu addItem:entryItem];
+        }
+    }
+
+    [submenu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *addItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Add App...")
+                                                     action:@selector(addExcludedApp:)
+                                              keyEquivalent:@""];
+    addItem.target = self;
+    addItem.enabled = YES;
+    addItem.toolTip = HoverClickAddExcludedAppHelp;
+    HoverClickUseClosingSubmenuRow(addItem, @"plus.circle", @"plus", submenuWidth);
+    [submenu addItem:addItem];
+}
+
+- (void)addExcludedApp:(id)sender {
+    (void)sender;
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add Excluded App";
+    alert.informativeText = @"Enter the bundle ID of the app to exclude from HoverClick focus behavior.\n\nExample: com.runningwithcrayons.Alfred";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"Add"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    NSTextField *inputField = [[NSTextField alloc] initWithFrame:NSMakeRect(0.0, 0.0, 260.0, 22.0)];
+    inputField.placeholderString = @"com.example.AppName";
+    alert.accessoryView = inputField;
+
+    NSModalResponse response = [alert runModal];
+    if (response != NSAlertFirstButtonReturn) {
+        return;
+    }
+
+    NSString *input = [[inputField stringValue] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if (input.length == 0) {
+        NSAlert *errorAlert = [[NSAlert alloc] init];
+        errorAlert.messageText = @"Bundle ID Required";
+        errorAlert.informativeText = @"Please enter a valid bundle ID.";
+        errorAlert.alertStyle = NSAlertStyleWarning;
+        [errorAlert addButtonWithTitle:@"OK"];
+        [errorAlert runModal];
+        return;
+    }
+
+    if ([input isEqualToString:HoverClickMaccyBundleID]) {
+        NSAlert *dupeAlert = [[NSAlert alloc] init];
+        dupeAlert.messageText = @"Already Excluded";
+        dupeAlert.informativeText = [NSString stringWithFormat:@"%@ is already excluded as a built-in entry and cannot be added to the user list.", input];
+        dupeAlert.alertStyle = NSAlertStyleInformational;
+        [dupeAlert addButtonWithTitle:@"OK"];
+        [dupeAlert runModal];
+        return;
+    }
+
+    NSArray<NSString *> *existing = [self userExcludedBundleIDs];
+    if ([existing containsObject:input]) {
+        NSAlert *dupeAlert = [[NSAlert alloc] init];
+        dupeAlert.messageText = @"Already in List";
+        dupeAlert.informativeText = [NSString stringWithFormat:@"%@ is already in the excluded apps list.", input];
+        dupeAlert.alertStyle = NSAlertStyleInformational;
+        [dupeAlert addButtonWithTitle:@"OK"];
+        [dupeAlert runModal];
+        return;
+    }
+
+    NSMutableArray<NSString *> *updated = [existing mutableCopy];
+    [updated addObject:input];
+    [[NSUserDefaults standardUserDefaults] setObject:[updated copy] forKey:HoverClickExcludedAppsDefaultsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+
+    HoverClickLog("HoverClick: excluded app added bundleID=%s userListCount=%lu", input.UTF8String, (unsigned long)updated.count);
+    [self buildExcludedAppsSubmenu];
+}
+
+- (void)removeExcludedApp:(id)sender {
+    NSString *bundleID = nil;
+    if ([sender isKindOfClass:[NSMenuItem class]]) {
+        bundleID = [(NSMenuItem *)sender representedObject];
+    }
+    if (bundleID.length == 0) return;
+
+    NSArray<NSString *> *existing = [self userExcludedBundleIDs];
+    NSMutableArray<NSString *> *updated = [existing mutableCopy];
+    [updated removeObject:bundleID];
+    [[NSUserDefaults standardUserDefaults] setObject:[updated copy] forKey:HoverClickExcludedAppsDefaultsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+
+    HoverClickLog("HoverClick: excluded app removed bundleID=%s userListCount=%lu", bundleID.UTF8String, (unsigned long)updated.count);
+    [self buildExcludedAppsSubmenu];
+}
+
+// Built-in compatibility bypass — always active; Maccy is the only built-in entry.
+// Maccy is a clipboard manager: clicking a history item must paste into the previously
+// active app, so focus-steal would break that paste.
+- (BOOL)isBuiltInCompatibilityBypassApplication:(NSRunningApplication *)app {
     NSString *bundleID = app.bundleIdentifier;
     if (bundleID.length > 0) {
         if ([bundleID isEqualToString:HoverClickMaccyBundleID]) return YES;
     } else {
         // Name fallback for apps that report an empty bundle ID at click time.
         if ([app.localizedName isEqualToString:@"Maccy"]) return YES;
+    }
+    return NO;
+}
+
+// Returns YES if the click target should bypass all HoverClick focus/raise/activate.
+// Covers both built-in entries (Maccy) and user-configured excluded bundle IDs.
+- (BOOL)isExcludedApplication:(NSRunningApplication *)app {
+    if ([self isBuiltInCompatibilityBypassApplication:app]) return YES;
+
+    NSString *bundleID = app.bundleIdentifier;
+    if (bundleID.length > 0) {
+        return [[self userExcludedBundleIDs] containsObject:bundleID];
     }
     return NO;
 }
@@ -3256,22 +3440,41 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateRecentDecisionForSequenceID:sequenceID key:@"targetBundleID" value:targetBundleID];
     [self updateRecentDecisionForSequenceID:sequenceID key:@"targetIsChrome" value:targetIsChrome ? @"yes" : @"no"];
 
-    if ([self isCompatibilityBypassApplication:targetApp]) {
+    if ([self isBuiltInCompatibilityBypassApplication:targetApp]) {
         _lastBypassDecision = @"bypassed-maccy";
         HoverClickLog("HoverClick: %s #%llu excluded app Maccy bundleID=%s; skipping focus/raise/activate; original event returned unchanged",
                       trigger, sequenceID, targetBundleID.UTF8String);
         [self recordFocusDecisionWithTrigger:trigger
                                   sequenceID:sequenceID
                                     decision:@"skipped"
-                                      detail:@"excluded app: Maccy; HoverClick skipped focus/raise/activate; original event returned unchanged"];
+                                      detail:@"excluded app: Maccy (built-in); HoverClick skipped focus/raise/activate; original event returned unchanged"];
         [self recordClickThroughInvestigationForSequenceID:sequenceID
-                                               focusStatus:@"skipped before focus attempt: excluded app (Maccy)"
+                                               focusStatus:@"skipped before focus attempt: excluded app (Maccy, built-in)"
                                                  finalNote:@"original event returned unchanged; swallowed=no"];
         [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
         [self completeRecentDecisionForSequenceID:sequenceID
-                                      finalResult:@"skipped: excluded app (Maccy)"
+                                      finalResult:@"skipped: excluded app (Maccy, built-in)"
                  keepActiveForDelayedVerification:NO];
         [self setLastClickResult:@"Excluded App (Maccy)"];
+        return;
+    }
+
+    if ([[self userExcludedBundleIDs] containsObject:targetBundleID]) {
+        _lastBypassDecision = [NSString stringWithFormat:@"excluded-app:%@", targetBundleID];
+        HoverClickLog("HoverClick: %s #%llu excluded app bundleID=%s; skipping focus/raise/activate; original event returned unchanged",
+                      trigger, sequenceID, targetBundleID.UTF8String);
+        [self recordFocusDecisionWithTrigger:trigger
+                                  sequenceID:sequenceID
+                                    decision:@"skipped"
+                                      detail:[NSString stringWithFormat:@"excluded app: %@; HoverClick skipped focus/raise/activate; original event returned unchanged", targetBundleID]];
+        [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                               focusStatus:[NSString stringWithFormat:@"skipped before focus attempt: excluded app (%@)", targetBundleID]
+                                                 finalNote:@"original event returned unchanged; swallowed=no"];
+        [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+        [self completeRecentDecisionForSequenceID:sequenceID
+                                      finalResult:[NSString stringWithFormat:@"skipped: excluded app (%@)", targetBundleID]
+                 keepActiveForDelayedVerification:NO];
+        [self setLastClickResult:[NSString stringWithFormat:@"Excluded App (%@)", targetBundleID]];
         return;
     }
     [self updateRecentDecisionForSequenceID:sequenceID

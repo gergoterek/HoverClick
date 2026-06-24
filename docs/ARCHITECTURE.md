@@ -145,3 +145,19 @@ Modifier Key Focus / Hold-to-Focus remains a future idea only. The failed 35 ms 
 ## Hover Click Assist Removal
 
 Hover Click Assist is not part of the current product surface. The v0.9.0 updater-completion branch removes the default-off no-op placeholder from the menu and copied diagnostics. This is a UI/product-surface cleanup only: it does not add hover focus, mouse movement observation, cursor movement, synthetic clicks, replacement events, delayed click delivery, or any new event-tap trigger.
+
+## Excluded Apps (v1.3)
+
+The `feature-excluded-apps` branch adds a user-configurable Excluded Apps layer on top of the existing built-in Maccy bypass.
+
+**Runtime bypass hierarchy:**
+1. Modifier bypass (Shift / Fn): fires before AX target resolution; returns original event unchanged.
+2. Built-in Maccy bypass (`isBuiltInCompatibilityBypassApplication:`): fires after AX target resolution; always active regardless of user list state; returns original event unchanged; sets `_lastBypassDecision = "bypassed-maccy"`.
+3. User excluded apps (`userExcludedBundleIDs` consulted via `NSUserDefaults key "excludedAppBundleIDs"`): fires after built-in bypass check; sets `_lastBypassDecision = "excluded-app:<bundleID>"`.
+4. Normal focus path: AX hit-test filtering, app activation, AXRaise, verification.
+
+**Persistence:** `NSArray<NSString *>` in `NSUserDefaults`, key `excludedAppBundleIDs`. Empty strings and non-string entries are filtered at read time. Maccy's bundle ID is never stored in the user list; it is always covered by the built-in check.
+
+**Menu:** `Excluded Apps` submenu added to the Functions section, after Bypass Key and before the section separator. Submenu contains a non-interactive `Maccy (built-in)` header entry, then user-added entries (each clickable to remove via `removeExcludedApp:`), then `Add App...` which opens an `NSAlert` text-field dialog.
+
+**Safety constraints (unchanged):** Event tap mask remains `kCGEventLeftMouseDown | kCGEventRightMouseDown` only. All bypass paths return the original event unchanged. NULL is never returned for normal user events. No synthetic clicks, event replay, delayed delivery, cursor movement, CGEventPost, or CGEventCreateMouseEvent in any new code path.

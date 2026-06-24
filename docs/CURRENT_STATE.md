@@ -192,20 +192,11 @@ Completed v1.3 branches:
 1. `post-v1.2.0-cleanup` — merged. Post-release cleanup, docs refresh, branch cleanup recommendation.
 2. `feature-compatibility-bypass-followup` — merged at `5dd9446`. Refactored Maccy bypass into `isCompatibilityBypassApplication:`; added README note.
 3. `plan-v1.3-excluded-apps` — planning only. See `docs/V1.3_EXCLUDED_APPS_PLAN.md`.
-
-Next v1.3 implementation branch:
-4. `feature-excluded-apps` — user-configurable Excluded Apps list. See `docs/V1.3_EXCLUDED_APPS_PLAN.md` for full scope, UI proposal, data model, safety constraints, and manual test plan.
+4. `feature-excluded-apps` — in progress. User-configurable Excluded Apps list. See below.
 
 User requirement (explicit): Excluded Apps must be included in v1.3, not only Maccy compatibility.
 
-Excluded Apps MVP scope (Option D — Hybrid):
-- Maccy remains a built-in compatibility bypass (always active, not user-removable).
-- User can add/remove apps by bundle ID via a new `Excluded Apps` submenu in Functions.
-- Bundle IDs stored in `NSUserDefaults` under `excludedAppBundleIDs`.
-- No broad app picker UI in MVP; app picker deferred to a later cycle.
-- Diagnostics show built-in bypass list, user list, and last excluded-app decision.
-
-Later v1.3 branches (order after feature-excluded-apps):
+Later v1.3 branches:
 5. `research-menu-tooltips` — tooltip redesign as a proper forward research/prototype branch; not a continuation of the failed `ui-menu-tooltips` branch.
 
 Explicitly deferred from early v1.3:
@@ -216,6 +207,23 @@ Explicitly deferred from early v1.3:
 - Scroll Focus
 - Background drag / text-drag fixes
 - Finder selection hacks
+
+## v1.3 Excluded Apps Feature State
+
+Branch: `feature-excluded-apps` — implementation in progress; not yet merged.
+
+Implemented Option D (Hybrid MVP):
+- Built-in Maccy bypass (`isBuiltInCompatibilityBypassApplication:`) remains always active, non-removable.
+- User-configurable excluded apps list stored as `NSArray<NSString *>` in `NSUserDefaults` key `excludedAppBundleIDs`.
+- `isExcludedApplication:` checks built-in Maccy first, then consults user list by bundle ID.
+- `Excluded Apps` submenu added to the Functions section (after Bypass Key, before the separator).
+- Submenu shows `Maccy (built-in)` as a non-interactive entry, then user-added bundle IDs (each clickable to remove), then `Add App...`.
+- `Add App...` opens an `NSAlert` text-field dialog; trims whitespace; rejects empty, duplicate, and built-in entries; saves to `NSUserDefaults` and rebuilds the submenu.
+- Remove action updates `NSUserDefaults` and rebuilds the submenu without restart.
+- Diagnostics summary adds `Excluded Apps (built-in): Maccy (org.p0deje.Maccy)` and `Excluded Apps (user list): <count> app(s): [bundleIDs]` lines.
+- Last bypass decision: `bypassed-maccy` for built-in Maccy; `excluded-app:<bundleID>` for user-added entries.
+- Event tap mask, normal event pass-through, and all safety constraints unchanged.
+- Merge-ready: No — manual testing required first (see `docs/TEST_MATRIX.md`).
 
 ## v1.0 Readiness Planning State
 
