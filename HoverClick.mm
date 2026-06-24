@@ -3077,49 +3077,53 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 // a bundle ID. The selected app's bundle ID is stored internally.
 - (void)chooseExcludedApp:(id)sender {
     (void)sender;
-
-    NSArray<NSDictionary<NSString *, id> *> *apps = [self installedApplicationsForSelector];
-    if (apps.count == 0) {
-        [self showExcludedAppsAlertWithTitle:@"No Applications Found"
-                                     message:@"HoverClick could not find any installed applications to exclude."];
-        return;
-    }
-
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Exclude an Application";
-    alert.informativeText = @"Pick an application to exclude from HoverClick focus behavior.";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"Exclude"];
-    [alert addButtonWithTitle:@"Cancel"];
-
-    NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0.0, 0.0, 300.0, 26.0)
-                                                      pullsDown:NO];
-    for (NSDictionary<NSString *, id> *app in apps) {
-        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(app[@"name"])
-                                                      action:nil
-                                               keyEquivalent:@""];
-        item.representedObject = app[@"bundleID"];
-        NSImage *icon = app[@"icon"];
-        if (icon != nil) {
-            item.image = icon;
+    // Defer to the next run-loop turn so the status-bar menu finishes dismissing before the
+    // modal alert appears. Presenting runModal while NSMenu is still tracking produces an
+    // overlapping, unclickable selector window.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSArray<NSDictionary<NSString *, id> *> *apps = [self installedApplicationsForSelector];
+        if (apps.count == 0) {
+            [self showExcludedAppsAlertWithTitle:@"No Applications Found"
+                                         message:@"HoverClick could not find any installed applications to exclude."];
+            return;
         }
-        [popup.menu addItem:item];
-    }
-    alert.accessoryView = popup;
-    alert.window.initialFirstResponder = popup;
 
-    NSModalResponse response = [alert runModal];
-    if (response != NSAlertFirstButtonReturn) {
-        return;
-    }
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Exclude an Application";
+        alert.informativeText = @"Pick an application to exclude from HoverClick focus behavior.";
+        alert.alertStyle = NSAlertStyleInformational;
+        [alert addButtonWithTitle:@"Exclude"];
+        [alert addButtonWithTitle:@"Cancel"];
 
-    NSString *bundleID = popup.selectedItem.representedObject;
-    if (bundleID.length == 0) {
-        return;
-    }
+        NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0.0, 0.0, 300.0, 26.0)
+                                                          pullsDown:NO];
+        for (NSDictionary<NSString *, id> *app in apps) {
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(app[@"name"])
+                                                          action:nil
+                                                   keyEquivalent:@""];
+            item.representedObject = app[@"bundleID"];
+            NSImage *icon = app[@"icon"];
+            if (icon != nil) {
+                item.image = icon;
+            }
+            [popup.menu addItem:item];
+        }
+        alert.accessoryView = popup;
+        alert.window.initialFirstResponder = popup;
 
-    HoverClickLog("HoverClick: excluded app chosen from selector bundleID=%s", bundleID.UTF8String);
-    [self addExcludedBundleID:bundleID];
+        NSModalResponse response = [alert runModal];
+        if (response != NSAlertFirstButtonReturn) {
+            return;
+        }
+
+        NSString *bundleID = popup.selectedItem.representedObject;
+        if (bundleID.length == 0) {
+            return;
+        }
+
+        HoverClickLog("HoverClick: excluded app chosen from selector bundleID=%s", bundleID.UTF8String);
+        [self addExcludedBundleID:bundleID];
+    });
 }
 
 // Shared validate-and-save path for the app selector. Returns YES if the bundle ID was added,

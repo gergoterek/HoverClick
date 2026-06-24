@@ -169,7 +169,7 @@ Manual Finder UI validation -- not run automatically. All 28 tests below must pa
 | 3 | Excluded Apps submenu present | Open the HoverClick status menu. | `Excluded Apps` submenu appears in the HoverClick (Functions) section, after `Bypass Key` and before the separator. |
 | 4 | No fixed Maccy (built-in) row | Open the `Excluded Apps` submenu. | There is no `Maccy (built-in)` row. The menu does not look hardcoded; nothing Maccy-specific appears as a permanent row. |
 | 5 | Empty state when no user apps | Open the `Excluded Apps` submenu before adding any app. | Only `No apps added` (disabled) and `Configure for...` are shown; no other rows. |
-| 6 | Configure for... opens app list selector | Click `Configure for...`. | A dedicated app selector opens (NSAlert with a pop-up list of apps), NOT a Finder/OpenPanel file browser. |
+| 6 | Configure for... closes menu then opens selector | Click `Configure for...`. | The HoverClick menu closes first; then the dedicated app selector appears (NSAlert with a pop-up list of apps). The selector is NOT a Finder/OpenPanel file browser. The selector window is clickable and focusable — no overlap or input deadlock with the menu. |
 | 7 | Selector lists apps by friendly name | Open the pop-up in the selector. | Installed apps are listed by friendly display name (with icons), sorted alphabetically. |
 | 8 | Selecting a normal app adds it | Pick an app (e.g. Safari) and click `Exclude`. | The app is added; its friendly name appears in the submenu. |
 | 9 | Added app appears by friendly name | Reopen the submenu after adding. | The app shows by display name (e.g. `Safari`), not by raw bundle ID, and is clickable. |
