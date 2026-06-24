@@ -2984,33 +2984,22 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [submenu removeAllItems];
 
-    NSString *infoLine1 = @"Apps listed here are ignored by HoverClick.";
-    NSString *infoLine2 = @"Click an app to remove it.";
-
     NSArray<NSString *> *userIDs = [self userExcludedBundleIDs];
     NSMutableArray<NSString *> *displayNames = [NSMutableArray arrayWithCapacity:userIDs.count];
     for (NSString *bundleID in userIDs) {
         [displayNames addObject:[self displayNameForExcludedBundleID:bundleID]];
     }
-    NSArray<NSString *> *widthTitles = [@[infoLine1, infoLine2, @"Configure for...", @"No apps added"]
+    NSArray<NSString *> *widthTitles = [@[@"Configure for...", @"No apps added"]
                                         arrayByAddingObjectsFromArray:displayNames];
     CGFloat submenuWidth = HoverClickCalculatedSubmenuWidth(widthTitles);
 
-    // Disabled explanatory rows at the top so the user understands what the list does and how
-    // to remove an entry. They are non-clickable and use a smaller secondary font.
-    NSMenuItem *infoItem1 = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(infoLine1)
-                                                       action:nil
-                                                keyEquivalent:@""];
-    infoItem1.enabled = NO;
-    HoverClickUseInfoSubmenuRow(infoItem1, submenuWidth);
-    [submenu addItem:infoItem1];
-
-    NSMenuItem *infoItem2 = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(infoLine2)
-                                                       action:nil
-                                                keyEquivalent:@""];
-    infoItem2.enabled = NO;
-    HoverClickUseInfoSubmenuRow(infoItem2, submenuWidth);
-    [submenu addItem:infoItem2];
+    NSMenuItem *infoItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Ignored apps")
+                                                      action:nil
+                                               keyEquivalent:@""];
+    infoItem.enabled = NO;
+    infoItem.toolTip = @"Click an app to remove it";
+    HoverClickUseInfoSubmenuRow(infoItem, submenuWidth);
+    [submenu addItem:infoItem];
 
     [submenu addItem:[NSMenuItem separatorItem]];
 

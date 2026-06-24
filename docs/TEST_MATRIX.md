@@ -160,7 +160,7 @@
 
 ## Excluded Apps (v1.3 feature-excluded-apps)
 
-Manual Finder UI validation -- not run automatically. All 32 tests below must pass before the branch is merge-ready. This list reflects the LinearMouse-style app list selector (the earlier OpenPanel chooser, manual bundle-ID entry, and visible Maccy row were removed) plus the explanatory disabled rows and the menu-highlight reset fix.
+Manual Finder UI validation -- not run automatically. All 32 tests below must pass before the branch is merge-ready. This list reflects the LinearMouse-style app list selector (the earlier OpenPanel chooser, manual bundle-ID entry, and visible Maccy row were removed) plus a compact disabled info row ("Ignored apps") with a tooltip and the menu-highlight reset fix.
 
 | # | Test | Method | Expected Result |
 | --- | --- | --- | --- |
@@ -168,16 +168,16 @@ Manual Finder UI validation -- not run automatically. All 32 tests below must pa
 | 2 | Accessibility permission stable | Open the menu after launch. | `Access` > `Permissions` shows `Accessibility: Granted`; no re-prompt. |
 | 3 | Excluded Apps submenu present | Open the HoverClick status menu. | `Excluded Apps` submenu appears in the HoverClick (Functions) section, after `Bypass Key` and before the separator. |
 | 4 | No fixed Maccy (built-in) row | Open the `Excluded Apps` submenu. | There is no `Maccy (built-in)` row. The menu does not look hardcoded; nothing Maccy-specific appears as a permanent row. |
-| 5 | Explanatory rows visible and clear | Open the `Excluded Apps` submenu. | Two disabled (greyed, smaller-font) rows appear at the top: `Apps listed here are ignored by HoverClick.` and `Click an app to remove it.`, followed by a separator. The full text is not truncated. |
-| 6 | Explanatory rows are not clickable | Hover and try clicking each explanatory row. | The rows do not highlight on hover and do nothing when clicked; they do not look like actionable app entries. |
-| 7 | Explanatory row states click-to-remove | Read the second explanatory row. | It clearly says `Click an app to remove it.`, explaining how removal works. |
-| 8 | Empty state when no user apps | Open the `Excluded Apps` submenu before adding any app. | Below the explanatory rows + separator: only `No apps added` (disabled), a separator, and `Configure for...`. No other rows. |
+| 5 | Info row text is "Ignored apps" | Open the `Excluded Apps` submenu. | One disabled (greyed, smaller-font) row appears at the top reading exactly `Ignored apps`, followed by a separator. The text is not truncated. No second visible explanatory row. |
+| 6 | Info row is not clickable | Hover and try clicking the `Ignored apps` row. | The row does not highlight on hover and does nothing when clicked; it does not look like an actionable app entry. |
+| 7 | Info row tooltip says click-to-remove | Hover the `Ignored apps` row for a moment. | A tooltip appears reading exactly `Click an app to remove it`. If the tooltip does not appear, note whether this matches the broader existing tooltip regression (separate issue; do not block on it). |
+| 8 | Empty state when no user apps | Open the `Excluded Apps` submenu before adding any app. | Below the info row + separator: only `No apps added` (disabled), a separator, and `Configure for...`. No other rows. |
 | 9 | Configure for... closes menu then opens selector | Click `Configure for...`. | The HoverClick menu closes first; then the dedicated app selector appears (NSAlert with a pop-up list of apps). The selector is NOT a Finder/OpenPanel file browser. The selector window is clickable and focusable — no overlap or input deadlock with the menu. |
 | 10 | Excluded Apps not stuck highlighted | After the selector opens/closes (Exclude or Cancel), reopen the HoverClick menu. | `Excluded Apps` is NOT highlighted/selected by default. Highlight follows only the actual current mouse hover; no row stays visually selected after dismissal. |
 | 11 | Selector lists apps by friendly name | Open the pop-up in the selector. | Installed apps are listed by friendly display name (with icons), sorted alphabetically. |
-| 12 | Selecting a normal app adds it | Pick an app (e.g. Safari) and click `Exclude`. | The app is added; its friendly name appears in the submenu below the explanatory rows. |
+| 12 | Selecting a normal app adds it | Pick an app (e.g. Safari) and click `Exclude`. | The app is added; its friendly name appears in the submenu below the info row. |
 | 13 | Added app appears by friendly name | Reopen the submenu after adding. | The app shows by display name (e.g. `Safari`), not by raw bundle ID, and is clickable. |
-| 14 | Clicking an app row removes it | Click a user-added entry in the submenu, as the explanatory row says. | The entry disappears; menu is rebuilt; `No apps added` shows if the list is now empty. |
+| 14 | Clicking an app row removes it | Click a user-added entry in the submenu. | The entry disappears; menu is rebuilt; `No apps added` shows if the list is now empty. |
 | 15 | Duplicate selection is rejected | Run `Configure for...` again and pick the same app. | An alert says it is already excluded; no duplicate entry is added. |
 | 16 | Maccy selection does not duplicate | If Maccy is installed, pick Maccy in the selector. | A friendly "already handled automatically" message appears; Maccy is not added as a user entry. |
 | 17 | Added app persists after relaunch | Add an app, quit HoverClick (Cmd+Q), relaunch via `scripts/run-app.sh`, open the submenu. | The added app is still shown by friendly name. |
