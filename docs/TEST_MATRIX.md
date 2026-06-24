@@ -160,7 +160,7 @@
 
 ## Excluded Apps (v1.3 feature-excluded-apps)
 
-Manual Finder UI validation -- not run automatically. All 28 tests below must pass before the branch is merge-ready. This list reflects the LinearMouse-style app list selector (the earlier OpenPanel chooser, manual bundle-ID entry, and visible Maccy row were removed).
+Manual Finder UI validation -- not run automatically. All 32 tests below must pass before the branch is merge-ready. This list reflects the LinearMouse-style app list selector (the earlier OpenPanel chooser, manual bundle-ID entry, and visible Maccy row were removed) plus the explanatory disabled rows and the menu-highlight reset fix.
 
 | # | Test | Method | Expected Result |
 | --- | --- | --- | --- |
@@ -168,30 +168,34 @@ Manual Finder UI validation -- not run automatically. All 28 tests below must pa
 | 2 | Accessibility permission stable | Open the menu after launch. | `Access` > `Permissions` shows `Accessibility: Granted`; no re-prompt. |
 | 3 | Excluded Apps submenu present | Open the HoverClick status menu. | `Excluded Apps` submenu appears in the HoverClick (Functions) section, after `Bypass Key` and before the separator. |
 | 4 | No fixed Maccy (built-in) row | Open the `Excluded Apps` submenu. | There is no `Maccy (built-in)` row. The menu does not look hardcoded; nothing Maccy-specific appears as a permanent row. |
-| 5 | Empty state when no user apps | Open the `Excluded Apps` submenu before adding any app. | Only `No apps added` (disabled) and `Configure for...` are shown; no other rows. |
-| 6 | Configure for... closes menu then opens selector | Click `Configure for...`. | The HoverClick menu closes first; then the dedicated app selector appears (NSAlert with a pop-up list of apps). The selector is NOT a Finder/OpenPanel file browser. The selector window is clickable and focusable — no overlap or input deadlock with the menu. |
-| 7 | Selector lists apps by friendly name | Open the pop-up in the selector. | Installed apps are listed by friendly display name (with icons), sorted alphabetically. |
-| 8 | Selecting a normal app adds it | Pick an app (e.g. Safari) and click `Exclude`. | The app is added; its friendly name appears in the submenu. |
-| 9 | Added app appears by friendly name | Reopen the submenu after adding. | The app shows by display name (e.g. `Safari`), not by raw bundle ID, and is clickable. |
-| 10 | Duplicate selection is rejected | Run `Configure for...` again and pick the same app. | An alert says it is already excluded; no duplicate entry is added. |
-| 11 | Maccy selection does not duplicate | If Maccy is installed, pick Maccy in the selector. | A friendly "already handled automatically" message appears; Maccy is not added as a user entry. |
-| 12 | Remove still works | Click a user-added entry in the submenu. | The entry disappears; menu is rebuilt; `No apps added` shows if the list is now empty. |
-| 13 | Added app persists after relaunch | Add an app, quit HoverClick (Cmd+Q), relaunch via `scripts/run-app.sh`, open the submenu. | The added app is still shown by friendly name. |
-| 14 | Removed app stays removed after relaunch | Remove an entry, quit, relaunch, open the submenu. | The removed app is not present. |
-| 15 | Unresolvable bundle ID falls back to ID | If a stored bundle ID's app is not installed, open the submenu. | The entry shows the raw bundle ID as a fallback and is still removable. |
-| 16 | Excluded app click bypasses focus | Exclude Finder; with Left Click Focus ON, click a background Finder window. | Finder is NOT focused before click delivery; original click returns unchanged; diagnostics show `Last bypass decision: excluded-app:com.apple.finder`. |
-| 17 | Normal non-excluded app still focuses | With Finder excluded and a Chrome window in the background, click the Chrome window. | Chrome is focused normally before click delivery; diagnostics show normal focus path, not bypass. |
-| 18 | Left Click Focus OFF/ON still works | Toggle Left Click Focus off then on; click a normal background window each time. | OFF: no focus, click passes through. ON: background window focuses before click delivery. |
-| 19 | Right Click Focus ON still works | With Right Click Focus ON, right-click a normal background window. | Window focuses first; original right-click passes through; context menu opens. |
-| 20 | Active-window right click still works | Right-click inside the already-frontmost app. | Context menu opens normally; treated as already-frontmost, no focus failure. |
-| 21 | Drag still works | With an excluded app in the list, drag a window or text. | Drag behavior unchanged. |
-| 22 | Double-click still works | Double-click a file in Finder (excluded or not). | Double-click works natively; no delay. |
-| 23 | Normal clicks are not delayed | Click rapidly between several non-excluded windows. | No delay; no synthetic event, replay, or cursor movement. |
-| 24 | Copy Diagnostics Summary works | Use `Info` > `Diagnostics` > `Copy Summary`. | A summary is copied to the clipboard. |
-| 25 | Diagnostics show excluded-app user list | Inspect the copied summary after adding an app. | `Excluded Apps (user list): <count> app(s): [bundleIDs]` lists the user-added bundle IDs. |
-| 26 | Diagnostics show last excluded bypass decision | After an excluded-app click, copy diagnostics. | `Last bypass decision: excluded-app:<bundleID>` (or `bypassed-maccy` for a Maccy click). |
-| 27 | Diagnostics built-in line is not weird | Inspect the copied summary. | `Excluded Apps (built-in compatibility): Maccy (org.p0deje.Maccy) installed` or `... not installed` — accurate either way; no odd hardcoded row in the menu. |
-| 28 | Maccy built-in bypass still works | If Maccy is installed, click a Maccy history item, then copy diagnostics. | Paste lands in the correct target; `Last bypass decision: bypassed-maccy`; Maccy is not in the user list. |
+| 5 | Explanatory rows visible and clear | Open the `Excluded Apps` submenu. | Two disabled (greyed, smaller-font) rows appear at the top: `Apps listed here are ignored by HoverClick.` and `Click an app to remove it.`, followed by a separator. The full text is not truncated. |
+| 6 | Explanatory rows are not clickable | Hover and try clicking each explanatory row. | The rows do not highlight on hover and do nothing when clicked; they do not look like actionable app entries. |
+| 7 | Explanatory row states click-to-remove | Read the second explanatory row. | It clearly says `Click an app to remove it.`, explaining how removal works. |
+| 8 | Empty state when no user apps | Open the `Excluded Apps` submenu before adding any app. | Below the explanatory rows + separator: only `No apps added` (disabled), a separator, and `Configure for...`. No other rows. |
+| 9 | Configure for... closes menu then opens selector | Click `Configure for...`. | The HoverClick menu closes first; then the dedicated app selector appears (NSAlert with a pop-up list of apps). The selector is NOT a Finder/OpenPanel file browser. The selector window is clickable and focusable — no overlap or input deadlock with the menu. |
+| 10 | Excluded Apps not stuck highlighted | After the selector opens/closes (Exclude or Cancel), reopen the HoverClick menu. | `Excluded Apps` is NOT highlighted/selected by default. Highlight follows only the actual current mouse hover; no row stays visually selected after dismissal. |
+| 11 | Selector lists apps by friendly name | Open the pop-up in the selector. | Installed apps are listed by friendly display name (with icons), sorted alphabetically. |
+| 12 | Selecting a normal app adds it | Pick an app (e.g. Safari) and click `Exclude`. | The app is added; its friendly name appears in the submenu below the explanatory rows. |
+| 13 | Added app appears by friendly name | Reopen the submenu after adding. | The app shows by display name (e.g. `Safari`), not by raw bundle ID, and is clickable. |
+| 14 | Clicking an app row removes it | Click a user-added entry in the submenu, as the explanatory row says. | The entry disappears; menu is rebuilt; `No apps added` shows if the list is now empty. |
+| 15 | Duplicate selection is rejected | Run `Configure for...` again and pick the same app. | An alert says it is already excluded; no duplicate entry is added. |
+| 16 | Maccy selection does not duplicate | If Maccy is installed, pick Maccy in the selector. | A friendly "already handled automatically" message appears; Maccy is not added as a user entry. |
+| 17 | Added app persists after relaunch | Add an app, quit HoverClick (Cmd+Q), relaunch via `scripts/run-app.sh`, open the submenu. | The added app is still shown by friendly name. |
+| 18 | Removed app stays removed after relaunch | Remove an entry, quit, relaunch, open the submenu. | The removed app is not present. |
+| 19 | Unresolvable bundle ID falls back to ID | If a stored bundle ID's app is not installed, open the submenu. | The entry shows the raw bundle ID as a fallback and is still removable. |
+| 20 | Excluded app click bypasses focus | Exclude Finder; with Left Click Focus ON, click a background Finder window. | Finder is NOT focused before click delivery; original click returns unchanged; diagnostics show `Last bypass decision: excluded-app:com.apple.finder`. |
+| 21 | Normal non-excluded app still focuses | With Finder excluded and a Chrome window in the background, click the Chrome window. | Chrome is focused normally before click delivery; diagnostics show normal focus path, not bypass. |
+| 22 | Left Click Focus OFF/ON still works | Toggle Left Click Focus off then on; click a normal background window each time. | OFF: no focus, click passes through. ON: background window focuses before click delivery. |
+| 23 | Right Click Focus ON still works | With Right Click Focus ON, right-click a normal background window. | Window focuses first; original right-click passes through; context menu opens. |
+| 24 | Active-window right click still works | Right-click inside the already-frontmost app. | Context menu opens normally; treated as already-frontmost, no focus failure. |
+| 25 | Drag still works | With an excluded app in the list, drag a window or text. | Drag behavior unchanged. |
+| 26 | Double-click still works | Double-click a file in Finder (excluded or not). | Double-click works natively; no delay. |
+| 27 | Normal clicks are not delayed | Click rapidly between several non-excluded windows. | No delay; no synthetic event, replay, or cursor movement. |
+| 28 | Copy Diagnostics Summary works | Use `Info` > `Diagnostics` > `Copy Summary`. | A summary is copied to the clipboard. |
+| 29 | Diagnostics show excluded-app user list | Inspect the copied summary after adding an app. | `Excluded Apps (user list): <count> app(s): [bundleIDs]` lists the user-added bundle IDs. |
+| 30 | Diagnostics show last excluded bypass decision | After an excluded-app click, copy diagnostics. | `Last bypass decision: excluded-app:<bundleID>` (or `bypassed-maccy` for a Maccy click). |
+| 31 | Diagnostics built-in line is not weird | Inspect the copied summary. | `Excluded Apps (built-in compatibility): Maccy (org.p0deje.Maccy) installed` or `... not installed` — accurate either way; no odd hardcoded row in the menu. |
+| 32 | Maccy built-in bypass still works | If Maccy is installed, click a Maccy history item, then copy diagnostics. | Paste lands in the correct target; `Last bypass decision: bypassed-maccy`; Maccy is not in the user list. |
 
 ## Excluded Apps / Maccy Compatibility
 

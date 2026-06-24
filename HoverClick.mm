@@ -619,6 +619,20 @@ static void HoverClickUseSubmenuMenuRow(NSMenuItem *item, NSString *symbolName, 
     item.view = rowView;
 }
 
+// Builds a disabled, non-actionable informational submenu row: no icon, no accessory glyph,
+// and a slightly smaller secondary font so it reads as explanatory text rather than a
+// clickable app entry. The owning NSMenuItem must already have enabled = NO.
+static void HoverClickUseInfoSubmenuRow(NSMenuItem *item, CGFloat rowWidth) {
+    HoverClickMenuRowView *rowView = [[HoverClickMenuRowView alloc] initWithMenuItem:item
+                                                                               image:nil
+                                                                      accessoryTitle:nil
+                                                                      showsStateView:NO
+                                                                            rowWidth:rowWidth];
+    rowView.closesMenuAfterAction = NO;
+    rowView.titleField.font = [NSFont menuFontOfSize:12.0];
+    item.view = rowView;
+}
+
 static void HoverClickSyncMenuRowView(NSMenuItem *item) {
     if ([item.view isKindOfClass:[HoverClickMenuRowView class]]) {
         [(HoverClickMenuRowView *)item.view syncFromMenuItem];
@@ -836,6 +850,7 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (NSArray<NSDictionary<NSString *, id> *> *)installedApplicationsForSelector;
 - (NSString *)displayNameForExcludedBundleID:(NSString *)bundleID;
 - (void)buildExcludedAppsSubmenu;
+- (void)resetMenuRowHighlightsInMenu:(NSMenu *)menu;
 - (void)chooseExcludedApp:(id)sender;
 - (BOOL)addExcludedBundleID:(NSString *)candidate;
 - (void)removeExcludedApp:(id)sender;
@@ -1437,10 +1452,28 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateMenuTitles];
 }
 
+// Clears the highlight flag on every custom menu row view in the menu tree. Custom rows track
+// their own hover highlight via mouseEntered:/mouseExited:. When a closing row dismisses the
+// menu with cancelTracking (for example Excluded Apps > Configure for...), a parent row that was
+// highlighted to open its submenu never receives mouseExited:, leaving it stuck highlighted on
+// the next open. Resetting on menuWillOpen: guarantees a clean state every time the menu shows.
+- (void)resetMenuRowHighlightsInMenu:(NSMenu *)menu {
+    for (NSMenuItem *item in menu.itemArray) {
+        if ([item.view isKindOfClass:[HoverClickMenuRowView class]]) {
+            ((HoverClickMenuRowView *)item.view).highlighted = NO;
+        }
+        if (item.submenu != nil) {
+            [self resetMenuRowHighlightsInMenu:item.submenu];
+        }
+    }
+}
+
 - (void)menuWillOpen:(NSMenu *)menu {
     if (menu != self.statusItem.menu) {
         return;
     }
+
+    [self resetMenuRowHighlightsInMenu:menu];
 
     [self refreshAccessibilityStatusForReason:@"menu open"
                               promptIfMissing:NO
@@ -2951,14 +2984,35 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [submenu removeAllItems];
 
+    NSString *infoLine1 = @"Apps listed here are ignored by HoverClick.";
+    NSString *infoLine2 = @"Click an app to remove it.";
+
     NSArray<NSString *> *userIDs = [self userExcludedBundleIDs];
     NSMutableArray<NSString *> *displayNames = [NSMutableArray arrayWithCapacity:userIDs.count];
     for (NSString *bundleID in userIDs) {
         [displayNames addObject:[self displayNameForExcludedBundleID:bundleID]];
     }
-    NSArray<NSString *> *widthTitles = [@[@"Configure for...", @"No apps added"]
+    NSArray<NSString *> *widthTitles = [@[infoLine1, infoLine2, @"Configure for...", @"No apps added"]
                                         arrayByAddingObjectsFromArray:displayNames];
     CGFloat submenuWidth = HoverClickCalculatedSubmenuWidth(widthTitles);
+
+    // Disabled explanatory rows at the top so the user understands what the list does and how
+    // to remove an entry. They are non-clickable and use a smaller secondary font.
+    NSMenuItem *infoItem1 = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(infoLine1)
+                                                       action:nil
+                                                keyEquivalent:@""];
+    infoItem1.enabled = NO;
+    HoverClickUseInfoSubmenuRow(infoItem1, submenuWidth);
+    [submenu addItem:infoItem1];
+
+    NSMenuItem *infoItem2 = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(infoLine2)
+                                                       action:nil
+                                                keyEquivalent:@""];
+    infoItem2.enabled = NO;
+    HoverClickUseInfoSubmenuRow(infoItem2, submenuWidth);
+    [submenu addItem:infoItem2];
+
+    [submenu addItem:[NSMenuItem separatorItem]];
 
     if (userIDs.count == 0) {
         NSMenuItem *emptyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"No apps added")
