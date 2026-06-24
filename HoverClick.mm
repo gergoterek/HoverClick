@@ -42,7 +42,8 @@ static NSString * const HoverClickUninstallHelp = @"Shows safe manual uninstall 
 static NSString * const HoverClickQuitHelp = @"Stops HoverClick until you launch it again.";
 static NSString * const HoverClickBypassKeyHelp = @"When held at click time, this modifier key makes HoverClick skip its focus behavior and return the original event unchanged.";
 static NSString * const HoverClickExcludedAppsHelp = @"Apps in this list bypass HoverClick focus behavior. When you click a window belonging to an excluded app, HoverClick skips focus, raise, and activation and returns your click unchanged.";
-static NSString * const HoverClickAddExcludedAppHelp = @"Add an app to the excluded list by entering its bundle ID, for example: com.runningwithcrayons.Alfred";
+static NSString * const HoverClickChooseExcludedAppHelp = @"Choose an installed application to exclude. HoverClick reads its bundle ID automatically.";
+static NSString * const HoverClickAddExcludedAppHelp = @"Add an app to the excluded list by typing its bundle ID, for example: com.runningwithcrayons.Alfred";
 static const NSInteger HoverClickBypassKeyOff = 0;
 static const NSInteger HoverClickBypassKeyShift = 2;
 static const NSInteger HoverClickBypassKeyFn = 3;
@@ -804,7 +805,39 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     return [NSString stringWithFormat:@"attempted:%s", HoverClickAXErrorName(error)];
 }
 
-@interface HoverClickAppDelegate : NSObject <NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate>
+// NSTextField subclass that restores Cmd+V/C/X/A inside an NSAlert accessory field.
+// HoverClick runs as a menu-bar accessory app (NSApplicationActivationPolicyAccessory) with
+// no main menu, so there is no Edit menu to provide the standard Cmd+V key equivalent. Typed
+// input and the field editor's right-click Paste already work; this forwards the standard
+// editing selectors through the responder chain so the keyboard shortcuts work too.
+@interface HoverClickEditableTextField : NSTextField
+@end
+
+@implementation HoverClickEditableTextField
+
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    if ((event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) == NSEventModifierFlagCommand) {
+        NSString *key = event.charactersIgnoringModifiers.lowercaseString;
+        SEL action = NULL;
+        if ([key isEqualToString:@"v"]) {
+            action = @selector(paste:);
+        } else if ([key isEqualToString:@"c"]) {
+            action = @selector(copy:);
+        } else if ([key isEqualToString:@"x"]) {
+            action = @selector(cut:);
+        } else if ([key isEqualToString:@"a"]) {
+            action = @selector(selectAll:);
+        }
+        if (action != NULL && [NSApp sendAction:action to:nil from:self]) {
+            return YES;
+        }
+    }
+    return [super performKeyEquivalent:event];
+}
+
+@end
+
+@interface HoverClickAppDelegate : NSObject <NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate, NSOpenSavePanelDelegate>
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) NSMenuItem *permissionItem;
 @property(nonatomic, strong) NSMenuItem *permissionRefreshItem;
@@ -834,8 +867,11 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
 - (void)handleRightMouseDown:(CGEventRef)event;
 - (NSArray<NSString *> *)userExcludedBundleIDs;
 - (void)buildExcludedAppsSubmenu;
+- (void)chooseExcludedApp:(id)sender;
 - (void)addExcludedApp:(id)sender;
+- (BOOL)addExcludedBundleID:(NSString *)candidate;
 - (void)removeExcludedApp:(id)sender;
+- (void)showExcludedAppsAlertWithTitle:(NSString *)title message:(NSString *)message;
 - (BOOL)isChromeApplication:(NSRunningApplication *)app;
 - (BOOL)isBuiltInCompatibilityBypassApplication:(NSRunningApplication *)app;
 - (BOOL)isExcludedApplication:(NSRunningApplication *)app;
@@ -2943,17 +2979,18 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [submenu removeAllItems];
 
-    NSArray<NSString *> *titles = @[@"Maccy (built-in)", @"Add App..."];
     NSArray<NSString *> *userIDs = [self userExcludedBundleIDs];
-    for (NSString *bid in userIDs) {
-        [titles arrayByAddingObject:bid];
-    }
-    CGFloat submenuWidth = HoverClickCalculatedSubmenuWidth([@[@"Maccy (built-in)", @"Add App..."] arrayByAddingObjectsFromArray:userIDs]);
+    NSArray<NSString *> *widthTitles = [@[@"Maccy (built-in)",
+                                          @"Choose Application...",
+                                          @"Add by Bundle ID...",
+                                          @"No apps added"] arrayByAddingObjectsFromArray:userIDs];
+    CGFloat submenuWidth = HoverClickCalculatedSubmenuWidth(widthTitles);
 
     NSMenuItem *maccyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Maccy (built-in)")
                                                         action:nil
                                                  keyEquivalent:@""];
     maccyItem.enabled = NO;
+    maccyItem.toolTip = @"Maccy is always excluded as a built-in compatibility app and cannot be removed.";
     HoverClickUseClosingSubmenuRow(maccyItem, @"checkmark.seal", @"checkmark.circle", submenuWidth);
     [submenu addItem:maccyItem];
 
@@ -2982,7 +3019,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [submenu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *addItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Add App...")
+    NSMenuItem *chooseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Choose Application...")
+                                                        action:@selector(chooseExcludedApp:)
+                                                 keyEquivalent:@""];
+    chooseItem.target = self;
+    chooseItem.enabled = YES;
+    chooseItem.toolTip = HoverClickChooseExcludedAppHelp;
+    HoverClickUseClosingSubmenuRow(chooseItem, @"folder.badge.plus", @"folder", submenuWidth);
+    [submenu addItem:chooseItem];
+
+    NSMenuItem *addItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Add by Bundle ID...")
                                                      action:@selector(addExcludedApp:)
                                               keyEquivalent:@""];
     addItem.target = self;
@@ -2992,64 +3038,129 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [submenu addItem:addItem];
 }
 
+- (void)chooseExcludedApp:(id)sender {
+    (void)sender;
+
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.canChooseFiles = YES;
+    panel.canChooseDirectories = NO;
+    panel.allowsMultipleSelection = NO;
+    panel.resolvesAliases = YES;
+    panel.treatsFilePackagesAsDirectories = NO;
+    panel.title = @"Choose Application to Exclude";
+    panel.message = @"Choose an application (.app) to exclude from HoverClick focus behavior.";
+    panel.prompt = @"Exclude";
+    panel.directoryURL = [NSURL fileURLWithPath:@"/Applications" isDirectory:YES];
+    panel.delegate = self;
+
+    NSModalResponse response = [panel runModal];
+    panel.delegate = nil;
+    if (response != NSModalResponseOK) {
+        return;
+    }
+
+    NSURL *url = panel.URL;
+    if (url == nil) {
+        return;
+    }
+
+    if (![url.pathExtension.lowercaseString isEqualToString:@"app"]) {
+        [self showExcludedAppsAlertWithTitle:@"Not an Application"
+                                     message:@"Please choose a macOS application bundle (.app)."];
+        return;
+    }
+
+    NSBundle *bundle = [NSBundle bundleWithURL:url];
+    NSString *bundleID = bundle.bundleIdentifier;
+    if (bundleID.length == 0) {
+        [self showExcludedAppsAlertWithTitle:@"No Bundle ID"
+                                     message:@"The selected application does not report a bundle identifier and cannot be excluded."];
+        return;
+    }
+
+    HoverClickLog("HoverClick: excluded app chosen path=%s bundleID=%s", url.path.UTF8String, bundleID.UTF8String);
+    [self addExcludedBundleID:bundleID];
+}
+
+// NSOpenPanel delegate: allow normal folders for navigation and only .app bundles for selection.
+- (BOOL)panel:(id)sender shouldEnableURL:(NSURL *)url {
+    (void)sender;
+    if (url == nil) {
+        return NO;
+    }
+    if ([url.pathExtension.lowercaseString isEqualToString:@"app"]) {
+        return YES;
+    }
+    NSNumber *isDirectory = nil;
+    NSNumber *isPackage = nil;
+    [url getResourceValue:&isDirectory forKey:NSURLIsDirectoryKey error:NULL];
+    [url getResourceValue:&isPackage forKey:NSURLIsPackageKey error:NULL];
+    return ([isDirectory boolValue] && ![isPackage boolValue]);
+}
+
 - (void)addExcludedApp:(id)sender {
     (void)sender;
 
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Add Excluded App";
-    alert.informativeText = @"Enter the bundle ID of the app to exclude from HoverClick focus behavior.\n\nExample: com.runningwithcrayons.Alfred";
+    alert.messageText = @"Add by Bundle ID";
+    alert.informativeText = @"Type the bundle ID of the app to exclude from HoverClick focus behavior.\n\nExample: com.runningwithcrayons.Alfred";
     alert.alertStyle = NSAlertStyleInformational;
     [alert addButtonWithTitle:@"Add"];
     [alert addButtonWithTitle:@"Cancel"];
 
-    NSTextField *inputField = [[NSTextField alloc] initWithFrame:NSMakeRect(0.0, 0.0, 260.0, 22.0)];
+    HoverClickEditableTextField *inputField = [[HoverClickEditableTextField alloc] initWithFrame:NSMakeRect(0.0, 0.0, 260.0, 22.0)];
     inputField.placeholderString = @"com.example.AppName";
     alert.accessoryView = inputField;
+    alert.window.initialFirstResponder = inputField;
 
     NSModalResponse response = [alert runModal];
     if (response != NSAlertFirstButtonReturn) {
         return;
     }
 
-    NSString *input = [[inputField stringValue] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if (input.length == 0) {
-        NSAlert *errorAlert = [[NSAlert alloc] init];
-        errorAlert.messageText = @"Bundle ID Required";
-        errorAlert.informativeText = @"Please enter a valid bundle ID.";
-        errorAlert.alertStyle = NSAlertStyleWarning;
-        [errorAlert addButtonWithTitle:@"OK"];
-        [errorAlert runModal];
-        return;
+    [self addExcludedBundleID:inputField.stringValue];
+}
+
+// Shared validate-and-save path for both the app chooser and the manual bundle-ID entry.
+// Returns YES if the bundle ID was added, NO if it was rejected (an alert is shown for rejections).
+- (BOOL)addExcludedBundleID:(NSString *)candidate {
+    NSString *normalized = [candidate stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (normalized.length == 0) {
+        [self showExcludedAppsAlertWithTitle:@"Bundle ID Required"
+                                     message:@"Please provide a valid bundle ID."];
+        return NO;
     }
 
-    if ([input isEqualToString:HoverClickMaccyBundleID]) {
-        NSAlert *dupeAlert = [[NSAlert alloc] init];
-        dupeAlert.messageText = @"Already Excluded";
-        dupeAlert.informativeText = [NSString stringWithFormat:@"%@ is already excluded as a built-in entry and cannot be added to the user list.", input];
-        dupeAlert.alertStyle = NSAlertStyleInformational;
-        [dupeAlert addButtonWithTitle:@"OK"];
-        [dupeAlert runModal];
-        return;
+    if ([normalized isEqualToString:HoverClickMaccyBundleID]) {
+        [self showExcludedAppsAlertWithTitle:@"Already Excluded"
+                                     message:[NSString stringWithFormat:@"%@ is already excluded as a built-in entry and cannot be added to the user list.", normalized]];
+        return NO;
     }
 
     NSArray<NSString *> *existing = [self userExcludedBundleIDs];
-    if ([existing containsObject:input]) {
-        NSAlert *dupeAlert = [[NSAlert alloc] init];
-        dupeAlert.messageText = @"Already in List";
-        dupeAlert.informativeText = [NSString stringWithFormat:@"%@ is already in the excluded apps list.", input];
-        dupeAlert.alertStyle = NSAlertStyleInformational;
-        [dupeAlert addButtonWithTitle:@"OK"];
-        [dupeAlert runModal];
-        return;
+    if ([existing containsObject:normalized]) {
+        [self showExcludedAppsAlertWithTitle:@"Already in List"
+                                     message:[NSString stringWithFormat:@"%@ is already in the excluded apps list.", normalized]];
+        return NO;
     }
 
     NSMutableArray<NSString *> *updated = [existing mutableCopy];
-    [updated addObject:input];
+    [updated addObject:normalized];
     [[NSUserDefaults standardUserDefaults] setObject:[updated copy] forKey:HoverClickExcludedAppsDefaultsKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
 
-    HoverClickLog("HoverClick: excluded app added bundleID=%s userListCount=%lu", input.UTF8String, (unsigned long)updated.count);
+    HoverClickLog("HoverClick: excluded app added bundleID=%s userListCount=%lu", normalized.UTF8String, (unsigned long)updated.count);
     [self buildExcludedAppsSubmenu];
+    return YES;
+}
+
+- (void)showExcludedAppsAlertWithTitle:(NSString *)title message:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = title ?: @"";
+    alert.informativeText = message ?: @"";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
 }
 
 - (void)removeExcludedApp:(id)sender {

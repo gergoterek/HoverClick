@@ -158,6 +158,13 @@ The `feature-excluded-apps` branch adds a user-configurable Excluded Apps layer 
 
 **Persistence:** `NSArray<NSString *>` in `NSUserDefaults`, key `excludedAppBundleIDs`. Empty strings and non-string entries are filtered at read time. Maccy's bundle ID is never stored in the user list; it is always covered by the built-in check.
 
-**Menu:** `Excluded Apps` submenu added to the Functions section, after Bypass Key and before the section separator. Submenu contains a non-interactive `Maccy (built-in)` header entry, then user-added entries (each clickable to remove via `removeExcludedApp:`), then `Add App...` which opens an `NSAlert` text-field dialog.
+**Menu:** `Excluded Apps` submenu added to the Functions section, after Bypass Key and before the section separator. Submenu contains a non-interactive `Maccy (built-in)` header entry, then user-added entries (each clickable to remove via `removeExcludedApp:`), then two add actions:
+
+- `Choose Application...` (`chooseExcludedApp:`) opens an `NSOpenPanel` app chooser. The panel starts in `/Applications`, allows choosing files (not directories), does not treat file packages as directories, and uses the `NSOpenSavePanelDelegate` method `panel:shouldEnableURL:` to enable only `.app` bundles for selection while keeping normal folders navigable. The chosen URL is validated to be an `.app`, and its bundle identifier is read with `NSBundle bundleWithURL:`. No Finder/browser automation, no disk scan, and no custom app-manager window are used.
+- `Add by Bundle ID...` (`addExcludedApp:`) opens an `NSAlert` text-field dialog as a manual fallback (renamed from `Add App...`).
+
+Both add paths funnel into the shared `addExcludedBundleID:`, which trims whitespace, rejects empty/built-in-Maccy/duplicate values (showing an alert via `showExcludedAppsAlertWithTitle:message:`), saves to `NSUserDefaults`, logs, and rebuilds the submenu.
+
+**Accessory-app paste fix:** The manual input dialog uses `HoverClickEditableTextField`, an `NSTextField` subclass that overrides `performKeyEquivalent:` to forward `paste:`/`copy:`/`cut:`/`selectAll:` through the responder chain when Cmd is held. HoverClick is an `NSApplicationActivationPolicyAccessory` app with no main menu, so there is no Edit menu to provide the standard Cmd+V key equivalent; typed input and the field editor's right-click Paste already worked, and this restores the keyboard shortcuts. The fix is UI-only and does not touch the event tap or click semantics.
 
 **Safety constraints (unchanged):** Event tap mask remains `kCGEventLeftMouseDown | kCGEventRightMouseDown` only. All bypass paths return the original event unchanged. NULL is never returned for normal user events. No synthetic clicks, event replay, delayed delivery, cursor movement, CGEventPost, or CGEventCreateMouseEvent in any new code path.
