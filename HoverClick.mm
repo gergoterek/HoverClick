@@ -2985,9 +2985,20 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [submenu removeAllItems];
 
     NSArray<NSString *> *userIDs = [self userExcludedBundleIDs];
-    NSMutableArray<NSString *> *displayNames = [NSMutableArray arrayWithCapacity:userIDs.count];
+    NSMutableArray<NSDictionary<NSString *, NSString *> *> *entries =
+        [NSMutableArray arrayWithCapacity:userIDs.count];
     for (NSString *bundleID in userIDs) {
-        [displayNames addObject:[self displayNameForExcludedBundleID:bundleID]];
+        NSString *displayName = [self displayNameForExcludedBundleID:bundleID];
+        [entries addObject:@{@"bundleID": bundleID, @"displayName": displayName}];
+    }
+    [entries sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        return [a[@"displayName"] compare:b[@"displayName"]
+                                  options:NSCaseInsensitiveSearch];
+    }];
+
+    NSMutableArray<NSString *> *displayNames = [NSMutableArray arrayWithCapacity:entries.count];
+    for (NSDictionary *entry in entries) {
+        [displayNames addObject:entry[@"displayName"]];
     }
     NSArray<NSString *> *widthTitles = [@[@"Configure for...", @"No apps added"]
                                         arrayByAddingObjectsFromArray:displayNames];
@@ -3003,7 +3014,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [submenu addItem:[NSMenuItem separatorItem]];
 
-    if (userIDs.count == 0) {
+    if (entries.count == 0) {
         NSMenuItem *emptyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"No apps added")
                                                            action:nil
                                                     keyEquivalent:@""];
@@ -3011,9 +3022,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         HoverClickUseClosingSubmenuRow(emptyItem, nil, nil, submenuWidth);
         [submenu addItem:emptyItem];
     } else {
-        for (NSUInteger i = 0; i < userIDs.count; i++) {
-            NSString *bundleID = userIDs[i];
-            NSString *displayName = displayNames[i];
+        for (NSDictionary<NSString *, NSString *> *entry in entries) {
+            NSString *bundleID = entry[@"bundleID"];
+            NSString *displayName = entry[@"displayName"];
             NSMenuItem *entryItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(displayName)
                                                                action:@selector(removeExcludedApp:)
                                                         keyEquivalent:@""];

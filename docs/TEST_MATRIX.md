@@ -160,7 +160,7 @@
 
 ## Excluded Apps (v1.3 feature-excluded-apps)
 
-Manual Finder UI validation -- not run automatically. All 32 tests below must pass before the branch is merge-ready. This list reflects the LinearMouse-style app list selector (the earlier OpenPanel chooser, manual bundle-ID entry, and visible Maccy row were removed) plus a compact disabled info row ("Ignored apps") with a tooltip and the menu-highlight reset fix.
+Manual Finder UI validation -- not run automatically. All 33 tests below must pass before the branch is merge-ready. This list reflects the LinearMouse-style app list selector (the earlier OpenPanel chooser, manual bundle-ID entry, and visible Maccy row were removed) plus a compact disabled info row ("Ignored apps") with a tooltip and the menu-highlight reset fix, and alphabetical display ordering of user-added app rows.
 
 | # | Test | Method | Expected Result |
 | --- | --- | --- | --- |
@@ -196,6 +196,7 @@ Manual Finder UI validation -- not run automatically. All 32 tests below must pa
 | 30 | Diagnostics show last excluded bypass decision | After an excluded-app click, copy diagnostics. | `Last bypass decision: excluded-app:<bundleID>` (or `bypassed-maccy` for a Maccy click). |
 | 31 | Diagnostics built-in line is not weird | Inspect the copied summary. | `Excluded Apps (built-in compatibility): Maccy (org.p0deje.Maccy) installed` or `... not installed` — accurate either way; no odd hardcoded row in the menu. |
 | 32 | Maccy built-in bypass still works | If Maccy is installed, click a Maccy history item, then copy diagnostics. | Paste lands in the correct target; `Last bypass decision: bypassed-maccy`; Maccy is not in the user list. |
+| 33 | User-added apps display alphabetically | Add at least three apps whose names are not already in alphabetical order (e.g. add Safari, then TextEdit, then Calendar). Open the submenu. | App rows appear sorted A–Z by friendly display name, case-insensitive, regardless of the order they were added. Clicking any row removes the correct app. Storage order in `excludedAppBundleIDs` defaults is unaffected. |
 
 ## Excluded Apps / Maccy Compatibility
 
