@@ -160,7 +160,7 @@
 
 ## Excluded Apps (v1.3 feature-excluded-apps)
 
-Manual Finder UI validation -- not run automatically. All 33 tests below must pass before the branch is merge-ready. This list reflects the LinearMouse-style app list selector (the earlier OpenPanel chooser, manual bundle-ID entry, and visible Maccy row were removed) plus a compact disabled info row ("Ignored apps") with a tooltip and the menu-highlight reset fix, and alphabetical display ordering of user-added app rows.
+Manual Finder UI validation -- not run automatically. All 33 tests below must pass before the branch is merge-ready. This list reflects the LinearMouse-style app list selector (the earlier OpenPanel chooser, manual bundle-ID entry, and "Ignored apps" info row were removed) plus section headers ("Added exclusions", optional "Automatic"), the Maccy automatic-entry row when installed, and alphabetical display ordering of user-added app rows. Updated for polish-v1.3-menu-ui: "Configure for..." → "Add Exclusion...", "No apps added" → "No added exclusions", "Ignored apps" row removed.
 
 | # | Test | Method | Expected Result |
 | --- | --- | --- | --- |
@@ -168,18 +168,18 @@ Manual Finder UI validation -- not run automatically. All 33 tests below must pa
 | 2 | Accessibility permission stable | Open the menu after launch. | `Access` > `Permissions` shows `Accessibility: Granted`; no re-prompt. |
 | 3 | Excluded Apps submenu present | Open the HoverClick status menu. | `Excluded Apps` submenu appears in the HoverClick (Functions) section, after `Bypass Key` and before the separator. |
 | 4 | No fixed Maccy (built-in) row | Open the `Excluded Apps` submenu. | There is no `Maccy (built-in)` row. The menu does not look hardcoded; nothing Maccy-specific appears as a permanent row. |
-| 5 | Info row text is "Ignored apps" | Open the `Excluded Apps` submenu. | One disabled (greyed, smaller-font) row appears at the top reading exactly `Ignored apps`, followed by a separator. The text is not truncated. No second visible explanatory row. |
-| 6 | Info row is not clickable | Hover and try clicking the `Ignored apps` row. | The row does not highlight on hover and does nothing when clicked; it does not look like an actionable app entry. |
-| 7 | Info row tooltip baseline | Hover the `Ignored apps` row for a moment. | The `NSMenuItem.toolTip` is set to `Click an app to remove it`, but in-menu tooltips on custom `NSView` rows are NOT expected to visibly appear under the current baseline (a pre-existing limitation, not a regression from this branch — see the Tooltip baseline audit in `docs/CURRENT_STATE.md`). Pass = no tooltip shown and no visual glitch; a visible in-menu tooltip is out of scope until `research-menu-tooltips`. |
-| 8 | Empty state when no user apps | Open the `Excluded Apps` submenu before adding any app. | Below the info row + separator: only `No apps added` (disabled), a separator, and `Configure for...`. No other rows. |
-| 9 | Configure for... closes menu then opens selector | Click `Configure for...`. | The HoverClick menu closes first; then the dedicated app selector appears (NSAlert with a pop-up list of apps). The selector is NOT a Finder/OpenPanel file browser. The selector window is clickable and focusable — no overlap or input deadlock with the menu. |
+| 5 | Section headers present | Open the `Excluded Apps` submenu. | An `Added exclusions` section header appears above the user-app entries (or `No added exclusions`). If Maccy is installed, an `Automatic` section header appears first, above the Maccy row. No `Ignored apps` row. |
+| 6 | Maccy automatic row (when installed) | Open `Excluded Apps` with Maccy installed. | A `Maccy` row (no icon, `(Automatic)` secondary text on the right in smaller, slightly gray text) appears under the `Automatic` header; it is non-actionable (does nothing when clicked, does not highlight). |
+| 7 | Maccy automatic row absent when not installed | Open `Excluded Apps` without Maccy installed. | No `Automatic` section header and no `Maccy` row appear. |
+| 8 | Empty state when no user apps | Open the `Excluded Apps` submenu before adding any app. | Under `Added exclusions`: only `No added exclusions` (disabled), a separator, and `Add Exclusion...`. No `Ignored apps` row; no `No apps added` text. |
+| 9 | Add Exclusion... closes menu then opens selector | Click `Add Exclusion...`. | The HoverClick menu closes first; then the dedicated app selector appears (NSAlert with a pop-up list of apps). The selector is NOT a Finder/OpenPanel file browser. The selector window is clickable and focusable — no overlap or input deadlock with the menu. |
 | 10 | Excluded Apps not stuck highlighted | After the selector opens/closes (Exclude or Cancel), reopen the HoverClick menu. | `Excluded Apps` is NOT highlighted/selected by default. Highlight follows only the actual current mouse hover; no row stays visually selected after dismissal. |
 | 11 | Selector lists apps by friendly name | Open the pop-up in the selector. | Installed apps are listed by friendly display name (with icons), sorted alphabetically. |
-| 12 | Selecting a normal app adds it | Pick an app (e.g. Safari) and click `Exclude`. | The app is added; its friendly name appears in the submenu below the info row. |
+| 12 | Selecting a normal app adds it | Pick an app (e.g. Safari) and click `Exclude`. | The app is added; its friendly name appears in the submenu under `Added exclusions`. |
 | 13 | Added app appears by friendly name | Reopen the submenu after adding. | The app shows by display name (e.g. `Safari`), not by raw bundle ID, and is clickable. |
-| 14 | Clicking an app row removes it | Click a user-added entry in the submenu. | The entry disappears; menu is rebuilt; `No apps added` shows if the list is now empty. |
-| 15 | Duplicate selection is rejected | Run `Configure for...` again and pick the same app. | An alert says it is already excluded; no duplicate entry is added. |
-| 16 | Maccy selection does not duplicate | If Maccy is installed, pick Maccy in the selector. | A friendly "already handled automatically" message appears; Maccy is not added as a user entry. |
+| 14 | Clicking an app row removes it | Click a user-added entry in the submenu. | The entry disappears; menu is rebuilt; `No added exclusions` shows if the list is now empty. |
+| 15 | Duplicate selection is rejected | Run `Add Exclusion...` again and pick the same app. | An alert says it is already excluded; no duplicate entry is added. |
+| 16 | Maccy selection does not duplicate | If Maccy is installed, pick Maccy via `Add Exclusion...`. | A friendly "already handled automatically" message appears; Maccy is not added as a user entry. |
 | 17 | Added app persists after relaunch | Add an app, quit HoverClick (Cmd+Q), relaunch via `scripts/run-app.sh`, open the submenu. | The added app is still shown by friendly name. |
 | 18 | Removed app stays removed after relaunch | Remove an entry, quit, relaunch, open the submenu. | The removed app is not present. |
 | 19 | Unresolvable bundle ID falls back to ID | If a stored bundle ID's app is not installed, open the submenu. | The entry shows the raw bundle ID as a fallback and is still removable. |
@@ -198,35 +198,62 @@ Manual Finder UI validation -- not run automatically. All 33 tests below must pa
 | 32 | Maccy built-in bypass still works | If Maccy is installed, click a Maccy history item, then copy diagnostics. | Paste lands in the correct target; `Last bypass decision: bypassed-maccy`; Maccy is not in the user list. |
 | 33 | User-added apps display alphabetically | Add at least three apps whose names are not already in alphabetical order (e.g. add Safari, then TextEdit, then Calendar). Open the submenu. | App rows appear sorted A–Z by friendly display name, case-insensitive, regardless of the order they were added. Clicking any row removes the correct app. Storage order in `excludedAppBundleIDs` defaults is unaffected. |
 
-## Menu Quick Help + Maccy Automatic Row (v1.3 research-menu-tooltips)
+## Menu Guide + Maccy Automatic Row (v1.3 research-menu-tooltips / polish-v1.3-menu-ui)
 
-Manual Finder UI validation -- not run automatically. This branch implements a visible help fallback (a `Quick Help` submenu) and a visible Maccy automatic-exclusion row in `Excluded Apps`. All tests below must pass before the branch is merge-ready; scripts passing is not sufficient. The branch is not merge-ready until the user explicitly confirms Quick Help compactness, Maccy automatic row behavior, Excluded Apps behavior, A–Z sorting, selector/remove/persistence, and runtime click behavior.
+Manual Finder UI validation -- not run automatically. This section covers the visible help fallback (`Guide` submenu, renamed from "Quick Help" on polish-v1.3-menu-ui) and the Maccy automatic-exclusion row in `Excluded Apps`. All tests below must pass before each branch is merge-ready; scripts passing is not sufficient.
 
 | # | Test | Method | Expected Result |
 | --- | --- | --- | --- |
 | Q1 | App launches via `.app` | Run `scripts/run-app.sh`. | Menubar icon visible; exactly one process; no crash. |
 | Q2 | Accessibility stable | Open the menu after launch. | No re-prompt; `Access` > `Permissions` shows the correct status. |
 | Q3 | Menu opens and closes normally | Open the HoverClick status menu, then close it. | Opens and closes cleanly; no stuck/highlighted row remains afterward. |
-| Q4 | Quick Help submenu present | Open the menu; look in the Info section. | A `Quick Help` row appears in the Info section, above `Help`, with a question-mark icon and submenu arrow. |
-| Q5 | Quick Help opens | Hover/open the `Quick Help` submenu. | The submenu opens reliably (standard submenu navigation, not a hover tooltip). |
-| Q6 | Quick Help is compact and readable | Read the submenu rows. | Entries show a compact feature label (not large/title-like) with a short one-line description below it for: Left Click Focus, Right Click Focus, Bypass Key, Excluded Apps, Launch at Login, Permissions, Verbose Mode, Copy Summary. Label font is visibly smaller and less bold than the previous version; text is not clipped or truncated. |
-| Q7 | Help submenu width is acceptable | Compare the `Quick Help` submenu width to the main menu. | Short descriptions fit on one line or wrap neatly; the submenu is not excessively wide. |
-| Q8 | Main menu width unchanged | Compare the main menu to before this branch. | The main menu and the `Excluded Apps` submenu are not wider; the only main-menu change is the added `Quick Help` row in the Info section. |
-| Q9 | Quick Help rows are inert | Hover and try clicking each `Quick Help` row. | Rows do not highlight on hover and do nothing when clicked; they read as static informational text. No row stays stuck highlighted. |
-| Q10 | No flicker/overlap/deadlock | Open and close `Quick Help` repeatedly; move between it, `Help`, and `Diagnostics`. | No flicker, overlap, deadlock, or unclickable window; submenus behave normally. |
+| Q4 | Guide submenu present | Open the menu; look in the Info section. | A `Guide` row appears in the Info section, above `Help`, with a question-mark icon and submenu arrow. |
+| Q5 | Guide opens | Hover/open the `Guide` submenu. | The submenu opens reliably (standard submenu navigation, not a hover tooltip). |
+| Q6 | Guide is compact and readable | Read the submenu rows. | Entries show a compact feature label (not large/title-like) with a short one-line description below it for: Left Click Focus, Right Click Focus, Bypass Key, Excluded Apps, Launch at Login, Permissions, Verbose Mode, Copy Summary. Label font is visibly smaller and less bold than the previous version; detail text is slightly more legible than before (less washed-out gray); text is not clipped or truncated. |
+| Q7 | Guide submenu width is acceptable | Compare the `Guide` submenu width to the main menu. | Short descriptions fit on one line or wrap neatly; the submenu is not excessively wide. |
+| Q8 | Main menu width unchanged | Compare the main menu to before this branch. | The main menu and the `Excluded Apps` submenu are not wider; the only main-menu Info change is `Guide` (renamed from `Quick Help`). |
+| Q9 | Guide rows are inert | Hover and try clicking each `Guide` row. | Rows do not highlight on hover and do nothing when clicked; they read as static informational text. No row stays stuck highlighted. |
+| Q10 | No flicker/overlap/deadlock | Open and close `Guide` repeatedly; move between it, `Help`, and `Diagnostics`. | No flicker, overlap, deadlock, or unclickable window; submenus behave normally. |
 | Q11 | No floating tooltip window | Hover rows anywhere in the menu. | No custom floating tooltip window appears anywhere (native hover tooltips remain absent on custom rows by design; this is expected, not a failure). |
 | Q12 | Runtime click behavior unchanged | Test left-click focus, right-click focus, active-window right-click, drag, double-click, rapid clicks. | All unchanged; no delay, no synthetic event/replay/cursor movement; mouse movement alone does not focus windows. |
-| Q13 | Maccy auto row present when installed | Open `Excluded Apps`; Maccy must be installed. | A "Maccy" row appears with a `checkmark.circle` icon and an "Auto" accessory on the right; it is greyed out (disabled/non-removable); it appears above any user-added apps. |
+| Q13 | Maccy auto row present when installed | Open `Excluded Apps`; Maccy must be installed. | Under an `Automatic` section header, a `Maccy` row (no icon, `(Automatic)` secondary text on the right) appears; it is non-actionable (does not highlight, does nothing when clicked); it appears above the `Added exclusions` section and any user-added apps. The `(Automatic)` text is legible (not overly washed-out). |
 | Q14 | Maccy auto row clearly non-removable | Try clicking the Maccy automatic row. | The row does nothing when clicked; it does not trigger remove behavior; the submenu stays open or closes without removing Maccy from any list. |
 | Q15 | Maccy not in `excludedAppBundleIDs` | Inspect `NSUserDefaults` or `Copy Summary`. | Maccy (`org.p0deje.Maccy`) is NOT listed in the user excluded-apps list in diagnostics; only user-added entries appear there. |
-| Q16 | Selecting Maccy in `Configure for...` shows already-handled message | Open `Configure for...`, pick Maccy from the list, press Exclude. | An "Already Handled Automatically" alert appears; Maccy is NOT added to the user list; the `Excluded Apps` submenu is unchanged afterward. |
+| Q16 | Selecting Maccy in `Add Exclusion...` shows already-handled message | Open `Add Exclusion...`, pick Maccy from the list, press Exclude. | An "Already Handled Automatically" alert appears; Maccy is NOT added to the user list; the `Excluded Apps` submenu is unchanged afterward. |
 | Q17 | Maccy auto row absent when not installed | Test on a machine without Maccy, or temporarily rename/uninstall Maccy. | No permanent Maccy row appears in the `Excluded Apps` submenu. |
-| Q18 | User-added apps still sorted A–Z | Add two or more apps via `Configure for...`. | User-added entries appear alphabetically below the Maccy auto row (if Maccy is installed). Maccy auto row is always first. |
+| Q18 | User-added apps still sorted A–Z | Add two or more apps via `Add Exclusion...`. | User-added entries appear alphabetically under `Added exclusions`, below the `Automatic` section (if Maccy is installed). |
 | Q19 | User-added apps still removable | Click a user-added app row. | The clicked app is removed from the list and from `NSUserDefaults`; the Maccy row (if present) is unaffected. |
-| Q20 | `Ignored apps` row still present | Open `Excluded Apps`. | The compact disabled "Ignored apps" info row is still the first row (above the separator and Maccy/user entries). |
+| Q20 | No `Ignored apps` row | Open `Excluded Apps`. | There is no `Ignored apps` row. The first visible item is either an `Automatic` section header (if Maccy is installed) or the `Added exclusions` section header. |
 | Q21 | Excluded Apps submenu width compact | Check the `Excluded Apps` submenu width. | Compact; not wider than the main menu content width (286 pt cap). |
-| Q22 | Excluded Apps regression | Re-run Excluded Apps tests 3–33 above. | All still pass: A–Z sorting, `Ignored apps` row, selector (not Finder/OpenPanel), close-then-open selector flow, remove correct app, persistence, no stuck highlight. |
+| Q22 | Excluded Apps regression | Re-run Excluded Apps tests 3–33 above. | All still pass: A–Z sorting, section headers, Maccy automatic row (if installed), `Add Exclusion...` selector (not Finder/OpenPanel), close-then-open selector flow, remove correct app, persistence, no stuck highlight. |
 | Q23 | Diagnostics unchanged | Use `Info` > `Diagnostics` > `Copy Summary`. | Copy Summary works; excluded-app user list and last bypass decision still reported. Maccy appears in the built-in Maccy line (`installed`/`not installed`), not in the user list. |
+
+## Menu UI Polish (polish-v1.3-menu-ui)
+
+Manual Finder UI validation -- not run automatically. All tests below must pass before polish-v1.3-menu-ui is merge-ready.
+
+| # | Test | Method | Expected Result |
+| --- | --- | --- | --- |
+| P1 | "Ignored apps" row is gone | Open `Excluded Apps`. | No "Ignored apps" row anywhere in the submenu. |
+| P2 | "Automatic" section when Maccy installed | Open `Excluded Apps` with Maccy installed. | An `Automatic` section header appears at the top, followed by the Maccy row. |
+| P3 | Maccy row has no icon | Inspect the Maccy automatic row. | The Maccy row has no icon on the left side; the name appears flush with the menu leading edge. |
+| P4 | Maccy row shows "(Automatic)" label | Inspect the Maccy automatic row. | The text `(Automatic)` appears on the right side in a smaller, secondary-colored font. |
+| P5 | Maccy row "(Automatic)" is legible | Read the Maccy automatic label. | The `(Automatic)` text is clearly readable — not overly washed-out gray. |
+| P6 | Maccy row is non-removable and non-actionable | Click and hover the Maccy automatic row. | Nothing happens; no highlight; no removal; no selector opens. |
+| P7 | Maccy not duplicated by Add Exclusion... | Open `Add Exclusion...`, pick Maccy. | "Already Handled Automatically" alert; Maccy not added to user list. |
+| P8 | "Added exclusions" section header present | Open `Excluded Apps`. | An `Added exclusions` section header appears above the user entries (or `No added exclusions`). |
+| P9 | Empty state shows "No added exclusions" | Open `Excluded Apps` with no user-added apps. | `No added exclusions` appears under the `Added exclusions` header. No `No apps added` text. |
+| P10 | User exclusions remain A–Z | Add apps and reopen. | User-added entries appear sorted A–Z by friendly name under `Added exclusions`. |
+| P11 | Removing apps still works | Click a user-added entry. | Entry is removed; `No added exclusions` shows if the list is now empty. |
+| P12 | "Add Exclusion..." label | Open `Excluded Apps`. | The bottom action row reads exactly `Add Exclusion...` (not `Configure for...`). |
+| P13 | "Guide" label in Info section | Open the main menu. | The `Guide` row appears in the Info section above `Help`. No `Quick Help` label. |
+| P14 | Guide submenu opens | Open the `Guide` submenu. | Submenu opens normally with compact rows. |
+| P15 | Guide detail text is more legible | Read Guide detail rows. | Detail descriptions are slightly less gray and more legible than the previous "Quick Help" detail text (slightly higher contrast). |
+| P16 | Guide remains compact | Inspect Guide submenu height. | Rows are as compact as before; no change in overall height. |
+| P17 | Main menu width unchanged | Compare to previous branch. | The main menu width is unchanged; only label text changed. |
+| P18 | No clipping, flicker, overlap, or stuck highlight | Navigate menus normally. | All menu rows, section headers, and submenus render cleanly. |
+| P19 | Runtime clicks still work | Left-click and right-click background windows. | Click focus behavior is unchanged; no delay, no synthetic event. |
+| P20 | Drag, double-click, context menu still work | Test across multiple apps. | All unchanged. |
 
 ## Excluded Apps / Maccy Compatibility
 
