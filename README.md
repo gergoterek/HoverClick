@@ -42,6 +42,8 @@ HoverClick runs as a status-bar item with no Dock icon. The menu is organized in
 
 **Updates:** Check Now... · Auto Check Updates
 
+**Info > Quick Help:** short explanations of what each menu item does
+
 **Info > Help:** GitHub · Contact · Release Notes · Uninstall...
 
 **Info > Diagnostics:** Copy Summary · Verbose Mode

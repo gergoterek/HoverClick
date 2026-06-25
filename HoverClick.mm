@@ -639,6 +639,63 @@ static void HoverClickSyncMenuRowView(NSMenuItem *item) {
     }
 }
 
+// Builds a non-actionable Quick Help entry: an emphasized feature name with a short, word-wrapped
+// description below it. Used only inside the dedicated Quick Help submenu. This is the visible,
+// reliable replacement for native in-menu hover tooltips, which AppKit does not display for
+// custom NSView-backed menu rows: NSMenu's modal tracking run loop never drives NSView tooltip
+// display, and item.view bypasses NSMenuItem.toolTip entirely (see the tooltip baseline note in
+// docs/CURRENT_STATE.md and the reverted ui-menu-tooltips attempt). The entry adds no tracking
+// areas, timers, monitors, or event taps; the owning NSMenuItem stays disabled so the row is
+// informational only and is skipped by the highlight-reset pass (it is not a HoverClickMenuRowView).
+static const CGFloat HoverClickQuickHelpWidth = HoverClickMenuContentWidth;
+static const CGFloat HoverClickQuickHelpVerticalPadding = 6.0;
+static const CGFloat HoverClickQuickHelpTitleHeight = 17.0;
+static const CGFloat HoverClickQuickHelpTitleDetailGap = 1.0;
+
+static NSMenuItem *HoverClickCreateQuickHelpItem(NSString *title, NSString *detail) {
+    CGFloat textX = HoverClickMenuLeadingInset;
+    CGFloat textWidth = HoverClickQuickHelpWidth - textX - HoverClickMenuTrailingInset;
+
+    NSFont *detailFont = [NSFont systemFontOfSize:11.0];
+    NSRect detailRect = [detail boundingRectWithSize:NSMakeSize(textWidth, CGFLOAT_MAX)
+                                             options:(NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading)
+                                          attributes:@{NSFontAttributeName: detailFont}];
+    // +2 guards against a one-pixel difference between boundingRect measurement and the
+    // wrapping label's own layout so the final line never clips.
+    CGFloat detailHeight = ceil(detailRect.size.height) + 2.0;
+
+    CGFloat totalHeight = HoverClickQuickHelpVerticalPadding + detailHeight
+                          + HoverClickQuickHelpTitleDetailGap + HoverClickQuickHelpTitleHeight
+                          + HoverClickQuickHelpVerticalPadding;
+
+    NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0.0, 0.0, HoverClickQuickHelpWidth, totalHeight)];
+
+    // Unflipped container (origin bottom-left): description sits below, emphasized title above it.
+    NSTextField *detailLabel = [NSTextField wrappingLabelWithString:detail];
+    detailLabel.font = detailFont;
+    detailLabel.textColor = [NSColor secondaryLabelColor];
+    detailLabel.preferredMaxLayoutWidth = textWidth;
+    detailLabel.frame = NSMakeRect(textX, HoverClickQuickHelpVerticalPadding, textWidth, detailHeight);
+    [container addSubview:detailLabel];
+
+    NSTextField *titleLabel = [NSTextField labelWithString:title];
+    titleLabel.font = [NSFont systemFontOfSize:[NSFont systemFontSize] weight:NSFontWeightSemibold];
+    titleLabel.textColor = [NSColor labelColor];
+    titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    titleLabel.frame = NSMakeRect(textX,
+                                  HoverClickQuickHelpVerticalPadding + detailHeight + HoverClickQuickHelpTitleDetailGap,
+                                  textWidth,
+                                  HoverClickQuickHelpTitleHeight);
+    [container addSubview:titleLabel];
+
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(title)
+                                                  action:nil
+                                           keyEquivalent:@""];
+    item.enabled = NO;
+    item.view = container;
+    return item;
+}
+
 static NSImage *HoverClickStatusDotImage(void) {
     NSImage *image = [NSImage imageWithSize:NSMakeSize(HoverClickHeaderStatusDotSize, HoverClickHeaderStatusDotSize)
                                     flipped:NO
@@ -1315,6 +1372,40 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [menu addItem:[NSMenuItem separatorItem]];
 
     [menu addItem:HoverClickCreateInfoSectionHeaderMenuItem()];
+
+    // Quick Help: visible, reliable feature explanations to replace native in-menu hover tooltips,
+    // which do not display on HoverClick's custom NSView menu rows. Standard submenu navigation
+    // (not the broken hover-tooltip path) reveals the explanations. Lives one level in so the main
+    // menu stays compact; entries are disabled informational rows.
+    NSMenuItem *quickHelpItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Quick Help")
+                                                           action:nil
+                                                    keyEquivalent:@""];
+    quickHelpItem.enabled = YES;
+    quickHelpItem.indentationLevel = 0;
+    quickHelpItem.state = NSControlStateValueOff;
+    HoverClickUseSubmenuMenuRow(quickHelpItem, @"questionmark.bubble", @"questionmark.circle");
+
+    NSMenu *quickHelpMenu = [[NSMenu alloc] initWithTitle:@"Quick Help"];
+    [quickHelpMenu setAutoenablesItems:NO];
+    quickHelpItem.submenu = quickHelpMenu;
+    [menu addItem:quickHelpItem];
+
+    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Left Click Focus",
+        @"Raises and focuses the background window you left-click, then passes your click through unchanged.")];
+    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Right Click Focus",
+        @"Focuses the window under the pointer before its right-click menu opens.")];
+    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Bypass Key",
+        @"Hold the selected key when you click to let the click pass through unchanged.")];
+    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Excluded Apps",
+        @"Apps listed here are ignored by HoverClick. Click an app to remove it; use Configure for... to add one.")];
+    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Launch at Login",
+        @"Starts HoverClick automatically when you sign in.")];
+    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Permissions",
+        @"Shows Accessibility status. Click focus needs it granted; Refresh Status re-checks it.")];
+    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Verbose Mode",
+        @"Adds extra detail to the copied diagnostics summary.")];
+    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Copy Summary",
+        @"Copies current settings and recent click decisions to the clipboard.")];
 
     NSMenuItem *helpItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Help")
                                                       action:nil

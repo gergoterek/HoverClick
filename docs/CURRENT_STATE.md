@@ -194,6 +194,18 @@ A focused regression audit compared tooltip-related code on `feature-excluded-ap
 - The status-bar icon tooltip (`NSStatusBarButton`, `button.toolTip`) is a normal control outside NSMenu and is unaffected by this limitation.
 - No source change was made by the audit. Making custom in-menu tooltips visibly fire is the job of the future `research-menu-tooltips` effort, not this branch. Claiming a fix here without `research-menu-tooltips` would be pretending native tooltips work when they do not.
 
+### research-menu-tooltips: Quick Help submenu (2026-06-25)
+
+Branch `research-menu-tooltips` (from `main` at `77de797`, after Excluded Apps merged). Outcome 2 from the plan: native in-menu hover tooltips cannot be made reliably visible on custom `NSView` menu rows, so this branch ships a visible, compact **help fallback** instead of pretending tooltips work.
+
+- Approach chosen: a dedicated **`Quick Help` submenu** in the Info section, placed above the existing `Help` submenu. Native hover tooltips were NOT re-attempted; the reverted `viewDidMoveToWindow` fix (`4fe9e91`) was NOT re-landed, and `ui-menu-tooltips` was neither merged nor used as a base. Re-landing it would reintroduce a fix that still does not display tooltips, because `NSMenu`'s modal tracking loop never drives `NSView` tooltip display (baseline reason #2 above) — closing that gap needs forbidden timers/monitors/floating windows.
+- Why this over the alternatives: Option A (native) is structurally blocked and already failed manual testing; Option B (revert to standard `NSMenuItem`s) would discard the entire custom-row system (icons, toggles, non-closing rows, highlight, compact width, sticky-highlight fix) and create inconsistent rows; Option C (inline rows in the main menu) risks main-menu width/clutter the spec warns against; Option E (floating tooltip window) is forbidden/high-risk. Option D keeps the main menu compact, is reliably visible via standard submenu navigation, and touches no runtime/event code.
+- Mechanism: `HoverClickCreateQuickHelpItem(title, detail)` builds a disabled, non-actionable `NSMenuItem` whose `view` is a plain `NSView` containing an emphasized semibold feature name and a word-wrapped secondary description sized to fit. It is intentionally NOT a `HoverClickMenuRowView`: no tracking area, no hover highlight, no `mouseDown:` event loop, and it is skipped by `resetMenuRowHighlightsInMenu:`. The submenu is fixed to `HoverClickMenuContentWidth` (286 pt) so descriptions wrap rather than widen; the main menu and the Excluded Apps submenu are unchanged.
+- Quick Help rows (8): Left Click Focus, Right Click Focus, Bypass Key, Excluded Apps, Launch at Login, Permissions, Verbose Mode, Copy Summary. Copy is short and non-technical; the Excluded Apps row mirrors the real `Configure for...` label.
+- The pre-existing `.toolTip` scaffold (NSMenuItem/rowView) is left untouched; it remains inert in-menu and harmless. The status-bar button tooltip continues to work normally as before.
+- Runtime/safety: event tap mask remains exactly `kCGEventLeftMouseDown + kCGEventRightMouseDown`; no synthetic clicks, event replay, delays, or cursor movement; no timers, global/local monitors, or new event taps; no floating windows.
+- Status: NOT merge-ready and NOT release-ready until the user manually confirms the Quick Help text is visible, compact, and acceptable, and that Excluded Apps behavior, A–Z sorting, selector/remove/persistence, and runtime click behavior remain OK. Scripts passing is not sufficient.
+
 ## v1.3 Planning Direction
 
 Main baseline: `5dd94463` (after `feature-compatibility-bypass-followup` was merged).

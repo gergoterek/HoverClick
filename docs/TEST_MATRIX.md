@@ -198,6 +198,27 @@ Manual Finder UI validation -- not run automatically. All 33 tests below must pa
 | 32 | Maccy built-in bypass still works | If Maccy is installed, click a Maccy history item, then copy diagnostics. | Paste lands in the correct target; `Last bypass decision: bypassed-maccy`; Maccy is not in the user list. |
 | 33 | User-added apps display alphabetically | Add at least three apps whose names are not already in alphabetical order (e.g. add Safari, then TextEdit, then Calendar). Open the submenu. | App rows appear sorted A–Z by friendly display name, case-insensitive, regardless of the order they were added. Clicking any row removes the correct app. Storage order in `excludedAppBundleIDs` defaults is unaffected. |
 
+## Menu Quick Help (v1.3 research-menu-tooltips)
+
+Manual Finder UI validation -- not run automatically. This branch implements a visible help fallback (a `Quick Help` submenu) because native in-menu hover tooltips do not display on HoverClick's custom `NSView` rows. All tests below must pass before the branch is merge-ready; scripts passing is not sufficient. The branch is not merge-ready until the user explicitly confirms the help is visible and acceptable AND that Excluded Apps behavior, A–Z sorting, selector/remove/persistence, and runtime click behavior remain OK.
+
+| # | Test | Method | Expected Result |
+| --- | --- | --- | --- |
+| Q1 | App launches via `.app` | Run `scripts/run-app.sh`. | Menubar icon visible; exactly one process; no crash. |
+| Q2 | Accessibility stable | Open the menu after launch. | No re-prompt; `Access` > `Permissions` shows the correct status. |
+| Q3 | Menu opens and closes normally | Open the HoverClick status menu, then close it. | Opens and closes cleanly; no stuck/highlighted row remains afterward. |
+| Q4 | Quick Help submenu present | Open the menu; look in the Info section. | A `Quick Help` row appears in the Info section, above `Help`, with a question-mark icon and submenu arrow. |
+| Q5 | Quick Help opens | Hover/open the `Quick Help` submenu. | The submenu opens reliably (standard submenu navigation, not a hover tooltip). |
+| Q6 | Help text is visible and readable | Read the submenu rows. | Each entry shows an emphasized feature name with a short description below it for: Left Click Focus, Right Click Focus, Bypass Key, Excluded Apps, Launch at Login, Permissions, Verbose Mode, Copy Summary. Text is not clipped or truncated. |
+| Q7 | Help submenu width is acceptable | Compare the `Quick Help` submenu width to the main menu. | The submenu is about the main menu width (long descriptions wrap to a second line); it is not excessively wide. |
+| Q8 | Main menu width unchanged | Compare the main menu to before this branch. | The main menu and the `Excluded Apps` submenu are not wider; the only main-menu change is the added `Quick Help` row in the Info section. |
+| Q9 | Quick Help rows are inert | Hover and try clicking each `Quick Help` row. | Rows do not highlight on hover and do nothing when clicked; they read as static informational text. No row stays stuck highlighted. |
+| Q10 | No flicker/overlap/deadlock | Open and close `Quick Help` repeatedly; move between it, `Help`, and `Diagnostics`. | No flicker, overlap, deadlock, or unclickable window; submenus behave normally. |
+| Q11 | No floating tooltip window | Hover rows anywhere in the menu. | No custom floating tooltip window appears anywhere (native hover tooltips remain absent on custom rows by design; this is expected, not a failure). |
+| Q12 | Runtime click behavior unchanged | Test left-click focus, right-click focus, active-window right-click, drag, double-click, rapid clicks. | All unchanged; no delay, no synthetic event/replay/cursor movement; mouse movement alone does not focus windows. |
+| Q13 | Excluded Apps regression | Re-run Excluded Apps tests 3–33 above. | All still pass: A–Z sorting, `Ignored apps` row, selector (not Finder/OpenPanel), close-then-open selector flow, remove correct app, persistence, no stuck highlight, no Maccy/Bundle-ID UI. |
+| Q14 | Diagnostics unchanged | Use `Info` > `Diagnostics` > `Copy Summary`. | Copy Summary works; excluded-app user list and last bypass decision still reported; no new diagnostics were added or removed by this branch. |
+
 ## Excluded Apps / Maccy Compatibility
 
 Manual Finder UI validation -- not run automatically.
