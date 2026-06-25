@@ -7,24 +7,24 @@
 - App name: `HoverClick`
 - Bundle identifier: `com.gergoterek.HoverClick`
 - Signing identity: `Apple Development: rizsutt@gmail.com (MVQ5PX4679)`
-- Visible menu header: green status dot, `HoverClick is running`, and right-aligned dynamic `v1.2.0`
+- Visible menu header: green status dot, `HoverClick is running`, and right-aligned dynamic `v1.2.1`
 - Full version/build UI surface: bottom `About` item above `Quit`
-- Bundle short version/build version: `1.2.0` / `42`
+- Bundle short version/build version: `1.2.1` / `43`
 - Latest fully validated baseline before v0.8.0 local DMG validation: `v0.7.0` / build `36`
-- Latest public release: `v1.2.0` / build `42`
+- Latest public release: `v1.2.1` / build `43`
 - Current v1.0 direction: conservative readiness polish, not a risky runtime feature release
 - Current updater implementation branch: merged to `main`
 - Current v0.9.0 planning branch: `design-v0.9.0-updater-completion-plan`
 - Current v0.9.0 planning doc: `docs/V0.9.0_UPDATER_COMPLETION_PLAN.md`
 - Current v1.0 readiness planning branch: `design-v1.0-readiness-plan`
 - Current v1.0 readiness planning doc: `docs/V1.0_READINESS_PLAN.md`
-- Current release-prep branch: `release-v1.0.0-prep`
+- Current release-prep branch: `release-v1.2.1`
 - Main/origin-main v1.0 release baseline: `446478237ca32cfb1a4316f9f6f2931c6e56946f`
 - Current v1.1.x planning branch: `plan-v1.1-updater-menu-readme`
 - Current v1.1.x planning doc: `docs/V1.1_PLANNING.md`
 - Main/origin-main v1.1.x planning baseline: `711a76d810f993b8c1c8e57730fd57c26476988d`
-- Public DMG: `HoverClick-1.2.0.dmg`
-- Public DMG SHA-256: computed during the v1.2.0 release workflow after `HoverClick-1.2.0.dmg` is packaged.
+- Public DMG: `HoverClick-1.2.1.dmg`
+- Public DMG SHA-256: computed during the v1.2.1 release workflow after `HoverClick-1.2.1.dmg` is packaged.
 - App icon source asset: `assets/HoverClickAppIcon-1024.png`
 - Generated bundle icon: `Resources/HoverClick.icns`
 - DMG volume icon source asset: `assets/HoverClickDMGVolumeIcon.png`
@@ -41,8 +41,8 @@
 
 ## Current Distribution
 
-- HoverClick is distributed from GitHub. The latest public release is `v1.2.0` / build `42`.
-- The current public release DMG is `HoverClick-1.2.0.dmg`.
+- HoverClick is distributed from GitHub. The latest public release is `v1.2.1` / build `43`.
+- The current public release DMG is `HoverClick-1.2.1.dmg`.
 - Building locally from source remains supported.
 - The local `scripts/package-dmg.sh` workflow is still an internal/test Apple Development signed packaging path and is not notarized, not Developer ID signed, and not a release-publishing path by itself.
 - The post-v0.5.0 DMG packaging polish batch stages `HoverClick.app`, adds an `Applications` symlink, uses `Resources/HoverClickDMGVolumeIcon.icns` as a dedicated `.VolumeIcon.icns`, sets and verifies the custom DMG volume icon flag with command-line tooling, and mounts the final DMG with `hdiutil -nobrowse -noautoopen` for non-GUI verification.
@@ -51,7 +51,8 @@
 - v0.9.0 / build 38 is the previous public release before v1.0.0.
 - v1.0.0 / build 39 is the stable public 1.0 release, superseded by v1.1.0.
 - v1.1.0 / build 40 is a previous public release, superseded by v1.1.1 and then v1.2.0.
-- v1.2.0 / build 42 is the current public release.
+- v1.2.0 / build 42 is a previous public release, superseded by v1.2.1.
+- v1.2.1 / build 43 is the current public release.
 - The v0.9.0 DMG and appcast were published and manually validated.
 - DMG Finder window background and icon layout are not automated. They remain future optional polish unless a deterministic non-GUI implementation is proven safe.
 - There is no Mac App Store release or signed `.pkg` installer.
@@ -76,9 +77,10 @@
 
 ## Current Appcast Workflow State
 
-- v1.2.0 release publishing uses tag `v1.2.0`, DMG asset `HoverClick-1.2.0.dmg`, and a GitHub Pages appcast item for version `1.2.0` / build `42`.
-- The live appcast is verified during the v1.2.0 release workflow for version `1.2.0` / build `42`, the exact GitHub Release DMG URL, and Sparkle signature/enclosure metadata.
-- The v1.2.0 public DMG and appcast are the current released updater baseline after release workflow publication.
+- v1.2.1 release publishing uses tag `v1.2.1`, DMG asset `HoverClick-1.2.1.dmg`, and a GitHub Pages appcast item for version `1.2.1` / build `43`.
+- The live appcast is verified during the v1.2.1 release workflow for version `1.2.1` / build `43`, the exact GitHub Release DMG URL, and Sparkle signature/enclosure metadata.
+- The v1.2.1 public DMG and appcast are the current released updater baseline after release workflow publication.
+- Previous: v1.2.0 used tag `v1.2.0`, DMG asset `HoverClick-1.2.0.dmg`, appcast item for version `1.2.0` / build `42`.
 - GitHub Pages is configured from the `gh-pages` branch root.
 - Recommended hosting strategy: use a dedicated `gh-pages` branch with `appcast.xml` at the branch root so `https://gergoterek.github.io/HoverClick/appcast.xml` is stable while DMG payloads remain GitHub Release assets.
 - `docs/APPCAST_RELEASE_WORKFLOW.md` records the release workflow, hosting strategy, appcast safety gates, and stop conditions.
@@ -153,7 +155,7 @@
 
 ## v1.2.0 Release State
 
-- v1.2.0 / build 42 is the current public release.
+- v1.2.0 / build 42 is a previous public release, superseded by v1.2.1 / build 43.
 - Release prep sets `CFBundleShortVersionString = 1.2.0` and `CFBundleVersion = 42`.
 - The v1.2.0 release adds Bypass Key (Off / Shift / Fn), Maccy compatibility, and menu UI polish.
 - Bypass Key submenu order: Off / separator / Shift / Fn. Option was removed.
@@ -161,6 +163,15 @@
 - Public release publishing uses tag `v1.2.0`, DMG asset `HoverClick-1.2.0.dmg`, and a GitHub Pages appcast item for version `1.2.0` / build `42`.
 - No tooltips, CDMBA, Click-Time Override, Hover Assist, broad Excluded Apps UI, or app picker UI are part of v1.2.0.
 - No Hover Click Assist, synthetic click, event replay, delayed click delivery, cursor movement, app identity change, bundle identifier change, signing identity change, or Sparkle key change is part of v1.2.0.
+
+## v1.2.1 Release State
+
+- v1.2.1 / build 43 is the current public release. Base main commit: `323eca82940bf69704e63737e58a25695c141a5e`.
+- Release prep branch: `release-v1.2.1`. Sets `CFBundleShortVersionString = 1.2.1` and `CFBundleVersion = 43`.
+- v1.2.1 adds everything from post-v1.2.0 work on main: Excluded Apps user list (user-configurable, A–Z sorted by friendly display name); dedicated app-list selector (`Add App Exclusion...`); Auto-added Maccy row with lock icon when Maccy is installed/resolvable; Guide visible help submenu; compact menu UI polish (removed Ignored apps row, renamed Configure for..., improved secondary text contrast).
+- Runtime: event tap mask unchanged (kCGEventLeftMouseDown + kCGEventRightMouseDown only); no synthetic clicks, event replay, delays, cursor movement, timers, global/local monitors, or new event taps.
+- Public release publishing uses tag `v1.2.1`, DMG asset `HoverClick-1.2.1.dmg`, and a GitHub Pages appcast item for version `1.2.1` / build `43`.
+- No CDMBA, Click-Time Override, Hover Assist, app identity change, bundle identifier change, signing identity change, or Sparkle key change is part of v1.2.1.
 
 ## Tooltip Incident (v1.2.0 Cycle)
 
