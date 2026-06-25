@@ -648,8 +648,8 @@ static void HoverClickSyncMenuRowView(NSMenuItem *item) {
 // areas, timers, monitors, or event taps; the owning NSMenuItem stays disabled so the row is
 // informational only and is skipped by the highlight-reset pass (it is not a HoverClickMenuRowView).
 static const CGFloat HoverClickQuickHelpWidth = HoverClickMenuContentWidth;
-static const CGFloat HoverClickQuickHelpVerticalPadding = 6.0;
-static const CGFloat HoverClickQuickHelpTitleHeight = 17.0;
+static const CGFloat HoverClickQuickHelpVerticalPadding = 4.0;
+static const CGFloat HoverClickQuickHelpTitleHeight = 14.0;
 static const CGFloat HoverClickQuickHelpTitleDetailGap = 1.0;
 
 static NSMenuItem *HoverClickCreateQuickHelpItem(NSString *title, NSString *detail) {
@@ -679,7 +679,7 @@ static NSMenuItem *HoverClickCreateQuickHelpItem(NSString *title, NSString *deta
     [container addSubview:detailLabel];
 
     NSTextField *titleLabel = [NSTextField labelWithString:title];
-    titleLabel.font = [NSFont systemFontOfSize:[NSFont systemFontSize] weight:NSFontWeightSemibold];
+    titleLabel.font = [NSFont systemFontOfSize:11.0 weight:NSFontWeightMedium];
     titleLabel.textColor = [NSColor labelColor];
     titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     titleLabel.frame = NSMakeRect(textX,
@@ -1391,21 +1391,21 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [menu addItem:quickHelpItem];
 
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Left Click Focus",
-        @"Raises and focuses the background window you left-click, then passes your click through unchanged.")];
+        @"Focuses windows on left-click.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Right Click Focus",
-        @"Focuses the window under the pointer before its right-click menu opens.")];
+        @"Focuses before showing context menus.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Bypass Key",
-        @"Hold the selected key when you click to let the click pass through unchanged.")];
+        @"Hold the key to bypass HoverClick.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Excluded Apps",
-        @"Apps listed here are ignored by HoverClick. Click an app to remove it; use Configure for... to add one.")];
+        @"Apps HoverClick ignores.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Launch at Login",
-        @"Starts HoverClick automatically when you sign in.")];
+        @"Starts HoverClick when you sign in.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Permissions",
-        @"Shows Accessibility status. Click focus needs it granted; Refresh Status re-checks it.")];
+        @"Recheck Accessibility access.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Verbose Mode",
-        @"Adds extra detail to the copied diagnostics summary.")];
+        @"Adds details to diagnostics.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Copy Summary",
-        @"Copies current settings and recent click decisions to the clipboard.")];
+        @"Copies settings and recent decisions.")];
 
     NSMenuItem *helpItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Help")
                                                       action:nil
@@ -3087,12 +3087,22 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   options:NSCaseInsensitiveSearch];
     }];
 
+    // Check whether Maccy is installed so its display name can be included in the width
+    // calculation and a non-removable automatic row can be shown. Maccy is never stored in
+    // excludedAppBundleIDs; the built-in bypass is always active regardless of this row.
+    NSURL *maccyURL = [[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:HoverClickMaccyBundleID];
+    BOOL maccyInstalled = (maccyURL != nil);
+    NSString *maccyDisplayName = maccyInstalled ? [self displayNameForExcludedBundleID:HoverClickMaccyBundleID] : nil;
+
     NSMutableArray<NSString *> *displayNames = [NSMutableArray arrayWithCapacity:entries.count];
     for (NSDictionary *entry in entries) {
         [displayNames addObject:entry[@"displayName"]];
     }
-    NSArray<NSString *> *widthTitles = [@[@"Configure for...", @"No apps added"]
-                                        arrayByAddingObjectsFromArray:displayNames];
+    NSMutableArray<NSString *> *widthTitles = [NSMutableArray arrayWithArray:@[@"Configure for...", @"No apps added"]];
+    [widthTitles addObjectsFromArray:displayNames];
+    if (maccyInstalled) {
+        [widthTitles addObject:maccyDisplayName];
+    }
     CGFloat submenuWidth = HoverClickCalculatedSubmenuWidth(widthTitles);
 
     NSMenuItem *infoItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Ignored apps")
@@ -3105,7 +3115,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [submenu addItem:[NSMenuItem separatorItem]];
 
-    if (entries.count == 0) {
+    if (maccyInstalled) {
+        // Show Maccy as an automatic/built-in ignored app. The row is disabled and non-removable;
+        // the "Auto" accessory distinguishes it from user-added entries (which show minus.circle).
+        NSMenuItem *maccyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(maccyDisplayName)
+                                                           action:nil
+                                                    keyEquivalent:@""];
+        maccyItem.enabled = NO;
+        maccyItem.toolTip = @"Maccy is handled automatically by HoverClick for clipboard compatibility.";
+        HoverClickUseCustomSubmenuRow(maccyItem, @"checkmark.circle", @"checkmark", @"Auto", NO, NO, submenuWidth);
+        [submenu addItem:maccyItem];
+    }
+
+    if (entries.count == 0 && !maccyInstalled) {
         NSMenuItem *emptyItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"No apps added")
                                                            action:nil
                                                     keyEquivalent:@""];
