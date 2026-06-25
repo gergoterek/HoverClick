@@ -760,34 +760,35 @@ static NSMenuItem *HoverClickCreateSubmenuSectionHeader(NSString *title, CGFloat
     return headerItem;
 }
 
-// Non-interactive automatic-entry row: app name on the left, a smaller secondary label on the right.
-// Used for Maccy's always-active built-in bypass: the row is disabled (non-actionable, non-removable)
-// but renders with legible labelColor + secondaryLabelColor rather than the muted disabledControlTextColor
-// that HoverClickMenuRowView applies to disabled rows.
-static NSMenuItem *HoverClickCreateAutomaticEntryItem(NSString *appName, NSString *autoLabel, CGFloat rowWidth) {
-    NSFont *autoFont = [NSFont systemFontOfSize:11.0];
-    CGFloat autoWidth = ceil([autoLabel sizeWithAttributes:@{NSFontAttributeName: autoFont}].width) + 4.0;
-    CGFloat titleX = HoverClickMenuLeadingInset;
-    CGFloat gap = 6.0;
-    CGFloat titleWidth = rowWidth - titleX - gap - autoWidth - HoverClickMenuTrailingInset;
-    CGFloat autoX = titleX + titleWidth + gap;
-
+// Non-interactive auto-added row: lock icon + app name, no right-side accessory.
+// Used for Maccy's always-active built-in bypass: disabled (non-actionable, non-removable),
+// rendered with a lock icon and secondaryLabelColor text so it reads as managed/locked
+// rather than disabled-to-the-point-of-being-unreadable.
+static NSMenuItem *HoverClickCreateAutomaticEntryItem(NSString *appName, CGFloat rowWidth) {
     NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0.0, 0.0, rowWidth, HoverClickMenuRowHeight)];
+    NSColor *mutedColor = [NSColor secondaryLabelColor];
 
+    NSImage *lockImage = HoverClickMenuSystemImage(@"lock", @"lock.fill");
+    if (lockImage != nil) {
+        NSImageView *iconView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickMenuRowIconX,
+                                                                              3.0,
+                                                                              HoverClickMenuImageSize,
+                                                                              HoverClickMenuImageSize)];
+        iconView.image = lockImage;
+        iconView.imageScaling = NSImageScaleProportionallyDown;
+        if (@available(macOS 10.14, *)) {
+            iconView.contentTintColor = mutedColor;
+        }
+        [container addSubview:iconView];
+    }
+
+    CGFloat titleX = (lockImage != nil) ? HoverClickMenuRowTextX : HoverClickMenuLeadingInset;
     NSTextField *titleField = [NSTextField labelWithString:appName ?: @""];
-    titleField.frame = NSMakeRect(titleX, 2.0, titleWidth, 18.0);
+    titleField.frame = NSMakeRect(titleX, 2.0, rowWidth - titleX - HoverClickMenuTrailingInset, 18.0);
     titleField.font = [NSFont menuFontOfSize:0.0];
-    titleField.textColor = [NSColor labelColor];
+    titleField.textColor = mutedColor;
     titleField.lineBreakMode = NSLineBreakByTruncatingTail;
     [container addSubview:titleField];
-
-    NSTextField *autoField = [NSTextField labelWithString:autoLabel ?: @""];
-    autoField.frame = NSMakeRect(autoX, 3.0, autoWidth, 16.0);
-    autoField.font = autoFont;
-    autoField.textColor = [NSColor secondaryLabelColor];
-    autoField.alignment = NSTextAlignmentRight;
-    autoField.lineBreakMode = NSLineBreakByClipping;
-    [container addSubview:autoField];
 
     NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(appName)
                                                   action:nil
@@ -1603,7 +1604,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 // Clears the highlight flag on every custom menu row view in the menu tree. Custom rows track
 // their own hover highlight via mouseEntered:/mouseExited:. When a closing row dismisses the
-// menu with cancelTracking (for example Excluded Apps > Add Exclusion...), a parent row that was
+// menu with cancelTracking (for example Excluded Apps > Add App Exclusion...), a parent row that was
 // highlighted to open its submenu never receives mouseExited:, leaving it stuck highlighted on
 // the next open. Resetting on menuWillOpen: guarantees a clean state every time the menu shows.
 - (void)resetMenuRowHighlightsInMenu:(NSMenu *)menu {
@@ -3151,18 +3152,18 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     BOOL maccyInstalled = (maccyURL != nil);
     NSString *maccyDisplayName = maccyInstalled ? [self displayNameForExcludedBundleID:HoverClickMaccyBundleID] : nil;
 
-    // Width is driven by icon-slot rows: "Add Exclusion...", "No added exclusions", and user
+    // Width is driven by icon-slot rows: "Add App Exclusion...", "No added exclusions", and user
     // display names. Section headers and the Maccy automatic row use separate width-aware layouts.
-    NSMutableArray<NSString *> *widthTitles = [NSMutableArray arrayWithArray:@[@"Add Exclusion...", @"No added exclusions"]];
+    NSMutableArray<NSString *> *widthTitles = [NSMutableArray arrayWithArray:@[@"Add App Exclusion...", @"No added exclusions"]];
     for (NSDictionary *entry in entries) {
         [widthTitles addObject:entry[@"displayName"]];
     }
     CGFloat submenuWidth = HoverClickCalculatedSubmenuWidth(widthTitles);
 
-    // Automatic section: only shown when Maccy is installed/resolvable.
+    // Auto-added section: only shown when Maccy is installed/resolvable.
     if (maccyInstalled) {
-        [submenu addItem:HoverClickCreateSubmenuSectionHeader(@"Automatic", submenuWidth)];
-        NSMenuItem *maccyItem = HoverClickCreateAutomaticEntryItem(maccyDisplayName, @"(Automatic)", submenuWidth);
+        [submenu addItem:HoverClickCreateSubmenuSectionHeader(@"Auto-added", submenuWidth)];
+        NSMenuItem *maccyItem = HoverClickCreateAutomaticEntryItem(maccyDisplayName, submenuWidth);
         maccyItem.toolTip = @"Maccy is handled automatically by HoverClick for clipboard compatibility.";
         [submenu addItem:maccyItem];
         [submenu addItem:[NSMenuItem separatorItem]];
@@ -3196,7 +3197,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     [submenu addItem:[NSMenuItem separatorItem]];
 
-    NSMenuItem *chooseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Add Exclusion...")
+    NSMenuItem *chooseItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Add App Exclusion...")
                                                         action:@selector(chooseExcludedApp:)
                                                  keyEquivalent:@""];
     chooseItem.target = self;
