@@ -47,6 +47,21 @@ static const NSInteger HoverClickBypassKeyOff = 0;
 static const NSInteger HoverClickBypassKeyShift = 2;
 static const NSInteger HoverClickBypassKeyFn = 3;
 static NSString * const HoverClickBypassKeyDefaultsKey = @"bypassKey";
+// TEMPORARY diagnostic scaffolding for the multi-window focus investigation. Not for release.
+// Selects which app-scoped operations focusTargetApp: performs, so each suspect call can be
+// removed in isolation. The value is re-read on every focus attempt, so the mode can be changed
+// while the app keeps running:
+//   defaults write com.gergoterek.HoverClick focusExperimentMode -string B
+static NSString * const HoverClickFocusExperimentModeDefaultsKey = @"focusExperimentMode";
+typedef NS_ENUM(NSInteger, HoverClickFocusExperimentMode) {
+    HoverClickFocusExperimentModeA = 0,  // current behavior, unchanged
+    HoverClickFocusExperimentModeB,      // skip -activateWithOptions:
+    HoverClickFocusExperimentModeC,      // skip app-level kAXFrontmostAttribute
+    HoverClickFocusExperimentModeD       // skip both app-level operations
+};
+// Second focused-window reading, after the target app has had time to settle. An immediate read
+// alone cannot distinguish "the wrong window is focused" from "the app has not updated yet".
+static const NSTimeInterval HoverClickFocusExperimentSettleDelay = 0.35;
 static const CGFloat HoverClickStatusItemLength = 23.0;
 static const CGFloat HoverClickStatusIconPointSize = 16.0;
 static const CGFloat HoverClickMenuContentWidth = 286.0;
@@ -932,6 +947,116 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     }
 
     return [NSString stringWithFormat:@"attempted:%s", HoverClickAXErrorName(error)];
+}
+
+// TEMPORARY diagnostic scaffolding for the multi-window focus investigation. Not for release.
+static HoverClickFocusExperimentMode HoverClickCurrentFocusExperimentMode(void) {
+    HoverClickFocusExperimentMode mode = HoverClickFocusExperimentModeA;
+
+    CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication);
+    CFTypeRef stored = CFPreferencesCopyAppValue((__bridge CFStringRef)HoverClickFocusExperimentModeDefaultsKey,
+                                                 kCFPreferencesCurrentApplication);
+    if (stored != NULL) {
+        if (CFGetTypeID(stored) == CFStringGetTypeID()) {
+            NSString *value = [(__bridge NSString *)stored uppercaseString];
+            if ([value isEqualToString:@"B"]) {
+                mode = HoverClickFocusExperimentModeB;
+            } else if ([value isEqualToString:@"C"]) {
+                mode = HoverClickFocusExperimentModeC;
+            } else if ([value isEqualToString:@"D"]) {
+                mode = HoverClickFocusExperimentModeD;
+            }
+        }
+        CFRelease(stored);
+    }
+
+    return mode;
+}
+
+static const char *HoverClickFocusExperimentModeName(HoverClickFocusExperimentMode mode) {
+    switch (mode) {
+        case HoverClickFocusExperimentModeA: return "A(current)";
+        case HoverClickFocusExperimentModeB: return "B(no-activate)";
+        case HoverClickFocusExperimentModeC: return "C(no-app-frontmost)";
+        case HoverClickFocusExperimentModeD: return "D(window-only)";
+    }
+    return "A(current)";
+}
+
+// Title plus geometry, because two windows of the same app often share a title and the whole
+// point of the experiment is telling those two windows apart in the log.
+static NSString *HoverClickAXWindowIdentity(AXUIElementRef window) {
+    if (window == NULL) {
+        return @"none";
+    }
+
+    NSString *title = nil;
+    CFTypeRef titleValue = NULL;
+    if (AXUIElementCopyAttributeValue(window, kAXTitleAttribute, &titleValue) == kAXErrorSuccess && titleValue != NULL) {
+        if (CFGetTypeID(titleValue) == CFStringGetTypeID()) {
+            title = [(__bridge NSString *)titleValue copy];
+        }
+        CFRelease(titleValue);
+    }
+    if (title.length == 0) {
+        title = @"untitled";
+    } else if (title.length > 48) {
+        title = [[title substringToIndex:48] stringByAppendingString:@"..."];
+    }
+
+    CGPoint position = CGPointMake(-1.0, -1.0);
+    CFTypeRef positionValue = NULL;
+    if (AXUIElementCopyAttributeValue(window, kAXPositionAttribute, &positionValue) == kAXErrorSuccess && positionValue != NULL) {
+        if (CFGetTypeID(positionValue) == AXValueGetTypeID()) {
+            AXValueGetValue((AXValueRef)positionValue, kAXValueTypeCGPoint, &position);
+        }
+        CFRelease(positionValue);
+    }
+
+    CGSize size = CGSizeMake(-1.0, -1.0);
+    CFTypeRef sizeValue = NULL;
+    if (AXUIElementCopyAttributeValue(window, kAXSizeAttribute, &sizeValue) == kAXErrorSuccess && sizeValue != NULL) {
+        if (CFGetTypeID(sizeValue) == AXValueGetTypeID()) {
+            AXValueGetValue((AXValueRef)sizeValue, kAXValueTypeCGSize, &size);
+        }
+        CFRelease(sizeValue);
+    }
+
+    return [NSString stringWithFormat:@"title=\"%@\" pos=(%.0f,%.0f) size=(%.0fx%.0f)",
+                                      title,
+                                      position.x,
+                                      position.y,
+                                      size.width,
+                                      size.height];
+}
+
+// Reads the app's own kAXFocusedWindowAttribute and reports whether it is the clicked window.
+// This is the measurement the existing process-level verification cannot make.
+static NSString *HoverClickFocusedWindowComparison(AXUIElementRef appElement, AXUIElementRef targetWindow) {
+    if (appElement == NULL) {
+        return @"appFocusedWindow=no-app-element match=unknown";
+    }
+
+    CFTypeRef focusedValue = NULL;
+    AXError readError = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute, &focusedValue);
+    if (readError != kAXErrorSuccess || focusedValue == NULL) {
+        if (focusedValue != NULL) {
+            CFRelease(focusedValue);
+        }
+        return [NSString stringWithFormat:@"appFocusedWindow=read-failed(%s) match=unknown", HoverClickAXErrorName(readError)];
+    }
+
+    NSString *result = @"appFocusedWindow=unexpected-type match=unknown";
+    if (CFGetTypeID(focusedValue) == AXUIElementGetTypeID()) {
+        AXUIElementRef focusedWindow = (AXUIElementRef)focusedValue;
+        BOOL matches = (targetWindow != NULL && CFEqual(focusedWindow, targetWindow));
+        result = [NSString stringWithFormat:@"appFocusedWindow=[%@] match=%s",
+                                            HoverClickAXWindowIdentity(focusedWindow),
+                                            matches ? "YES" : "NO"];
+    }
+
+    CFRelease(focusedValue);
+    return result;
 }
 
 @interface HoverClickAppDelegate : NSObject <NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate>
@@ -4646,9 +4771,21 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                            focusStatus:@"background focus attempt started"
                                              finalNote:nil];
 
-    BOOL activateAttempted = targetApp != nil;
+    // TEMPORARY diagnostic scaffolding for the multi-window focus investigation. Not for release.
+    HoverClickFocusExperimentMode experimentMode = HoverClickCurrentFocusExperimentMode();
+    BOOL runActivate = (experimentMode == HoverClickFocusExperimentModeA || experimentMode == HoverClickFocusExperimentModeC);
+    BOOL runAppFrontmost = (experimentMode == HoverClickFocusExperimentModeA || experimentMode == HoverClickFocusExperimentModeB);
+    HoverClickLog("HoverClick: %s #%llu FOCUSEXP start mode=%s activateWithOptions=%s appFrontmost=%s clickedWindow=[%s]",
+                  trigger,
+                  sequenceID,
+                  HoverClickFocusExperimentModeName(experimentMode),
+                  runActivate ? "run" : "skipped",
+                  runAppFrontmost ? "run" : "skipped",
+                  HoverClickAXWindowIdentity(targetWindow).UTF8String);
+
+    BOOL activateAttempted = (targetApp != nil && runActivate);
     BOOL activateResult = NO;
-    if (targetApp != nil) {
+    if (activateAttempted) {
         activateResult = [targetApp activateWithOptions:NSApplicationActivateIgnoringOtherApps];
     }
     _lastBackgroundFocusActivation = [NSString stringWithFormat:@"attempted=%@ returnValue=%@",
@@ -4673,11 +4810,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     AXError mainWindowError = kAXErrorIllegalArgument;
     AXError focusedAttrError = kAXErrorIllegalArgument;
     if (appElement != NULL) {
-        frontmostAttempted = YES;
-        frontmostError = AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute, kCFBooleanTrue);
+        if (runAppFrontmost) {
+            frontmostAttempted = YES;
+            frontmostError = AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute, kCFBooleanTrue);
+        }
         focusedWindowAttempted = YES;
         focusedWindowError = AXUIElementSetAttributeValue(appElement, kAXFocusedWindowAttribute, targetWindow);
-        CFRelease(appElement);
+        // appElement is released after the experiment readback below.
     }
 
     HoverClickLog("HoverClick: %s #%llu AX frontmost set %s", trigger, sequenceID, HoverClickAXErrorName(frontmostError));
@@ -4690,6 +4829,41 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     BOOL focusedAttrAttempted = (targetWindow != NULL);
     mainWindowError = AXUIElementSetAttributeValue(targetWindow, kAXMainAttribute, kCFBooleanTrue);
     focusedAttrError = AXUIElementSetAttributeValue(targetWindow, kAXFocusedAttribute, kCFBooleanTrue);
+
+    // TEMPORARY diagnostic scaffolding for the multi-window focus investigation. Not for release.
+    // Immediate readback: what the app reports as its focused window right after the sequence.
+    HoverClickLog("HoverClick: %s #%llu FOCUSEXP immediate mode=%s %s",
+                  trigger,
+                  sequenceID,
+                  HoverClickFocusExperimentModeName(experimentMode),
+                  HoverClickFocusedWindowComparison(appElement, targetWindow).UTF8String);
+    if (appElement != NULL) {
+        CFRelease(appElement);
+        appElement = NULL;
+    }
+
+    // Settled readback: the caller releases targetWindow as soon as this method returns, so the
+    // delayed block keeps its own reference.
+    NSString *experimentTrigger = (trigger != NULL) ? @(trigger) : @"unknown";
+    AXUIElementRef experimentWindow = (targetWindow != NULL) ? (AXUIElementRef)CFRetain(targetWindow) : NULL;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(HoverClickFocusExperimentSettleDelay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        AXUIElementRef settledAppElement = AXUIElementCreateApplication(targetPid);
+        NSRunningApplication *settledFront = [NSWorkspace sharedWorkspace].frontmostApplication;
+        HoverClickLog("HoverClick: %s #%llu FOCUSEXP settled mode=%s %s frontApp=%s",
+                      experimentTrigger.UTF8String,
+                      sequenceID,
+                      HoverClickFocusExperimentModeName(experimentMode),
+                      HoverClickFocusedWindowComparison(settledAppElement, experimentWindow).UTF8String,
+                      HoverClickRunningApplicationDescription(settledFront).UTF8String);
+        if (settledAppElement != NULL) {
+            CFRelease(settledAppElement);
+        }
+        if (experimentWindow != NULL) {
+            CFRelease(experimentWindow);
+        }
+    });
+
     _lastBackgroundFocusAXOperations = [NSString stringWithFormat:@"appElement=%@ appFrontmost=%@ focusedWindow=%@ raise=%@ mainWindow=%@ focused=%@",
                                         appElementCreated ? @"yes" : @"no",
                                         HoverClickAXAttemptSummary(frontmostAttempted, frontmostError),
