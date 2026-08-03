@@ -12,7 +12,7 @@ When you click a background window, HoverClick focuses and raises that window be
 
 ## Download and Install
 
-The latest public release is `v1.2.0` / build `42`. Download from GitHub Releases. You can also build from source using `scripts/build-app.sh`.
+The latest public release is `v1.2.1` / build `43`. Download from GitHub Releases. You can also build from source using `scripts/build-app.sh`.
 
 After launching HoverClick:
 

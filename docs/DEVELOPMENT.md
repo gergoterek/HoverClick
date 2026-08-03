@@ -1,5 +1,40 @@
 # Development Workflow
 
+## Active Mode: Two Chats, Local Build
+
+Feature work runs in two Claude Code chats — `BUILD` and `REVIEW`. See
+`docs/CHAT_WORKFLOW.md` for the roles and `docs/chat-starters/` for the prompts.
+
+Start a chat by opening Claude Code in the repository root. `CLAUDE.md` loads
+automatically; the starter prompt only adds the role. Read `docs/PROJECT_STATE.md` for the
+current task. Do not load `docs/CURRENT_STATE.md` or `docs/TEST_MATRIX.md` at startup.
+
+Run the static gate before every build:
+
+```zsh
+scripts/source-only-check.sh
+```
+
+It runs Git whitespace checks, the static safety suite, shell syntax coverage, and a
+syntax-only source check when the pinned Sparkle framework cache is available. It does not
+build, sign, verify, launch, package, publish, or change Git state.
+
+Then build and test locally:
+
+```zsh
+scripts/build-app.sh
+scripts/verify-app.sh
+scripts/run-app.sh
+```
+
+The signing identity is valid until 2027-05-06, so behavior changes can and should be
+verified at runtime. A static PASS never proves runtime behavior — report which one you have.
+
+Do not use `scripts/checkpoint.sh`: it builds, signs, commits and pushes as one operation.
+Use explicit Git commands so each step is visible.
+
+## Signed Build Workflow (Reference)
+
 `main` is the stable baseline. Development work should happen on task branches and should be merged back to `main` only after review and manual approval.
 
 Use the checkpoint script after a successful change:

@@ -115,6 +115,7 @@ syntax_scripts=(
   scripts/package-dmg.sh
   scripts/checkpoint.sh
   scripts/ci-safety-check.sh
+  scripts/source-only-check.sh
 )
 
 for script in "${syntax_scripts[@]}"; do

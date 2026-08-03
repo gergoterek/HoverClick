@@ -1,5 +1,7 @@
 # Current State
 
+> This file is the detailed historical engineering log. For new chats and active work, use the shorter `docs/PROJECT_STATE.md` first, then load only the relevant section from this file when historical detail is required.
+
 ## Identity
 
 - Project name: `HoverClick`
