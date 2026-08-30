@@ -17,6 +17,107 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-08-30 — Public Accessibility APIs can raise a single window
+
+**Decision:** Closes the question opened on 2026-08-03. Public AX is sufficient. No private
+SkyLight API is needed, and none will be added.
+
+**Why:** Setting `kAXFrontmostAttribute` on the application element was the whole cause of
+the multi-window symptom. That attribute has application scope and cannot address one window.
+With it removed, `kAXFocusedWindowAttribute` on the application element plus `kAXRaiseAction`,
+`kAXMainAttribute` and `kAXFocusedAttribute` on the window direct focus at the clicked window
+alone, while `-activateWithOptions:` brings the application forward.
+
+**Rejected:** Adopting `_SLPSSetFrontProcessWithOptions` or any other private SkyLight call.
+The hypothesis that window managers need private APIs for this turned out not to describe
+HoverClick's case: those tools reorder windows without activating the owning application,
+which is a stronger requirement than what click-to-focus needs.
+
+**Evidence:** Runtime test on 2026-08-30, macOS 26.6.2, locally built bundle from `93ae113`.
+Two Chrome windows side by side, a third application frontmost, click on the visible edge of
+the background Chrome window. Only the clicked window came forward; the sibling window kept
+its z-order position. This is the first runtime verification performed on the current
+machine. Static checks passed as well, but they cannot observe this behavior.
+
+---
+
+## 2026-08-27 — Signing certificate and Sparkle private key are gone
+
+**Decision:** Recorded as fact, with the consequences left open. Do not plan a release, a
+DMG, an appcast entry or a Sparkle update until the two questions below are answered.
+
+**Why:** The project moved to a new machine after the previous one was compromised. The
+repository survived intact and was reconstructed from a fresh clone; every recovered source
+file matched its committed blob byte for byte, so no source work was lost. Two credentials
+did not survive, and neither can be restored from the backup:
+
+1. The `Apple Development` certificate the Makefile requires.
+   `security find-identity -v -p codesigning` returns `0 valid identities found`.
+2. The Sparkle EdDSA private key matching `Info.plist:SUPublicEDKey`
+   (`093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=`). The login keychain holds no
+   `https://sparkle-project.org` item.
+
+The second is the more serious one, because it reaches users rather than the workstation.
+Installed `v1.2.1` copies validate updates against that public key. A new key pair cannot
+produce a signature those copies will accept, so the existing update channel cannot be
+continued, only abandoned or replaced by a manual reinstall.
+
+Local development is not blocked. A locally built bundle runs and was used to verify the
+focus fix at runtime on 2026-08-30. It is not distributable and does not carry the hardened
+runtime, because library validation rejects a framework that does not share the main
+executable's team identifier.
+
+**Rejected:** Reusing anything from the backup as a substitute. Certificates and private
+keys from a compromised machine are not reinstated even when a copy exists.
+
+**Evidence:** Commands above, run 2026-08-30 on macOS 26.6.2. Recovery detail in
+`_recovery/RECOVERY-REPORT-20260827.md`, which is local and not tracked.
+
+**Still undecided:** the signing strategy for development and for release, and whether the
+Sparkle update channel is rebuilt with a new key or retired.
+
+---
+
+## 2026-08-03 — In-menu tooltips were tried twice and reverted twice
+
+**Decision:** Recorded, not reopened. Read this before any work that proposes replacing the
+`Guide` submenu with hover tooltips.
+
+**Why:** Native in-menu hover tooltips do not display on HoverClick's custom `NSView` menu
+rows, for two independent reasons:
+
+1. `rowView.toolTip = item.toolTip` is assigned at build time, before the row view has a
+   window. The internal `addToolTipRect:owner:userData:` registers against no window and
+   never fires. (`HoverClick.mm:536`, `HoverClick.mm:596`)
+2. `NSMenu`'s modal tracking run loop does not drive `NSView` tooltip display at all, and
+   `item.view` bypasses `NSMenuItem.toolTip` entirely.
+
+Fixing reason 1 alone is not enough, and it was already attempted:
+
+```
+4fe9e91  fix: re-register tooltip in viewDidMoveToWindow for custom menu rows
+135a786  Revert "fix: re-register tooltip in viewDidMoveToWindow for custom menu rows"
+8103ab8  Revert "ui: add and update menu item tooltips"
+```
+
+Reason 2 cannot be closed without a hover timer, a global monitor, or a floating tooltip
+window. All three are forbidden by `CLAUDE.md`.
+
+The `Guide` submenu (`HoverClick.mm:1512`) is the deliberate replacement, chosen on
+`research-menu-tooltips` after native tooltips failed manual testing. It has 8 rows built by
+`HoverClickCreateQuickHelpItem`, adds no tracking areas, timers, monitors or event taps.
+
+**Rejected:** reverting to plain `NSMenuItem`s (discards the whole custom-row system: icons,
+toggles, non-closing rows, highlight, compact width); inline help rows in the main menu
+(clutters it); a floating tooltip window (forbidden).
+
+**Evidence:** `docs/CURRENT_STATE.md` sections "Tooltip baseline audit (2026-06-25)" and
+"research-menu-tooltips (2026-06-25)". Source comment at `HoverClick.mm:642–649`. Branches
+`ui-menu-tooltips` and `research-menu-tooltips` exist locally and on origin. Verified
+2026-08-03 by reading source and git history; **not re-tested at runtime**.
+
+---
+
 ## 2026-08-03 — Two working chats, not three
 
 **Decision:** Development runs in two Claude Code chats — `BUILD` (implements, one branch,
