@@ -17,6 +17,36 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-09-06 — Window first, application second in the focus path
+
+**Decision:** `focusTargetApp:` directs focus at the clicked window before it calls
+`-activateWithOptions:`. The 2026-08-30 entry below stays valid but was incomplete: removing
+`kAXFrontmostAttribute` was necessary and not sufficient.
+
+**Why:** `-activateWithOptions:` carries the application's own main window forward with it.
+While that main window was still the sibling the user had focused earlier, activation raised
+the sibling in front of whatever the user had on top, which is the symptom that survived
+`93ae113`. Pointing the application at the clicked window first makes the clicked window the
+one activation carries. `NSApplicationActivateAllWindows` was never in the option set and
+stays out.
+
+**Rejected:** Dropping `-activateWithOptions:` altogether and letting the user's own click
+activate the application. It is the stronger cure, because activation is the only step that
+addresses more than one window, but it gives up the guarantee that the menu bar and the
+keyboard follow the clicked window before the click is delivered. Kept as the fallback if a
+sibling window ever comes forward again.
+
+**Evidence:** Runtime measurement 2026-09-06, macOS 26.6.2, locally built bundle from
+`c700de2`, two Chrome windows with a third application in front. `click #37` at `14:44:04`:
+`AXRaise success`, `focused window readback ... match=YES`, and the CGWindowList z-order
+right after the click was clicked Chrome window, third application, sibling Chrome window.
+One earlier sample in the same session (`click #34`) ended with both Chrome windows above the
+front application; there the clicked window was already Chrome's main window and a second
+user click landed one second later, so that sample is not attributable. See
+`docs/PROJECT_STATE.md` for the follow-up.
+
+---
+
 ## 2026-08-30 — Public Accessibility APIs can raise a single window
 
 **Decision:** Closes the question opened on 2026-08-03. Public AX is sufficient. No private

@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-08-30
+Last updated: 2026-09-06
 
 Short, current source of truth. Update this file at the end of every work cycle.
 Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
@@ -13,7 +13,7 @@ Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
 |---|---|
 | Released version | `v1.2.1` / build `43` |
 | `main` commit | `f24f506b3247bafcf00bd1d9610870a299bebdf8` |
-| Branch tip in use | `fix/single-window-focus` @ `93ae113` |
+| Branch tip in use | `fix/single-window-focus` @ `c700de2` |
 | Bundle ID | `com.gergoterek.HoverClick` |
 | Project path | `/Users/terekgergo/Projects/HoverClick` |
 | Signing identity | **None available.** `security find-identity -v -p codesigning` returns `0 valid identities found`. |
@@ -56,7 +56,7 @@ Only one branch is worked on at a time. Finish or park the top item before start
 
 | # | Branch | State |
 |---|---|---|
-| 1 | `fix/single-window-focus` | **Done and verified at runtime.** Not merged to `main`. |
+| 1 | `fix/single-window-focus` | **Two fixes in, both verified at runtime.** Not merged to `main`. |
 | 2 | `feature/menu-help-tooltips` | Not started. Replace the `Guide` submenu with hover tooltips. **Blocked on a decision — see below.** |
 
 ### Queued: Guide submenu → tooltips
@@ -79,28 +79,37 @@ before planning this. The first step is a decision, not an implementation.
 **Bug:** clicking one visible background window brought other windows of the same
 application forward with it.
 
-**Fix:** `93ae113` — `kAXFrontmostAttribute` is no longer set on the application element.
+**First fix:** `93ae113` stopped setting `kAXFrontmostAttribute` on the application element.
 That attribute applies to the whole application and cannot distinguish between its windows.
-Focus is now directed at the clicked window alone, through `kAXFocusedWindowAttribute` on
-the application element plus `kAXRaiseAction`, `kAXMainAttribute` and `kAXFocusedAttribute`
-on the window itself.
+The same commit removed the four-mode `focusExperimentMode` scaffolding added by `f88d0bb`,
+because a stored mode survived relaunches and silently changed focus behavior.
 
-The same commit removed the four-mode `focusExperimentMode` scaffolding added by `f88d0bb`.
-A stored mode survived relaunches and silently changed focus behavior, which is not
-acceptable outside an investigation.
+**Second fix:** `c700de2` reordered `focusTargetApp:`. The first fix was necessary and not
+sufficient. `-activateWithOptions:` carries the application's own main window forward, and
+that main window was still the sibling the user had focused earlier, so activating before
+the window-level operations dragged the sibling in front of whatever was on top. Focus now
+goes to the clicked window first, through `kAXFocusedWindowAttribute` on the application
+element plus `kAXRaiseAction`, `kAXMainAttribute` and `kAXFocusedAttribute` on the window,
+and the application is activated only afterwards.
 
-**Runtime verification, 2026-08-30:** two Chrome windows, a third application in front,
-click on the visible edge of the background Chrome window. Only the clicked window came
-forward. Tested on macOS 26.6.2 against a locally built bundle from `93ae113`.
+**Runtime verification, 2026-09-06:** macOS 26.6.2, locally built bundle from `c700de2`, two
+Chrome windows with a third application in front. On `click #37` the clicked window was
+raised, the verbose readback reported `match=YES`, and the CGWindowList z-order right after
+the click was clicked Chrome window, third application, sibling Chrome window, so the
+sibling kept its place. The 2026-08-30 test of `93ae113` passed as well, but it did not
+separate the clicked window from the application's main window, which is why it missed this
+case.
 
-This answers the question left open on 2026-08-03 about whether public Accessibility APIs
-can raise a single window. They can. Recorded in `docs/DECISIONS.md`.
+**Not attributable:** one earlier sample in the same session (`click #34`) ended with both
+Chrome windows above the front application. There the clicked window was already Chrome's
+main window, and a second user click landed one second later, inside the resolution of the
+window-order watcher. Re-measure before calling that a residual bug.
 
 **Still open:** verification inside `focusTargetApp:` compares only
 `frontAfter.processIdentifier == targetPid`, which cannot observe which window holds focus.
-`93ae113` added a verbose-only readback of `kAXFocusedWindowAttribute` next to it, but the
-pass/fail decision still rests on the process-level check. AX operation errors are logged
-and execution continues rather than counting as failures.
+The verbose-only readback of `kAXFocusedWindowAttribute` runs next to it, but the pass/fail
+decision still rests on the process-level check. AX operation errors are logged and
+execution continues rather than counting as failures.
 
 ---
 
@@ -108,6 +117,11 @@ and execution continues rather than counting as failures.
 
 Local build and runtime test are possible and were used to verify the focus fix.
 Certificate-based signing is not, until a signing decision is made.
+
+A local rebuild changes the bundle's code hash, so macOS drops its Accessibility permission.
+After a rebuild, re-grant Accessibility in System Settings and then relaunch HoverClick: a
+process that is already running keeps the denied state even after the toggle is set, and its
+log keeps reporting `accessibility trusted = NO`.
 
 Allowed:
 
@@ -136,6 +150,10 @@ Keep each of these on its own branch.
   Existing `v1.2.1` installations cannot be served an update signed by any new key.
 - Make `focusTargetApp:` verification check the focused window, not only the frontmost
   process, and treat AX operation errors as failures.
+- Re-measure the multi-window focus path with a sub-second window-order log, to settle the
+  one 2026-09-06 sample that could not be attributed. If a sibling window does come forward
+  again, the next lever is dropping `-activateWithOptions:` and letting the user's own click
+  activate the application.
 - `HoverClick.mm` is a single ~4,900-line file. Extract `FocusController` now that the
   focus behavior is correct.
 - CI runs static safety checks only, no build.
