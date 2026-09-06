@@ -4728,24 +4728,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                         sequenceID,
                         HoverClickAXWindowIdentity(targetWindow).UTF8String];
 
-    BOOL activateAttempted = targetApp != nil;
-    BOOL activateResult = NO;
-    if (activateAttempted) {
-        activateResult = [targetApp activateWithOptions:NSApplicationActivateIgnoringOtherApps];
-    }
-    _lastBackgroundFocusActivation = [NSString stringWithFormat:@"attempted=%@ returnValue=%@",
-                                      activateAttempted ? @"yes" : @"no",
-                                      activateAttempted ? (activateResult ? @"yes" : @"no") : @"not-applicable"];
-    [self updateRecentDecisionForSequenceID:sequenceID
-                                        key:@"finalResult"
-                                      value:[NSString stringWithFormat:@"focus attempt started; activation %@",
-                                             _lastBackgroundFocusActivation]];
-    HoverClickLog("HoverClick: %s #%llu app activation attempted=%s result=%s",
-                  trigger,
-                  sequenceID,
-                  activateAttempted ? "YES" : "NO",
-                  activateResult ? "YES" : "NO");
-
+    // Window first, application second. -activateWithOptions: carries the application's own main
+    // window forward with it. While that main window is still the sibling the user focused earlier,
+    // activating first drags the sibling in front of whatever was on top, which is the multi-window
+    // symptom. Pointing the application at the clicked window before activation makes the clicked
+    // window the one activation carries, and the sibling keeps its z-order position.
     AXUIElementRef appElement = AXUIElementCreateApplication(targetPid);
     BOOL appElementCreated = (appElement != NULL);
     BOOL focusedWindowAttempted = NO;
@@ -4773,17 +4760,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     mainWindowError = AXUIElementSetAttributeValue(targetWindow, kAXMainAttribute, kCFBooleanTrue);
     focusedAttrError = AXUIElementSetAttributeValue(targetWindow, kAXFocusedAttribute, kCFBooleanTrue);
 
-    // Readback: does the application now treat the clicked window as its focused window? The
-    // frontmost-process verification further down cannot observe this.
-    [self diagnosticLog:"HoverClick: %s #%llu focused window readback %s",
-                        trigger,
-                        sequenceID,
-                        HoverClickFocusedWindowComparison(appElement, targetWindow).UTF8String];
-    if (appElement != NULL) {
-        CFRelease(appElement);
-        appElement = NULL;
-    }
-
     _lastBackgroundFocusAXOperations = [NSString stringWithFormat:@"appElement=%@ focusedWindow=%@ raise=%@ mainWindow=%@ focused=%@",
                                         appElementCreated ? @"yes" : @"no",
                                         HoverClickAXAttemptSummary(focusedWindowAttempted, focusedWindowError),
@@ -4798,6 +4774,38 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickLog("HoverClick: %s #%llu AX focusedWindow set %s", trigger, sequenceID, HoverClickAXErrorName(focusedWindowError));
     [self diagnosticLog:"HoverClick: %s #%llu AX mainWindow set %s", trigger, sequenceID, HoverClickAXErrorName(mainWindowError)];
     [self diagnosticLog:"HoverClick: %s #%llu AX focused attribute set %s", trigger, sequenceID, HoverClickAXErrorName(focusedAttrError)];
+
+    // NSApplicationActivateAllWindows is deliberately not passed. That option is what brings every
+    // window of the application forward; without it activation carries the main window only, which
+    // the block above has just pointed at the clicked window.
+    BOOL activateAttempted = targetApp != nil;
+    BOOL activateResult = NO;
+    if (activateAttempted) {
+        activateResult = [targetApp activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+    }
+    _lastBackgroundFocusActivation = [NSString stringWithFormat:@"attempted=%@ returnValue=%@",
+                                      activateAttempted ? @"yes" : @"no",
+                                      activateAttempted ? (activateResult ? @"yes" : @"no") : @"not-applicable"];
+    [self updateRecentDecisionForSequenceID:sequenceID
+                                        key:@"finalResult"
+                                      value:[NSString stringWithFormat:@"focus attempt started; activation %@",
+                                             _lastBackgroundFocusActivation]];
+    HoverClickLog("HoverClick: %s #%llu app activation attempted=%s result=%s",
+                  trigger,
+                  sequenceID,
+                  activateAttempted ? "YES" : "NO",
+                  activateResult ? "YES" : "NO");
+
+    // Readback after activation: does the application now treat the clicked window as its focused
+    // window? The frontmost-process verification further down cannot observe this.
+    [self diagnosticLog:"HoverClick: %s #%llu focused window readback %s",
+                        trigger,
+                        sequenceID,
+                        HoverClickFocusedWindowComparison(appElement, targetWindow).UTF8String];
+    if (appElement != NULL) {
+        CFRelease(appElement);
+        appElement = NULL;
+    }
 
     NSRunningApplication *frontAfter = [NSWorkspace sharedWorkspace].frontmostApplication;
     BOOL frontImmediate = (frontAfter != nil && frontAfter.processIdentifier == targetPid);
