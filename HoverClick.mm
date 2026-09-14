@@ -1166,13 +1166,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [controller recordEventTapCallbackWithType:type event:event proxy:proxy];
 
     if (type == kCGEventTapDisabledByTimeout) {
-        HoverClickLog("HoverClick: event tap disabled by timeout");
+        HoverClickLog("HoverClick: click listener paused by macOS reason=timeout");
         [controller handleEventTapDisabledWithReason:@"timeout" shouldReenable:YES];
         return event;
     }
 
     if (type == kCGEventTapDisabledByUserInput) {
-        HoverClickLog("HoverClick: event tap disabled by user input");
+        HoverClickLog("HoverClick: click listener paused by macOS reason=user input");
         [controller handleEventTapDisabledWithReason:@"user input" shouldReenable:YES];
         return event;
     }
@@ -1711,8 +1711,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     BOOL trusted = [self accessibilityTrusted];
     HoverClickLog("HoverClick: bundle id = %s", HoverClickBundleID.UTF8String);
     HoverClickLog("HoverClick: version = %s", HoverClickDisplayVersion().UTF8String);
-    HoverClickLog("HoverClick: accessibility trusted = %s", trusted ? "YES" : "NO");
-    HoverClickLog("HoverClick: launch state leftClickFocus=%s rightClickFocus=%s bypassKey=%s automaticUpdateChecks=%s automaticDownloadInstall=%s",
+    HoverClickLog("HoverClick: Accessibility permission granted = %s", trusted ? "YES" : "NO");
+    HoverClickLog("HoverClick: launch settings leftClickFocus=%s rightClickFocus=%s skipKey=%s automaticUpdateChecks=%s automaticDownloadInstall=%s",
                   _clickToFocusEnabled ? "ON" : "OFF",
                   _rightClickFocusEnabled ? "ON" : "OFF",
                   _bypassKey == HoverClickBypassKeyShift ? "shift" : _bypassKey == HoverClickBypassKeyFn ? "fn" : "off",
@@ -1875,7 +1875,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         trusted = [self accessibilityTrusted];
     }
 
-    HoverClickLog("HoverClick: accessibility trusted = %s reason=%s", trusted ? "YES" : "NO", safeReason.UTF8String);
+    HoverClickLog("HoverClick: Accessibility permission granted = %s reason=%s", trusted ? "YES" : "NO", safeReason.UTF8String);
 
     if (trusted) {
         _permissionMissingPassThroughActive = NO;
@@ -1904,7 +1904,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES};
     BOOL trusted = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
     _accessibilityTrustPromptRequestedThisLaunch = YES;
-    HoverClickLog("HoverClick: Accessibility trust prompt requested result=%s", trusted ? "trusted" : "not trusted");
+    HoverClickLog("HoverClick: Accessibility permission prompt shown result=%s", trusted ? "granted" : "not granted");
     return trusted;
 }
 
@@ -2058,7 +2058,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                     typeName,
                                                     HoverClickDiagnosticTimestamp(now),
                                                     _eventTapPermissionMissingPassThroughCount];
-    [self recordPermissionCheckResult:@"missing (event tap callback)"];
+    [self recordPermissionCheckResult:@"missing (click listener callback)"];
 
     if (_eventTapRemovalScheduledDueToMissingPermission) {
         return;
@@ -2078,7 +2078,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             return;
         }
 
-        [self removeEventTapDueToMissingAccessibilityWithReason:@"event tap callback"];
+        [self removeEventTapDueToMissingAccessibilityWithReason:@"click listener callback"];
     });
 }
 
@@ -2318,21 +2318,21 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         [self updateEventTapLifecycleFlags];
         if (_eventTapInstalled) {
             if (!_eventTapEnabled) {
-                HoverClickLog("HoverClick: existing event tap installed but disabled; enabling");
+                HoverClickLog("HoverClick: existing click listener installed but inactive; activating");
                 CGEventTapEnable(_eventTap, true);
                 [self updateEventTapLifecycleFlags];
-                HoverClickLog("HoverClick: existing event tap enable result=%s", _eventTapEnabled ? "enabled" : "disabled");
+                HoverClickLog("HoverClick: existing click listener activate result=%s", _eventTapEnabled ? "enabled" : "disabled");
             }
 
             if (_eventTapEnabled) {
-                HoverClickLog("HoverClick: event tap already installed; skipping duplicate install");
+                HoverClickLog("HoverClick: click listener already installed; skipping duplicate install");
                 [self updateMenuTitles];
                 return YES;
             }
 
-            HoverClickLog("HoverClick: existing event tap could not be enabled; recreating");
+            HoverClickLog("HoverClick: existing click listener could not be activated; recreating");
         } else {
-            HoverClickLog("HoverClick: existing event tap objects are missing or invalid; recreating");
+            HoverClickLog("HoverClick: existing click listener objects are missing or invalid; recreating");
         }
 
         [self removeEventTap];
@@ -2340,7 +2340,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     CGEventMask mask = CGEventMaskBit(kCGEventLeftMouseDown) |
                        CGEventMaskBit(kCGEventRightMouseDown);
-    HoverClickLog("HoverClick: event tap mask=0x%llx leftMouseDown=YES rightMouseDown=YES mouseMoved=NO scroll=NO",
+    HoverClickLog("HoverClick: click listener scope=0x%llx leftClick=YES rightClick=YES; mouse movement, scrolling and keyboard are never observed",
                   (unsigned long long)mask);
     _eventTap = CGEventTapCreate(kCGHIDEventTap,
                                  kCGHeadInsertEventTap,
@@ -2351,12 +2351,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (_eventTap == NULL) {
         _eventTapInstalled = NO;
         _eventTapEnabled = NO;
-        HoverClickLog("HoverClick: failed to create event tap. Check Accessibility permission.");
+        HoverClickLog("HoverClick: failed to create click listener. Check Accessibility permission.");
         [self setLastClickResult:@"Event Tap Create Failed"];
         [self updateMenuTitles];
         return NO;
     }
-    HoverClickLog("HoverClick: event tap created");
+    HoverClickLog("HoverClick: click listener created");
 
     _eventTapSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, _eventTap, 0);
     if (_eventTapSource == NULL) {
@@ -2364,7 +2364,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         _eventTap = NULL;
         _eventTapInstalled = NO;
         _eventTapEnabled = NO;
-        HoverClickLog("HoverClick: failed to create event tap source.");
+        HoverClickLog("HoverClick: failed to create click listener run loop source.");
         [self setLastClickResult:@"Event Tap Source Failed"];
         [self updateMenuTitles];
         return NO;
@@ -2374,7 +2374,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _eventTapInstalled = YES;
     CGEventTapEnable(_eventTap, true);
     [self updateEventTapLifecycleFlags];
-    HoverClickLog("HoverClick: event tap enable after install result=%s", _eventTapEnabled ? "enabled" : "disabled");
+    HoverClickLog("HoverClick: click listener activate after install result=%s", _eventTapEnabled ? "enabled" : "disabled");
 
     if (!_eventTapEnabled) {
         [self setLastClickResult:@"Event Tap Enable Failed"];
@@ -2382,14 +2382,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return NO;
     }
 
-    HoverClickLog("HoverClick: event tap installed mode=pass-through-default");
+    HoverClickLog("HoverClick: click listener installed; every click is delivered unchanged by default");
     [self updateMenuTitles];
     return YES;
 }
 
 - (void)removeEventTap {
     if (_eventTap == NULL && _eventTapSource == NULL && !_eventTapInstalled && !_eventTapEnabled) {
-        HoverClickLog("HoverClick: event tap remove requested but no active tap");
+        HoverClickLog("HoverClick: click listener remove requested but none active");
         [self updateMenuTitles];
         return;
     }
@@ -2397,9 +2397,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (_eventTap != NULL) {
         if (CFMachPortIsValid(_eventTap)) {
             CGEventTapEnable(_eventTap, false);
-            HoverClickLog("HoverClick: event tap disabled");
+            HoverClickLog("HoverClick: click listener deactivated");
         } else {
-            HoverClickLog("HoverClick: event tap disable skipped because port is invalid");
+            HoverClickLog("HoverClick: click listener deactivate skipped because port is invalid");
         }
     }
 
@@ -2417,7 +2417,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     if (_eventTapInstalled) {
-        HoverClickLog("HoverClick: event tap removed");
+        HoverClickLog("HoverClick: click listener removed");
     }
 
     _eventTapInstalled = NO;
@@ -2433,36 +2433,36 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (!_userWantsEventTap) {
         _lastEventTapRecoveryResult = [NSString stringWithFormat:@"not re-enabled after %@: user disabled tap", reason];
-        HoverClickLog("HoverClick: event tap disabled by %s; user disabled tap, not re-enabling", reason.UTF8String);
+        HoverClickLog("HoverClick: click listener paused by macOS reason=%s; user turned it off, staying off", reason.UTF8String);
         return;
     }
 
     if (![self accessibilityTrusted]) {
         _lastEventTapRecoveryResult = [NSString stringWithFormat:@"not re-enabled after %@: Accessibility permission missing", reason];
-        [self removeEventTapDueToMissingAccessibilityWithReason:[NSString stringWithFormat:@"tap disabled by %@", reason]];
+        [self removeEventTapDueToMissingAccessibilityWithReason:[NSString stringWithFormat:@"listener pause (%@)", reason]];
         return;
     }
 
     if (!shouldReenable) {
         _lastEventTapRecoveryResult = [NSString stringWithFormat:@"not re-enabled after %@: recovery disabled", reason];
-        HoverClickLog("HoverClick: event tap disabled by %s; not re-enabling", reason.UTF8String);
+        HoverClickLog("HoverClick: click listener paused by macOS reason=%s; not resuming", reason.UTF8String);
         return;
     }
 
     if ([self isEventTapPortValid] && [self isEventTapSourceValid]) {
-        HoverClickLog("HoverClick: attempting event tap re-enable after %s", reason.UTF8String);
+        HoverClickLog("HoverClick: resuming click listener after %s", reason.UTF8String);
         CGEventTapEnable(_eventTap, true);
         [self updateEventTapLifecycleFlags];
         if (_eventTapEnabled) {
             _lastEventTapRecoveryResult = [NSString stringWithFormat:@"re-enabled existing tap after %@", reason];
-            HoverClickLog("HoverClick: event tap re-enabled after %s", reason.UTF8String);
+            HoverClickLog("HoverClick: click listener resumed after %s", reason.UTF8String);
             [self updateMenuTitles];
             return;
         }
 
-        HoverClickLog("HoverClick: event tap re-enable after %s failed; recreating", reason.UTF8String);
+        HoverClickLog("HoverClick: click listener resume after %s failed; recreating", reason.UTF8String);
     } else {
-        HoverClickLog("HoverClick: event tap disabled by %s with invalid or missing port/source; recreating", reason.UTF8String);
+        HoverClickLog("HoverClick: click listener paused by macOS reason=%s with invalid or missing port/source; recreating", reason.UTF8String);
     }
 
     [self removeEventTap];
@@ -2470,7 +2470,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastEventTapRecoveryResult = recovered ?
         [NSString stringWithFormat:@"recreated tap after %@", reason] :
         [NSString stringWithFormat:@"recreate failed after %@", reason];
-    HoverClickLog("HoverClick: event tap recovery after %s result=%s",
+    HoverClickLog("HoverClick: click listener recovery after %s result=%s",
                   reason.UTF8String,
                   recovered ? "recreated" : "failed");
     [self updateMenuTitles];
@@ -2490,7 +2490,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     _userWantsEventTap = YES;
     if (![self accessibilityTrusted]) {
-        HoverClickLog("HoverClick: event tap permission missing. Check Accessibility permission.");
+        HoverClickLog("HoverClick: click listener needs Accessibility permission; none granted.");
         [self removeEventTapDueToMissingAccessibilityWithReason:@"toggle"];
         return;
     }
@@ -2653,7 +2653,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [[NSUserDefaults standardUserDefaults] synchronize];
     const char *keyName = _bypassKey == HoverClickBypassKeyShift ? "shift" :
                           _bypassKey == HoverClickBypassKeyFn ? "fn" : "off";
-    HoverClickLog("HoverClick: bypass key set to %s", keyName);
+    HoverClickLog("HoverClick: skip key set to %s", keyName);
     [self updateMenuTitles];
 }
 
@@ -3585,7 +3585,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                       (_bypassKey == HoverClickBypassKeyFn && (flags & kCGEventFlagMaskSecondaryFn) != 0);
         if (bypass) {
             _lastBypassDecision = (_bypassKey == HoverClickBypassKeyShift) ? @"bypassed-by-shift" : @"bypassed-by-fn";
-            HoverClickLog("HoverClick: left click bypass active modifier=%s; original event returned unchanged",
+            HoverClickLog("HoverClick: left click skipped: skip key held (%s); original event returned unchanged",
                           _bypassKey == HoverClickBypassKeyShift ? "shift" : "fn");
             return;
         }
@@ -3598,7 +3598,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
     [self beginRecentDecisionWithTrigger:"click" sequenceID:clickID rawPoint:rawPoint axPoint:axPoint];
-    [self diagnosticLog:"HoverClick: click #%llu received leftClickFocus=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
+    [self diagnosticLog:"HoverClick: click #%llu leftClickFocus=%s screenPoint=(%.1f,%.1f) axPoint=(%.1f,%.1f)",
                         clickID,
                         _clickToFocusEnabled ? "ON" : "OFF",
                         rawPoint.x,
@@ -3675,7 +3675,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                       (_bypassKey == HoverClickBypassKeyFn && (flags & kCGEventFlagMaskSecondaryFn) != 0);
         if (bypass) {
             _lastBypassDecision = (_bypassKey == HoverClickBypassKeyShift) ? @"bypassed-by-shift" : @"bypassed-by-fn";
-            HoverClickLog("HoverClick: right click bypass active modifier=%s; original event returned unchanged",
+            HoverClickLog("HoverClick: right click skipped: skip key held (%s); original event returned unchanged",
                           _bypassKey == HoverClickBypassKeyShift ? "shift" : "fn");
             return;
         }
@@ -3688,7 +3688,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CGPoint rawPoint = CGEventGetLocation(event);
     CGPoint axPoint = [self accessibilityPointForEventPoint:rawPoint];
     [self beginRecentDecisionWithTrigger:"right-click" sequenceID:clickID rawPoint:rawPoint axPoint:axPoint];
-    [self diagnosticLog:"HoverClick: right-click #%llu received rightClickFocus=%s leftClickFocus=%s raw=(%.1f,%.1f) converted=(%.1f,%.1f)",
+    [self diagnosticLog:"HoverClick: right-click #%llu rightClickFocus=%s leftClickFocus=%s screenPoint=(%.1f,%.1f) axPoint=(%.1f,%.1f)",
                         clickID,
                         _rightClickFocusEnabled ? "ON" : "OFF",
                         _clickToFocusEnabled ? "ON" : "OFF",

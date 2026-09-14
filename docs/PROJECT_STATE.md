@@ -121,7 +121,7 @@ Certificate-based signing is not, until a signing decision is made.
 A local rebuild changes the bundle's code hash, so macOS drops its Accessibility permission.
 After a rebuild, re-grant Accessibility in System Settings and then relaunch HoverClick: a
 process that is already running keeps the denied state even after the toggle is set, and its
-log keeps reporting `accessibility trusted = NO`.
+log keeps reporting `Accessibility permission granted = NO`.
 
 Allowed:
 

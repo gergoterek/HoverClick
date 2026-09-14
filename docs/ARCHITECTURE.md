@@ -16,11 +16,11 @@ The callback remains pass-through: it never returns a replacement click event an
 
 Event tap lifecycle guards:
 
-- Installs only once and logs `event tap already installed; skipping duplicate install` when a duplicate install is requested.
-- Logs `event tap disabled by timeout` or `event tap disabled by user input` for system-disabled pseudo-events.
+- Installs only once and logs `click listener already installed; skipping duplicate install` when a duplicate install is requested.
+- Logs `click listener paused by macOS reason=timeout` or `click listener paused by macOS reason=user input` for system-disabled pseudo-events.
 - Checks Accessibility trust again inside the normal left/right mouse-down callback before entering AX hit-testing or focus logic. If permission is missing or revoked, the callback records permission-missing pass-through, schedules stale tap removal, performs no AX work, and returns the original event unchanged.
 - Tracks user intent, tap object presence, CFMachPort validity, run loop source presence, run loop source validity, believed installed state, and believed enabled state separately.
-- Re-enables the existing tap when the user still wants it enabled, the CFMachPort is valid, and the run loop source is valid, then logs `event tap re-enabled after ...`.
+- Re-enables the existing tap when the user still wants it enabled, the CFMachPort is valid, and the run loop source is valid, then logs `click listener resumed after ...`.
 - Recreates the tap when disabled-event recovery finds a missing or invalid port/source, or when `CGEventTapEnable` does not leave the tap enabled.
 - Removes the run loop source and CFMach port on app quit or menu disable.
 - Logs `event tap remove requested but no active tap` for no-op cleanup.
