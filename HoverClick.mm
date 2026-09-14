@@ -78,6 +78,11 @@ static const CGFloat HoverClickSectionHeaderLabelY = 2.0;
 static const CGFloat HoverClickSectionHeaderLabelHeight = 15.0;
 static const CGFloat HoverClickSectionHeaderFontSize = 11.0;
 static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
+// Upper bound for how long the tap callback waits for a requested activation to land before
+// the original click is passed on. Measured on 2026-09-14: the activated application became
+// frontmost 60 to 120 ms after the click (p90 121 ms, max 197 ms), the tap timeout is 1 s.
+static const NSTimeInterval HoverClickActivationWaitTimeout = 0.150;
+static const useconds_t HoverClickActivationWaitPollMicroseconds = 10000;
 static const NSUInteger HoverClickRecentDecisionHistoryLimit = 10;
 
 static NSString *HoverClickDisplayVersion(void) {
@@ -4227,6 +4232,100 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return nil;
 }
 
+// Answers whether the clicked AX window is the topmost on-screen normal-level window of its own
+// application, matched by frame. Activation only carries the main and key windows forward, and
+// the key window is whatever the application had in front before the click; when that is the
+// clicked window itself, activation cannot raise a sibling. On success the CG window number is
+// returned through outWindowID so the caller can wait for that window to reach the front.
+- (BOOL)isWindow:(AXUIElementRef)window topmostWindowOfPid:(pid_t)pid outWindowID:(CGWindowID *)outWindowID {
+    if (window == NULL) {
+        return NO;
+    }
+
+    CGPoint position = CGPointZero;
+    CFTypeRef positionValue = NULL;
+    if (AXUIElementCopyAttributeValue(window, kAXPositionAttribute, &positionValue) != kAXErrorSuccess || positionValue == NULL) {
+        return NO;
+    }
+    BOOL positionRead = (CFGetTypeID(positionValue) == AXValueGetTypeID() &&
+                         AXValueGetValue((AXValueRef)positionValue, kAXValueTypeCGPoint, &position));
+    CFRelease(positionValue);
+
+    CGSize size = CGSizeZero;
+    CFTypeRef sizeValue = NULL;
+    if (AXUIElementCopyAttributeValue(window, kAXSizeAttribute, &sizeValue) != kAXErrorSuccess || sizeValue == NULL) {
+        return NO;
+    }
+    BOOL sizeRead = (CFGetTypeID(sizeValue) == AXValueGetTypeID() &&
+                     AXValueGetValue((AXValueRef)sizeValue, kAXValueTypeCGSize, &size));
+    CFRelease(sizeValue);
+    if (!positionRead || !sizeRead) {
+        return NO;
+    }
+
+    NSArray *windowList = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+                                                                       kCGNullWindowID));
+    for (NSDictionary *windowInfo in windowList) {
+        if ([self layerForWindowInfo:windowInfo] != 0 || [self ownerPidForWindowInfo:windowInfo] != pid) {
+            continue;
+        }
+        NSNumber *alphaNumber = windowInfo[(__bridge NSString *)kCGWindowAlpha];
+        if (alphaNumber != nil && alphaNumber.doubleValue <= 0.0) {
+            continue;
+        }
+        CGRect bounds = CGRectNull;
+        NSDictionary *boundsDictionary = windowInfo[(__bridge NSString *)kCGWindowBounds];
+        if (![boundsDictionary isKindOfClass:[NSDictionary class]] ||
+            !CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)boundsDictionary, &bounds) ||
+            bounds.size.width < 50.0 || bounds.size.height < 50.0) {
+            continue;
+        }
+
+        // First normal window of this process in front-to-back order: the application's topmost.
+        BOOL matches = (fabs(bounds.origin.x - position.x) <= 2.0 &&
+                        fabs(bounds.origin.y - position.y) <= 2.0 &&
+                        fabs(bounds.size.width - size.width) <= 2.0 &&
+                        fabs(bounds.size.height - size.height) <= 2.0);
+        if (matches && outWindowID != NULL) {
+            NSNumber *windowNumber = windowInfo[(__bridge NSString *)kCGWindowNumber];
+            *outWindowID = (CGWindowID)windowNumber.unsignedIntValue;
+        }
+        return matches;
+    }
+    return NO;
+}
+
+// Blocks the tap callback until windowID is the topmost on-screen normal-level window, or until
+// HoverClickActivationWaitTimeout passes. Returns the elapsed time; sets *reachedFront.
+- (NSTimeInterval)waitForWindowIDToReachFront:(CGWindowID)windowID reachedFront:(BOOL *)reachedFront {
+    CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+    BOOL reached = NO;
+    while (!reached) {
+        NSArray *windowList = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+                                                                           kCGNullWindowID));
+        for (NSDictionary *windowInfo in windowList) {
+            if ([self layerForWindowInfo:windowInfo] != 0) {
+                continue;
+            }
+            NSNumber *alphaNumber = windowInfo[(__bridge NSString *)kCGWindowAlpha];
+            if (alphaNumber != nil && alphaNumber.doubleValue <= 0.0) {
+                continue;
+            }
+            NSNumber *windowNumber = windowInfo[(__bridge NSString *)kCGWindowNumber];
+            reached = ((CGWindowID)windowNumber.unsignedIntValue == windowID);
+            break;
+        }
+        if (reached || CFAbsoluteTimeGetCurrent() - start >= HoverClickActivationWaitTimeout) {
+            break;
+        }
+        usleep(HoverClickActivationWaitPollMicroseconds);
+    }
+    if (reachedFront != NULL) {
+        *reachedFront = reached;
+    }
+    return CFAbsoluteTimeGetCurrent() - start;
+}
+
 - (void)logTopmostWindowInfo:(NSDictionary *)windowInfo atPoint:(CGPoint)point sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger {
     if (windowInfo == nil) {
         [self diagnosticLog:"HoverClick: %s #%llu topmost CG window not found at x=%.1f y=%.1f",
@@ -4775,17 +4874,43 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self diagnosticLog:"HoverClick: %s #%llu AX mainWindow set %s", trigger, sequenceID, HoverClickAXErrorName(mainWindowError)];
     [self diagnosticLog:"HoverClick: %s #%llu AX focused attribute set %s", trigger, sequenceID, HoverClickAXErrorName(focusedAttrError)];
 
-    // NSApplicationActivateAllWindows is deliberately not passed. That option is what brings every
-    // window of the application forward; without it activation carries the main window only, which
-    // the block above has just pointed at the clicked window.
-    BOOL activateAttempted = targetApp != nil;
+    // Activation is conditional. -activateWithOptions: carries the main and the key window forward,
+    // and the key window stays whatever the application had in front before the click: the AX
+    // operations above do not change it (measured 2026-09-14, Chrome: the sibling rose above the
+    // covering window in 6 of 8 clicks on a window that was not Chrome's topmost, 0 of 25 clicks
+    // on its topmost window). So the application is activated only when the clicked window is
+    // already its topmost window; otherwise the user's own click activates it with that one window.
+    // NSApplicationActivateAllWindows is deliberately not passed.
+    //
+    // When activation is requested, the callback waits for it to land before the click is passed
+    // on, because activation is asynchronous: without the wait the click reached the application
+    // 60 to 120 ms before it became frontmost in 147 of 147 measured attempts.
+    CGWindowID clickedWindowID = kCGNullWindowID;
+    BOOL clickedIsTopmost = [self isWindow:targetWindow topmostWindowOfPid:targetPid outWindowID:&clickedWindowID];
+    BOOL activateAttempted = (targetApp != nil && clickedIsTopmost);
     BOOL activateResult = NO;
+    BOOL activationReachedFront = NO;
+    NSTimeInterval activationWait = 0.0;
     if (activateAttempted) {
         activateResult = [targetApp activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+        if (activateResult) {
+            activationWait = [self waitForWindowIDToReachFront:clickedWindowID reachedFront:&activationReachedFront];
+        }
     }
-    _lastBackgroundFocusActivation = [NSString stringWithFormat:@"attempted=%@ returnValue=%@",
+    const char *activationSkipReason = activateAttempted ? "none" : (targetApp == nil ? "no-running-application" : "clicked-window-not-topmost-of-app");
+    HoverClickLog("HoverClick: %s #%llu activation decision clickedWindowTopmostOfApp=%s skipReason=%s wait=%.0fms reachedFront=%s",
+                  trigger,
+                  sequenceID,
+                  clickedIsTopmost ? "YES" : "NO",
+                  activationSkipReason,
+                  activationWait * 1000.0,
+                  activateAttempted ? (activationReachedFront ? "YES" : "NO") : "not-applicable");
+    _lastBackgroundFocusActivation = [NSString stringWithFormat:@"attempted=%@ returnValue=%@ skipReason=%s wait=%.0fms reachedFront=%@",
                                       activateAttempted ? @"yes" : @"no",
-                                      activateAttempted ? (activateResult ? @"yes" : @"no") : @"not-applicable"];
+                                      activateAttempted ? (activateResult ? @"yes" : @"no") : @"not-applicable",
+                                      activationSkipReason,
+                                      activationWait * 1000.0,
+                                      activateAttempted ? (activationReachedFront ? @"yes" : @"no") : @"not-applicable"];
     [self updateRecentDecisionForSequenceID:sequenceID
                                         key:@"finalResult"
                                       value:[NSString stringWithFormat:@"focus attempt started; activation %@",
