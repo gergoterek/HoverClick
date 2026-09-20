@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-09-06
+Last updated: 2026-09-20
 
 Short, current source of truth. Update this file at the end of every work cycle.
 Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
@@ -13,12 +13,12 @@ Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
 |---|---|
 | Released version | `v1.2.1` / build `43` |
 | `main` commit | `f24f506b3247bafcf00bd1d9610870a299bebdf8` |
-| Branch tip in use | `fix/single-window-focus` @ `c700de2` |
+| Branch tip in use | `fix/single-window-focus` @ `936d137` |
 | Bundle ID | `com.gergoterek.HoverClick` |
 | Project path | `/Users/terekgergo/Projects/HoverClick` |
 | Signing identity | **None available.** `security find-identity -v -p codesigning` returns `0 valid identities found`. |
 | Sparkle EdDSA private key | **Not available on this machine.** |
-| Build status | Compiles clean on macOS 26.6.2 / clang 21. Local builds are not signed with a certificate and are not distributable. |
+| Build status | Compiles clean on macOS 26.6.2 / clang 21. Local builds are not signed with a certificate and are not distributable. The process `pid 5918` runs since 2026-09-17 19:04:27 from `HoverClick.app`, whose binary was built 2026-09-17 13:22 and contains the 2026-09-17 menu bar utility clause (inferred from the timestamps and the string in the binary, not from a version marker). It does not contain the 2026-09-20 commits. |
 
 ---
 
@@ -56,7 +56,7 @@ Only one branch is worked on at a time. Finish or park the top item before start
 
 | # | Branch | State |
 |---|---|---|
-| 1 | `fix/single-window-focus` | **Two fixes in, both verified at runtime.** Not merged to `main`. |
+| 1 | `fix/single-window-focus` | **Six commits on the branch, one change still uncommitted** (menu bar utility panels, see below). `93ae113` and `c700de2` verified at runtime. `65c130f` (conditional activation plus a bounded wait) measured on 2026-09-14 and again on 2026-09-20 (22 Chrome attempts, 22 delayed YES). `fd5035d`, `ec56fc9`, `936d137` (2026-09-20 stability audit, see below) **not verified at runtime**. Not merged to `main`. |
 | 2 | `feature/menu-help-tooltips` | Not started. Replace the `Guide` submenu with hover tooltips. **Blocked on a decision — see below.** |
 
 ### Queued: Guide submenu → tooltips
@@ -74,7 +74,7 @@ before planning this. The first step is a decision, not an implementation.
 
 ---
 
-## Closed: multi-window focus bug
+## Multi-window focus bug: third fix under measurement
 
 **Bug:** clicking one visible background window brought other windows of the same
 application forward with it.
@@ -92,6 +92,20 @@ goes to the clicked window first, through `kAXFocusedWindowAttribute` on the app
 element plus `kAXRaiseAction`, `kAXMainAttribute` and `kAXFocusedAttribute` on the window,
 and the application is activated only afterwards.
 
+**Third fix:** `65c130f`. The second fix was necessary and not sufficient either. Measured on
+2026-09-14 with the `c700de2` build and a 50 ms window-order watcher: activation carries the
+application's key window, and the key window stays whatever Chrome had in front before the
+click, whatever the AX operations say. The sibling rose above the covering window within
+0.2 s in **6 of 8** clicks on a window that was not Chrome's topmost, and in **0 of 25**
+clicks on Chrome's topmost window. `focusTargetApp:` now activates the application only when
+the clicked window is already its topmost window (`isWindow:topmostWindowOfPid:outWindowID:`),
+and when it does, `waitForWindowIDToReachFront:reachedFront:` blocks the callback until the
+clicked window is at the front of the CG window list, at most 150 ms, before the original
+event is returned unchanged. The log line `activation decision ... wait=NNms reachedFront=YES/NO`
+and the diagnostics summary carry the decision. Full reasoning and numbers:
+`docs/DECISIONS.md`, entry "Activate only for the application's topmost window, then wait
+for it to land".
+
 **Runtime verification, 2026-09-06:** macOS 26.6.2, locally built bundle from `c700de2`, two
 Chrome windows with a third application in front. On `click #37` the clicked window was
 raised, the verbose readback reported `match=YES`, and the CGWindowList z-order right after
@@ -100,16 +114,136 @@ sibling kept its place. The 2026-08-30 test of `93ae113` passed as well, but it 
 separate the clicked window from the application's main window, which is why it missed this
 case.
 
-**Not attributable:** one earlier sample in the same session (`click #34`) ended with both
-Chrome windows above the front application. There the clicked window was already Chrome's
-main window, and a second user click landed one second later, inside the resolution of the
-window-order watcher. Re-measure before calling that a residual bug.
+**The 2026-09-06 sample that could not be attributed** (`click #34`, both Chrome windows
+above the front application) is consistent with the 2026-09-14 finding: there the clicked
+window was Chrome's main window, and main is not key. It stays unproven for that sample,
+because the 2026-09-06 watcher had one-second resolution.
 
-**Still open:** verification inside `focusTargetApp:` compares only
-`frontAfter.processIdentifier == targetPid`, which cannot observe which window holds focus.
-The verbose-only readback of `kAXFocusedWindowAttribute` runs next to it, but the pass/fail
-decision still rests on the process-level check. AX operation errors are logged and
-execution continues rather than counting as failures.
+**Measurement since 2026-09-14 19:43** (`65c130f` build, export at 20:05:37, last click at
+19:58:30; the 2026-09-20 sample is in the stability audit section below): 127 clicks, 8 click-to-focus attempts, 2 of them on a covered Chrome window with a
+sibling below the cover (`#79`, `#111`). Both were clicks on Chrome's topmost window, the
+sibling stayed in both, 0 rises within 0.2 s. Activation was requested 6 times, `wait=` 11 to
+67 ms (median 12 ms, cap 150 ms never reached), `reachedFront=YES` 6 of 6, `delayed verify`
+YES 6 of 6. **The changed branch has no Chrome sample yet:** since 19:43 nobody clicked a
+Chrome window that was not Chrome's topmost, and that is the case the baseline failed in 6 of
+8. The baseline collected its 8 such clicks in 11.5 hours; keep the build and the watcher
+running until at least that many have accumulated, then re-run the scripts.
+
+**Invariant 6, decided 2026-09-14:** `CLAUDE.md` invariant 6 ("no event replay or delayed
+click delivery"), the same constraint in `docs/ARCHITECTURE.md`, and the recorded ban on the
+35 ms activation-settle sleep of the failed background-drag experiment (`docs/TEST_MATRIX.md`,
+`docs/CURRENT_STATE.md`) all touch the wait. The user decided that the bounded wait is
+compatible: the invariant covers an event that is held back and delivered later, not a wait
+inside the callback that returns the original event once, unchanged. The wait keeps its exit
+condition and its 150 ms cap; raising the cap, dropping the exit condition or extending the
+wait to skipped activations reopens the decision. Reasoning and limits: `docs/DECISIONS.md`,
+2026-09-14 entry, paragraph "Invariant 6". The static gate cannot see the wait.
+
+**Closed on 2026-09-20 (`fd5035d`, not yet run):** the immediate verification no longer reads
+`NSWorkspace.frontmostApplication` inside the callback (it passed in **0 of 170** attempts
+across the `c700de2` and `65c130f` builds; the value is refreshed on the main run loop, which
+the callback blocks, inferred and not verified). It now combines the wait's window-list result
+with the AX server's focused application (`kAXFocusedApplicationAttribute`), both on the
+`immediate verify` log line as `windowList=` and `focusedAppAX=`, and the delayed verification
+0.2 s later (the working signal so far: 156 of 162, 6 of 8 and 22 of 22 YES) runs after every
+attempt. AX operation errors are counted (`failures=` in the operations summary) and a timed-out
+operation abandons the attempt.
+
+---
+
+## Menu bar utility panels: fix built, runtime test pending
+
+**Bug:** clicking a menu bar utility's non-activating panel (Emojist's emoji picker over Google
+Chrome) made HoverClick activate the utility, so Chrome resigned and Google Docs dropped the
+inline tab-rename field before Emojist could type into it. Adding Emojist to Excluded Apps
+worked around it for one app.
+
+**Fix (uncommitted, 2026-09-17):** one clause in `nonNormalTopWindowSkipReasonForWindowInfo:`
+plus `applicationLooksLikeMenuBarUtility:`. Owner of the topmost window is the target, the
+window is at layer 24 or above, the target's activation policy is accessory: pass the click
+through before any focus attempt (`Ignored Non-Normal UI`). Reasoning, numbers and rejected
+options: `docs/DECISIONS.md`, entry 2026-09-17.
+
+**State:** `scripts/source-only-check.sh` PASS. Ad hoc build in `HoverClick.app` from the
+changed source (`scripts/build-app.sh` cannot run until `scripts/setup-signing.sh` has created
+`HoverClick Dev`). The process running since 2026-09-17 19:04 (`pid 5918`) is that build: its
+binary is dated 2026-09-17 13:22 and contains the clause's log text. **Not yet verified at
+runtime:** the clause fired 0 times in the 2026-09-20 log, because Emojist is still in Excluded
+Apps (5 clicks, all `excluded app`). Acceptance test: Emojist removed from Excluded Apps, Google
+Docs tab rename open, emoji chosen with the mouse; expected log line `ignored
+reason=non-normal-top-window ... target app is a menu bar utility ...` and the emoji lands in
+the field. The change does not touch the Chrome path, so the sibling measurement above stays
+comparable after the relaunch.
+
+---
+
+## Stability audit, 2026-09-20
+
+Scheduled run, nobody at the keyboard. Full numbers and the reasoning in `docs/DECISIONS.md`,
+entry 2026-09-20.
+
+**Measured (unified log 08:06 to 13:56, 1,864 clicks):** 8 tap timeouts, each after one AX call
+that blocked for 1.3 to 1.5 s (normal hit-test: 2 ms median, 17 ms p99). 64 focus attempts,
+22 on Chrome (14 Google Docs, 3 Meet), all 22 `delayed verify frontApp=YES`, activation
+requested in 21 (`wait=` median 37 ms, cap hit 3 times), skipped in 1. Same-point repeat clicks
+within 2.5 s after a focus attempt: Chrome 1 of 22 (`#8828`/`#8829`, Docs, activation requested,
+`wait=19ms`), Claude 1 of 8, Control Centre 3 of 7 (all activation skipped, `delayed NO`), others
+0. No repeat sits next to a timeout marker; no Chrome click was stopped by an eligibility gate.
+
+**Fixed (committed, static PASS, scratch build compiles, RUNTIME NOT TESTED):**
+
+| Commit | Change |
+|---|---|
+| `fd5035d` | 200 ms AX messaging timeout on every element, 500 ms callback budget, focus attempt abandoned at the first timed-out write, activation wait cap shrinks with the budget (never above 150 ms), immediate verification from the window list and the AX focused application, delayed verification after every attempt, AX failures counted, verbose-only AX readbacks. |
+| `ec56fc9` | `HoverClickLog` and `diagnosticLog:` carry the printf format attribute; the two `topmost CG window` lines passed an NSString to `%@` and logged a bare `@` (1,853 lines today). |
+| `936d137` | No `imageWithSystemSymbolName:` call with a nil name (the last static-analyzer finding). |
+
+**Not changed, decided against or deferred:** the activation policy of `65c130f` (no Chrome
+evidence for the skipped-activation hypothesis: 1 skipped of 22, no repeat after it);
+`SetFrontProcessWithOptions(kSetFrontProcessFrontWindowOnly)` for skipped activations
+(deprecated public API, plausible, unmeasured; needs the click test first); the
+already-frontmost gate still reads `NSWorkspace.frontmostApplication` (`HoverClick.mm`,
+`handleResolvedElement:`), which can lag a fresh activation by one run-loop turn; window titles
+still logged as `%{public}`; `docs/ARCHITECTURE.md` click path still stale.
+
+**Click test for the next relaunch** (Gergő; the build is `scripts/build-app.sh` once
+`HoverClick Dev` exists, or the scratch recipe in the audit chat):
+
+1. Start: `log stream` is not needed; the unified log keeps the lines. Note the time.
+2. Two Chrome windows side by side, both Google Docs, a third application (Finder) in front of
+   the left one. Click once into the text of the covered left Docs window, on a word, and type
+   one letter. Expected: the letter lands where the click was, without a second click. Log:
+   `click-to-focus started target=Google Chrome`, `activation decision ... reachedFront=YES`,
+   `immediate verify frontApp=YES windowList=reached focusedAppAX=Google Chrome`,
+   `event passed through elapsed=NNms` under 200 ms, `delayed verify ... frontApp=YES`.
+   Repeat 10 times; count the clicks that needed a second click.
+3. Same arrangement, but click the Docs window that is **not** Chrome's topmost (the one
+   behind the other Chrome window). Expected: only that window comes forward, the sibling stays.
+   Log: `skipReason=clicked-window-not-topmost-of-app`.
+4. Timeout check: open a Docs page with a long document, click Chrome's menu bar from another
+   application ten times quickly. Expected: no `click listener paused by macOS` line; if an AX
+   call blocks, a `callback budget exhausted stage=` or `focus attempt abandoned
+   reason=ax-timeout` line instead, and the click still lands.
+5. Export: `/usr/bin/log show --predicate 'processImagePath CONTAINS "HoverClick" AND
+   eventMessage CONTAINS "[HoverClick]"' --start '<time from step 1>' --style compact` into a
+   file; count the markers above.
+
+---
+
+## Measurement setup (temporary, machine-local)
+
+**Gone since 2026-09-20.** The `zwatch` watcher is not running, and neither session scratchpad
+named below exists any more. Only the unified log remains, and it keeps roughly half a day.
+The watcher source was not copied into the repository; `tools/focus-observer.mm` (untracked,
+2026-09-07) is a different probe that records activation notifications.
+
+| | |
+|---|---|
+| Window-order watcher | `zwatch`, was pid `28175`, ran from 2026-09-12 20:21:45; **not running on 2026-09-20**. |
+| Watcher log and scripts | were in `/private/tmp/claude-501/-Users-terekgergo-Projects-HoverClick/863c87a9-9d94-4612-981a-940c2e1bef7e/scratchpad/` (`zwatch.log`, `zwatch.swift`, `verdict.py`, `verdict2.py`, `hypo.py`, `analyze.py`); **directory gone**. |
+| Wait statistics | were in `/private/tmp/claude-501/-Users-terekgergo-Projects-HoverClick/726b7681-7acc-4e50-93da-29f9155fc84c/scratchpad/`; **directory gone**. |
+| Log export | `/usr/bin/log show --predicate 'processImagePath CONTAINS "HoverClick" AND eventMessage CONTAINS "[HoverClick]"' --start '<date time>' --style compact` (`/usr/bin/log`, because `log` is a zsh builtin) |
+| Retention | The unified log keeps roughly half a day: on 2026-09-14 at 20:00 the oldest HoverClick line was from 08:56 the same day; on 2026-09-20 at 17:42 the oldest was from 08:06. Export before the data rolls out. |
 
 ---
 
@@ -142,23 +276,39 @@ Out of scope for this cycle:
 
 Keep each of these on its own branch.
 
+- `CLAUDE.md` invariant 6 and the `docs/ARCHITECTURE.md` safety constraints do not say that
+  a bounded in-callback wait is allowed; the reading lives only in `docs/DECISIONS.md`
+  (2026-09-14). Consider stating it in `CLAUDE.md` when that file is next edited.
+- Accumulate clicks on a non-topmost Chrome window under `65c130f` (the baseline had 8 in
+  11.5 hours) and re-run `verdict.py`, `verdict2.py` and `hypo.py`. Target: 0 sibling rises
+  within 0.2 s.
+- Verify `fd5035d` at runtime (AX messaging timeout, callback budget, the new immediate
+  verification): the click test in the stability audit section above.
+- Decide whether skipped activations should use `SetFrontProcessWithOptions` with
+  `kSetFrontProcessFrontWindowOnly` (public, deprecated) so that a non-topmost window's
+  application still becomes active before the click; measure the sibling first.
+- Notification Centre: the new skip rule fires for its window, which is not a layer-0 window,
+  so activation is skipped. The `c700de2` build activated it and it became frontmost in 2 of 3
+  sampled attempts; with `65c130f` BusyCal stayed frontmost in 2 of 2. Decide whether that
+  matters.
+- The watcher source and the analysis scripts of 2026-09-14 are gone with their scratchpads
+  (checked 2026-09-20). Rewrite `zwatch` into `tools/` before the next sibling measurement.
+- The already-frontmost gate reads `NSWorkspace.frontmostApplication` inside the callback;
+  compare it with the `focusedAppAX=` value on the `immediate verify` line once `fd5035d` runs,
+  and switch the gate if the AX value is the live one.
+- `docs/ARCHITECTURE.md` step 8 of the click path still lists "AX frontmost", removed in
+  `93ae113`, and does not know the conditional activation or the wait.
 - Replace the hardcoded `PROJECT_DIR` in the `Makefile` and the seven affected scripts with
   a path derived from the script location, as `ci-safety-check.sh` already does.
 - Correct every document that still claims the old signing certificate is present.
 - Decide the signing strategy for local development and for release.
 - Decide what happens to the Sparkle update channel now that the private key is gone.
   Existing `v1.2.1` installations cannot be served an update signed by any new key.
-- Make `focusTargetApp:` verification check the focused window, not only the frontmost
-  process, and treat AX operation errors as failures.
-- Re-measure the multi-window focus path with a sub-second window-order log, to settle the
-  one 2026-09-06 sample that could not be attributed. If a sibling window does come forward
-  again, the next lever is dropping `-activateWithOptions:` and letting the user's own click
-  activate the application.
-- `HoverClick.mm` is a single ~4,900-line file. Extract `FocusController` now that the
-  focus behavior is correct.
+- `HoverClick.mm` is a single ~4,900-line file. Extract `FocusController` once the focus
+  behavior is settled.
 - CI runs static safety checks only, no build.
-- Static analyzer reports two nullability issues, including a nil SF Symbol name on the
-  empty Excluded Apps row.
+- Static analyzer: 0 findings after `936d137` (it reported one nullability issue on
+  2026-09-20, the nil SF Symbol name on the empty Excluded Apps row).
 - Verbose diagnostics log AX element and window titles as `%{public}` (`HoverClick.mm:881`).
 - Sparkle is pinned to 2.9.3 by hash; upstream is 2.9.4.
 - 67 remote branches. Do not clean them up as a side task.

@@ -17,6 +17,225 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-09-20 — Bound every AX call in the callback and give the callback a time budget
+
+**Decision:** Every Accessibility element the tap callback touches carries a messaging timeout
+of 200 ms (`HoverClickAXMessagingTimeoutSeconds`); the system-wide element sets it as the
+process default when the tap is installed (`applyGlobalAccessibilityMessagingTimeout`, called
+from `installEventTap`). The callback has a budget of 500 ms from its entry
+(`HoverClickCallbackBudgetSeconds`, counted from `_lastEventTapCallbackTime`). Once the budget
+is spent, no new AX work starts: `stringAttribute:fromElement:` returns nil, the window search
+stops, `handleResolvedElement:` passes the click through with the log line `callback budget
+exhausted stage=...`, and the activation wait's cap shrinks to what is left of the budget, never
+above the 150 ms of the 2026-09-14 decision. A focus attempt stops at the first AX write that
+returns `kAXErrorCannotComplete`, skips activation (`skipReason=ax-operation-timeout`) and logs
+`focus attempt abandoned reason=ax-timeout operation=...`. Commit `fd5035d`.
+
+Two smaller changes ride along in the same commit because they touch the same lines. The
+immediate verification no longer reads `NSWorkspace.frontmostApplication` inside the callback;
+it uses the wait's window-list result and the AX server's `kAXFocusedApplicationAttribute`
+(`HoverClickAXFocusedApplicationPid`), both written to the `immediate verify` line
+(`windowList=`, `focusedAppAX=`), and the delayed verification now runs after every attempt. The
+clicked-window identity and the focused-window readback (up to seven AX reads) run only when
+verbose diagnostics are on; before, they ran on every attempt and the line was dropped.
+
+**Why:** The unified log of 2026-09-20 (08:06 to 13:56, 1,864 clicks, 64 focus attempts)
+contains 8 `click listener paused by macOS reason=timeout` events. Each one follows a single AX
+call that blocked for 1.3 to 1.5 s: `AXUIElementCopyElementAtPosition` on Chrome's menu bar
+(`#8802`, `#8813`), on Elgato Wave Link (`#7954`) and twice with `cannotComplete` (`#8822`,
+`#8823`); the focused-window readback of MenuBarAgent (`#8804`, `#8806`); the window search in
+Emberline (`#8951`). A normal hit-test takes 2 ms (median) and 17 ms (p99, n=1,854), so the
+blocked calls are a separate mode, not the tail of the normal one. While the tap is paused the
+click in flight and every following click are delivered with no focus handling; the source had
+no `AXUIElementSetMessagingTimeout` call at all (verified by grep on 2026-09-20). With the
+timeout and the budget the worst case is budget plus one timeout, about 700 ms, against a tap
+limit that a 827 ms callback survived on 2026-09-14 and a 1,315 ms callback did not on
+2026-09-20.
+
+**Rejected:** A messaging timeout alone: up to twenty AX round trips happen in one callback, so
+a 200 ms timeout alone still allows several seconds. A shorter timeout (50 or 100 ms): the
+measured normal calls fit, but a busy Google Docs tree on a slower machine may not, and the
+budget already bounds the total. Moving the AX work off the callback thread: the focus must
+land before the original event is returned, and the invariants forbid holding the event.
+Raising the wait cap for slow activations: reopens the 2026-09-14 decision; the cap can only
+shrink.
+
+**Evidence:** `/usr/bin/log show --predicate 'processImagePath CONTAINS "HoverClick" AND
+eventMessage CONTAINS "[HoverClick]"' --start '2026-09-20 04:00:00' --style compact`, 11,342
+lines, parsed by `parse.py`, `pairs.py`, `next.py` and `durs.py` in the session scratchpad of
+the chat "HoverClick: stabilitási átnézés és Chrome/Google dupla kattintás" (temporary; the
+transcript in `chat-transcripts/` keeps the numbers). Callback duration from the click line to
+`event passed through`: median 6 ms, p90 12 ms, p99 130 ms, max 3,034 ms (n=1,859).
+`scripts/source-only-check.sh` PASS, scratch build with `make -o check-signing app
+SIGNING_IDENTITY=-` compiles, clang static analyzer 0 findings after `936d137`. Runtime
+behavior of the timeout and the budget: **not verified**; the `HoverClick Dev` identity is
+missing and the running build (pid 5918, launched 2026-09-17 19:04 from the `65c130f`-era
+source) keeps its Accessibility grant only as long as it is not replaced.
+
+**On the reported Chrome and Google apps double click:** the same log has 22 Chrome focus
+attempts (14 on Google Docs windows, 3 on Meet), all 22 with `delayed verify frontApp=YES`.
+One is followed by a second click at nearly the same point within 2.5 s (`#8828` and `#8829`,
+Docs, 0.33 s, 39 px; activation requested, `wait=19ms`, `reachedFront=YES`, no timeout marker
+within 17 s), and one by a repeat click 3.7 s later 11 px away (`#8818` and `#8819`, Docs) after
+Chrome had lost frontmost to Elgato Wave Link between the two with no click in between.
+Control Centre shows the same repeat pattern in 3 of 7 attempts, all with activation skipped
+(`clicked-window-not-topmost-of-app`, its window is not a layer-0 window) and `delayed verify
+frontApp=NO`. So on this day the skipped-activation hypothesis explains the Control Centre
+repeats and not the Chrome ones (Chrome had 1 skipped activation of 22, `#7914`, with no
+repeat), the tap-timeout hypothesis explains none of the pairs, and the eligibility gates
+blocked no Chrome click (23 `menu-role` skips were Chrome's own menus). The Chrome pair is
+consistent with the click landing before the page has processed the activation, but with one
+sample that is not a finding. No activation change was made; the click test in
+`docs/PROJECT_STATE.md` is the next measurement.
+
+---
+
+## 2026-09-17 — Do not activate a menu bar utility for a click on its status-level panel
+
+**Decision:** `nonNormalTopWindowSkipReasonForWindowInfo:` gained one clause. When the topmost
+CG window at the click point belongs to the target application, sits at the status or pop-up
+level (`windowInfoLooksLikePopupLayer:`, layer 24 and above), and the target application's
+activation policy is `NSApplicationActivationPolicyAccessory` (`applicationLooksLikeMenuBarUtility:`),
+the click is passed through before any focus attempt, with the skip reason `target app is a
+menu bar utility and owns the status-level panel at the click point` and the click result
+`Ignored Non-Normal UI`. No AX write, no raise, no activation. The size of the window plays no
+part in this clause. Emojist is not added to the built-in exclusion list; the built-in Maccy
+entry (`isBuiltInCompatibilityBypassApplication:`) stays for now, although this rule covers it.
+
+**Why:** A menu bar utility's panel (`NSPanel` with `.nonactivatingPanel`, as Emojist's
+`PickerPanel.swift`; HoverClick's own Maccy comment at `isBuiltInCompatibilityBypassApplication:`
+describes the same requirement for a clipboard history) takes keyboard focus without activating
+its application, precisely so that the application the user was typing in stays frontmost and
+receives the inserted text. HoverClick's focus path ends in `-activateWithOptions:` on the
+clicked window's application, which pulls activation away from that application. Measured on
+2026-09-07 with Emojist over Google Chrome and a Google Docs tab-rename field: three clicks
+(`#2350`, `#2360`, `#2660`) showed the picker as the topmost window at `layer=25`, `466x385`,
+owned by Emojist; all four AX operations and the activation returned success; Emojist's own
+insertion log for `#2360` reported `pre-flight 31 ms` (its `ensureFrontmost` had to bring
+Chrome back) and `focus is on Google Chrome role=AXWebArea`, the captured text field gone.
+The existing compact-overlay clause requires height `<= 360`; the picker is 25 points
+taller, so no gate fired. Size is the wrong signal: in the same three-day log the Vorssaint
+utility's `358x1133` and `358x375` panels at layer 25 passed the gate the same way
+(`#3228`, `#3246`, `#3404`, `#3405`). Over those three days HoverClick started 308 focus
+attempts; 4 of them (3 Emojist, 1 Vorssaint) match the new clause, 1.3 percent.
+
+**Rejected:** Raising the compact height limit: fixes the 385-point picker and nothing else.
+Adding Emojist to the built-in exclusion list: hides one instance of a class, ships the
+developer's own app in a public default, and grows a list that should shrink once a general
+rule exists. Reading `kAXFocusedAttribute` of the clicked window before any write (a
+non-activating panel already reports it true while its application is in the background):
+more precise, would also cover regular-policy applications, but costs an AX round trip per
+eligible click and needs a measurement first that ordinary background windows report false;
+kept as a possible follow-up. Widening the clause to every non-normal layer (a `.floating`
+panel of an accessory application, level 3): plausible for the same reason, not measured, so
+the clause stays at the approved status level and above.
+
+**Evidence:** HoverClick unified log 2026-09-07 (`/usr/bin/log show`, since rolled out of the
+store; the lines are quoted in the chat transcript "HoverClick fókuszlopás Emojist").
+`CGWindowLevelForKey(kCGStatusWindowLevelKey)` = 25, `kCGMainMenuWindowLevelKey` = 24,
+`kCGPopUpMenuWindowLevelKey` = 101, `kCGFloatingWindowLevelKey` = 3, measured with a probe on
+2026-09-07. Emojist `LSUIElement` = true, activation policy accessory (probe, 2026-09-07).
+`scripts/source-only-check.sh` = PASS on 2026-09-17. Ad hoc build compiled on 2026-09-17
+(`HoverClick Dev` identity not present, so `scripts/build-app.sh` cannot run). Runtime
+behavior with the new build: not verified yet. Whether Emojist was ever
+`NSWorkspace.frontmostApplication` between HoverClick's two samples: inferred from Emojist's
+pre-flight, not measured; `tools/focus-observer.mm` records the activation notifications for
+that.
+
+---
+
+## 2026-09-14 — Activate only for the application's topmost window, then wait for it to land
+
+**Decision:** `focusTargetApp:` (commit `65c130f`) calls `-activateWithOptions:` only when the
+clicked window is already the topmost on-screen normal-level window of its own application,
+decided by `isWindow:topmostWindowOfPid:outWindowID:` against the CG window list, matched by
+frame. Otherwise activation is skipped and the user's own click activates the application with
+that one window. When activation is requested, `waitForWindowIDToReachFront:reachedFront:`
+blocks the tap callback until the clicked window is the first normal-level window in the CG
+window list, or until `HoverClickActivationWaitTimeout` (150 ms, 10 ms polling) passes; the
+original event is then returned unchanged. The user decided on 2026-09-14 that the bounded
+wait is compatible with `CLAUDE.md` invariant 6, see "Invariant 6" below. The change stays
+under runtime measurement until the changed branch has Chrome samples.
+
+**Why:** The 2026-09-06 entry was still incomplete. Pointing the application at the clicked
+window through `kAXFocusedWindowAttribute` and `kAXMainAttribute` does not change which window
+`-activateWithOptions:` carries forward: activation brings the application's key window, and
+the key window stays whatever Chrome had in front before the click. When the clicked window is
+not that window, activation raises the sibling. Measured on 2026-09-14 with the `c700de2`
+build (Evidence below): the sibling rose above the covering window within 0.2 s in 6 of 8
+clicks on a window that was not Chrome's topmost, and in 0 of 25 clicks on Chrome's topmost
+window. Skipping activation in the first case removes the only step that can raise a sibling;
+the AX operations address one window.
+
+The wait exists because activation is asynchronous. With the `c700de2` build the callback
+returned the click before the application was frontmost in every measured attempt:
+`immediate verify frontApp=NO` in 162 of 162 attempts, and the window-order watcher saw the
+target frontmost 67 ms (median) to 121 ms (p90) after the click, while the callback had
+returned after 38 ms (median). The wait polls the window server rather than `NSWorkspace`:
+the `frontmostApplication` check inside the callback passed in 0 of 170 attempts across both
+builds. The likely cause, inferred and not verified, is that the value is refreshed on the
+main run loop, which the callback blocks.
+
+**Rejected:** Dropping `-activateWithOptions:` altogether, the fallback named on 2026-09-06.
+It is not needed for the topmost-window case, where activation cannot raise a sibling (0 of
+25), and there it keeps the menu bar and the keyboard following the click. A fixed sleep after
+activation: the measured settle time varies from 11 to 67 ms, so the wait needs an exit
+condition. Polling `NSWorkspace.frontmostApplication`: never true inside the callback in the
+measured attempts, so it would always run to the timeout. A timeout above 150 ms: the slowest callback measured before
+the wait was 827 ms (AX hit-test in System Settings, `click #6732`), and the tap timeout is
+1 s.
+
+**Invariant 6, decided by the user on 2026-09-14:** `CLAUDE.md` invariant 6 says "no event
+replay or delayed click delivery", `docs/ARCHITECTURE.md` ("Safety constraints") says "no
+delayed delivery in any new code path", and the 35 ms activation-settle sleep of the failed
+background-drag experiment is recorded as not reusable (`docs/TEST_MATRIX.md`, row "Failed
+background drag experiment is not reused"; `docs/CURRENT_STATE.md`, "Background Click-And-Drag
+Experiments"). The wait is a bounded sleep before return: the event is returned once,
+unchanged, from the same callback, it is neither held nor posted, but it is returned 11 to
+67 ms later than it would be. The user's reading: invariant 6 and the ARCHITECTURE constraint
+cover an event that is held back and delivered later (a `NULL` return followed by a post, or a
+replay), not a bounded wait inside the callback that still returns the original event. The
+callback already spent 38 ms (median) in AX calls before the wait existed. The 35 ms
+activation-settle ban stays in force for what it was recorded for: a fixed sleep without an
+exit condition, in service of background click-and-drag. This wait has an exit condition
+(the clicked window at the front of the window list), a measured duration of 11 to 67 ms and
+a cap of 150 ms against a 1 s tap timeout. Any change that raises the cap, removes the exit
+condition, or extends the wait to skipped activations reopens this decision.
+`scripts/ci-safety-check.sh` does not detect the wait; `scripts/source-only-check.sh` passes
+on `65c130f`.
+
+**Evidence:** macOS 26.6.2. Unified log exports (`log show --predicate 'processImagePath
+CONTAINS "HoverClick" AND eventMessage CONTAINS "[HoverClick]"' --style compact`) correlated
+with the 50 ms window-order watcher `zwatch` (running since 2026-09-12 20:21:45) by
+`verdict.py`, `verdict2.py`, `hypo.py` and `waitstats.py`; the scripts and logs live in the
+session scratchpads, which are temporary, see `docs/PROJECT_STATE.md`.
+
+*Baseline*, `c700de2` build (pid 1011), 2026-09-14 08:03 to 19:35. The 09-12 and 09-13 part of
+the unified log has already rolled out; the numbers below reproduce the previously reported
+13 of 33 and 6 within 0.2 s exactly, so those days contributed nothing to them. 162
+click-to-focus attempts, 33 of them on a Chrome window covered by another application's window
+with a Chrome sibling below the cover. Sibling rose above the cover: 12 within 1.5 s
+(`verdict.py`); 13 attributable and 2 contaminated by a later click within 3 s (`verdict2.py`);
+6 within 0.2 s, and all 6 were clicks on a window that was not Chrome's topmost (6 of 8),
+against 0 of 25 clicks on Chrome's topmost window (`hypo.py` cross-tab).
+
+*After*, `65c130f` build (pid 82844), 19:43 to 19:58:30, export at 20:05:37. 127 clicks, 8
+click-to-focus attempts (Claude 4, Google Chrome 2, Notification Centre 2). Applicable Chrome
+clicks: 2 (`#79`, `#111`), both on Chrome's topmost window (`#95` under Claude `#3219`,
+sibling `#109` below); the sibling stayed in both, 0 rises within 0.2 s. **The target is met on
+a sample that does not exercise the changed branch**: no click on a non-topmost Chrome window
+has happened since 19:43. Activation requested 6 times: `wait=` 11, 12, 12, 12, 25, 67 ms
+(median 12, max 67, the 150 ms cap never reached), `reachedFront=YES` 6 of 6; the watcher saw
+the target frontmost and the clicked window on top 69 to 128 ms after the click in all 6;
+`delayed verify` YES 6 of 6. Callback duration from the click line to `event passed through`:
+median 76 ms, p90 142 ms, max 145 ms (n=8), against 38 / 71 / 827 ms for the baseline
+(n=162). Skipped activations: 2, both Notification Centre (`clicked-window-not-topmost-of-app`:
+its window is not a layer-0 window, so the topmost test cannot match it). The baseline build
+activated Notification Centre and it became frontmost in 2 of 3 sampled attempts; with the new
+build BusyCal stayed frontmost in 2 of 2.
+
+---
+
 ## 2026-09-12 — Neutral wording for the app's own log lines
 
 **Decision:** the `log show` output of HoverClick no longer says `event tap`, `bypass`,
