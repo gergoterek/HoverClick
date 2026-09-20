@@ -253,8 +253,9 @@ static NSString *HoverClickMenuItemTitle(NSString *title) {
 
 static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallbackSymbolName) {
     if (@available(macOS 11.0, *)) {
-        NSImage *image = [NSImage imageWithSystemSymbolName:symbolName
-                                   accessibilityDescription:nil];
+        // The empty Excluded Apps row passes no symbol name; the parameter is nonnull.
+        NSImage *image = symbolName.length > 0 ?
+            [NSImage imageWithSystemSymbolName:symbolName accessibilityDescription:nil] : nil;
         if (image == nil && fallbackSymbolName.length > 0) {
             image = [NSImage imageWithSystemSymbolName:fallbackSymbolName
                               accessibilityDescription:nil];
