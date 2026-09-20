@@ -888,6 +888,7 @@ static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
     return headerItem;
 }
 
+static void HoverClickLog(const char *format, ...) __attribute__((format(printf, 1, 2)));
 static void HoverClickLog(const char *format, ...) {
     char buffer[1024];
     char output[1200];
@@ -1071,6 +1072,9 @@ static pid_t HoverClickAXFocusedApplicationPid(void) {
 - (void)handleEventTapCallbackWithMissingAccessibilityForType:(CGEventType)type;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
+// Both loggers are printf-style: clang checks their arguments, so an NSString handed to %s or
+// a %@ conversion is a compile error instead of a garbled log line.
+- (void)diagnosticLog:(const char *)format, ... __attribute__((format(printf, 1, 2)));
 - (NSTimeInterval)callbackElapsed;
 - (NSTimeInterval)callbackBudgetRemaining;
 - (BOOL)callbackBudgetExhaustedForSequenceID:(uint64_t)sequenceID trigger:(const char *)trigger stage:(const char *)stage;
@@ -4458,9 +4462,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSInteger layer = [self layerForWindowInfo:windowInfo];
     if (layer == 0) {
-        [self diagnosticLog:"HoverClick: %s #%llu topmost CG window normal %@", trigger, sequenceID, [self compactWindowInfoDescription:windowInfo]];
+        [self diagnosticLog:"HoverClick: %s #%llu topmost CG window normal %s", trigger, sequenceID, [self compactWindowInfoDescription:windowInfo].UTF8String];
     } else {
-        [self diagnosticLog:"HoverClick: %s #%llu topmost CG window non-normal %@", trigger, sequenceID, [self compactWindowInfoDescription:windowInfo]];
+        [self diagnosticLog:"HoverClick: %s #%llu topmost CG window non-normal %s", trigger, sequenceID, [self compactWindowInfoDescription:windowInfo].UTF8String];
     }
 }
 
