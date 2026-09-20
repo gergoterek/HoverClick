@@ -83,6 +83,18 @@ static const NSTimeInterval HoverClickDelayedVerificationDelay = 0.20;
 // frontmost 60 to 120 ms after the click (p90 121 ms, max 197 ms), the tap timeout is 1 s.
 static const NSTimeInterval HoverClickActivationWaitTimeout = 0.150;
 static const useconds_t HoverClickActivationWaitPollMicroseconds = 10000;
+// Messaging timeout for every Accessibility call the tap callback makes. Without it a call to a
+// busy application blocks for the system default. Measured 2026-09-20 in the unified log: a
+// normal AX hit-test takes 2 ms (median) and 17 ms (p99), a blocked one 1.3 to 1.5 s, and each
+// of the 8 blocked calls of that day tripped the tap timeout, so the click and the ones after
+// it were delivered with no focus handling until the tap was re-enabled.
+static const float HoverClickAXMessagingTimeoutSeconds = 0.2f;
+// Time budget for one tap callback, counted from the callback entry. Once it is spent, no new
+// AX work is started, the focus attempt is abandoned and the original event is returned. With
+// the messaging timeout above, one more call can still be in flight when the budget runs out,
+// so the callback ends after at most budget + timeout, well inside the tap's own limit (a
+// callback of 827 ms did not trip the tap on 2026-09-14, one of 1315 ms did on 2026-09-20).
+static const NSTimeInterval HoverClickCallbackBudgetSeconds = 0.5;
 static const NSUInteger HoverClickRecentDecisionHistoryLimit = 10;
 
 static NSString *HoverClickDisplayVersion(void) {
@@ -205,13 +217,6 @@ static NSString *HoverClickRunningApplicationDescription(NSRunningApplication *a
     }
 
     return [NSString stringWithFormat:@"%@ pid=%d", name, app.processIdentifier];
-}
-
-static NSString *HoverClickFrontmostVerificationDescription(NSRunningApplication *frontApp, pid_t targetPid) {
-    BOOL verified = (frontApp != nil && frontApp.processIdentifier == targetPid);
-    return [NSString stringWithFormat:@"%@ verified=%@",
-                                      HoverClickRunningApplicationDescription(frontApp),
-                                      verified ? @"yes" : @"no"];
 }
 
 static NSString *HoverClickPointDescription(CGPoint point) {
@@ -1016,6 +1021,28 @@ static NSString *HoverClickFocusedWindowComparison(AXUIElementRef appElement, AX
     return result;
 }
 
+// The application the Accessibility server reports as focused, read from the system-wide element.
+// Unlike NSWorkspace.frontmostApplication this does not depend on the main run loop, so it can be
+// read inside the tap callback. Returns 0 when the read fails or times out.
+static pid_t HoverClickAXFocusedApplicationPid(void) {
+    AXUIElementRef systemWide = AXUIElementCreateSystemWide();
+    if (systemWide == NULL) {
+        return 0;
+    }
+    AXUIElementSetMessagingTimeout(systemWide, HoverClickAXMessagingTimeoutSeconds);
+
+    pid_t pid = 0;
+    CFTypeRef value = NULL;
+    if (AXUIElementCopyAttributeValue(systemWide, kAXFocusedApplicationAttribute, &value) == kAXErrorSuccess && value != NULL) {
+        if (CFGetTypeID(value) == AXUIElementGetTypeID()) {
+            AXUIElementGetPid((AXUIElementRef)value, &pid);
+        }
+        CFRelease(value);
+    }
+    CFRelease(systemWide);
+    return pid;
+}
+
 @interface HoverClickAppDelegate : NSObject <NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate>
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) NSMenuItem *permissionItem;
@@ -1044,6 +1071,11 @@ static NSString *HoverClickFocusedWindowComparison(AXUIElementRef appElement, AX
 - (void)handleEventTapCallbackWithMissingAccessibilityForType:(CGEventType)type;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
+- (NSTimeInterval)callbackElapsed;
+- (NSTimeInterval)callbackBudgetRemaining;
+- (BOOL)callbackBudgetExhaustedForSequenceID:(uint64_t)sequenceID trigger:(const char *)trigger stage:(const char *)stage;
+- (void)applyAccessibilityMessagingTimeoutToElement:(AXUIElementRef)element;
+- (void)applyGlobalAccessibilityMessagingTimeout;
 - (NSArray<NSString *> *)userExcludedBundleIDs;
 - (NSArray<NSDictionary<NSString *, id> *> *)installedApplicationsForSelector;
 - (NSString *)displayNameForExcludedBundleID:(NSString *)bundleID;
@@ -2343,6 +2375,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         [self removeEventTap];
     }
 
+    [self applyGlobalAccessibilityMessagingTimeout];
+
     CGEventMask mask = CGEventMaskBit(kCGEventLeftMouseDown) |
                        CGEventMaskBit(kCGEventRightMouseDown);
     HoverClickLog("HoverClick: click listener scope=0x%llx leftClick=YES rightClick=YES; mouse movement, scrolling and keyboard are never observed",
@@ -3194,6 +3228,58 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickLog("%s", buffer);
 }
 
+// The budget starts at the tap callback entry, recorded by recordEventTapCallbackWithType:.
+- (NSTimeInterval)callbackElapsed {
+    return CFAbsoluteTimeGetCurrent() - _lastEventTapCallbackTime;
+}
+
+- (NSTimeInterval)callbackBudgetRemaining {
+    NSTimeInterval remaining = HoverClickCallbackBudgetSeconds - [self callbackElapsed];
+    return remaining > 0.0 ? remaining : 0.0;
+}
+
+// YES when the callback has spent its budget. Logged once per stage so the log shows where a
+// slow click was cut off; the caller passes the original event through unchanged.
+- (BOOL)callbackBudgetExhaustedForSequenceID:(uint64_t)sequenceID trigger:(const char *)trigger stage:(const char *)stage {
+    NSTimeInterval elapsed = [self callbackElapsed];
+    if (elapsed < HoverClickCallbackBudgetSeconds) {
+        return NO;
+    }
+    HoverClickLog("HoverClick: %s #%llu callback budget exhausted stage=%s elapsed=%.0fms budget=%.0fms",
+                  trigger,
+                  sequenceID,
+                  stage,
+                  elapsed * 1000.0,
+                  HoverClickCallbackBudgetSeconds * 1000.0);
+    return YES;
+}
+
+- (void)applyAccessibilityMessagingTimeoutToElement:(AXUIElementRef)element {
+    if (element == NULL) {
+        return;
+    }
+    AXError error = AXUIElementSetMessagingTimeout(element, HoverClickAXMessagingTimeoutSeconds);
+    if (error != kAXErrorSuccess) {
+        [self diagnosticLog:"HoverClick: AX messaging timeout not applied error=%s", HoverClickAXErrorName(error)];
+    }
+}
+
+// Setting the timeout on the system-wide element makes it the default for every element this
+// process creates afterwards (AXUIElement.h, AXUIElementSetMessagingTimeout).
+- (void)applyGlobalAccessibilityMessagingTimeout {
+    AXUIElementRef systemWide = AXUIElementCreateSystemWide();
+    if (systemWide == NULL) {
+        HoverClickLog("HoverClick: AX messaging timeout not applied: no system-wide element");
+        return;
+    }
+    AXError error = AXUIElementSetMessagingTimeout(systemWide, HoverClickAXMessagingTimeoutSeconds);
+    CFRelease(systemWide);
+    HoverClickLog("HoverClick: AX messaging timeout=%.0fms callbackBudget=%.0fms result=%s",
+                  HoverClickAXMessagingTimeoutSeconds * 1000.0,
+                  HoverClickCallbackBudgetSeconds * 1000.0,
+                  HoverClickAXErrorName(error));
+}
+
 - (BOOL)isChromeApplication:(NSRunningApplication *)app {
     return [app.bundleIdentifier isEqualToString:HoverClickChromeBundleID];
 }
@@ -3769,6 +3855,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         HoverClickLog("HoverClick: failed to create system-wide AX element");
         return NULL;
     }
+    [self applyAccessibilityMessagingTimeoutToElement:systemWide];
 
     AXUIElementRef element = NULL;
     AXError error = AXUIElementCopyElementAtPosition(systemWide,
@@ -3805,6 +3892,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                         role.UTF8String,
                         subrole.UTF8String,
                         elementTitle.UTF8String];
+
+    if ([self callbackBudgetExhaustedForSequenceID:sequenceID trigger:trigger stage:"element-attributes"]) {
+        [self passThroughForExhaustedBudgetWithSequenceID:sequenceID trigger:trigger stage:@"element attributes"];
+        return;
+    }
 
     pid_t targetPid = 0;
     AXError pidError = AXUIElementGetPid(element, &targetPid);
@@ -4098,6 +4190,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
+    if ([self callbackBudgetExhaustedForSequenceID:sequenceID trigger:trigger stage:"before-focus-attempt"]) {
+        [self passThroughForExhaustedBudgetWithSequenceID:sequenceID trigger:trigger stage:@"before focus attempt"];
+        CFRelease(targetWindow);
+        return;
+    }
+
     _lastEligibleHitTestCandidateDescription = [NSString stringWithFormat:@"trigger=%s sequence=%llu app=%@ pid=%d elementRole=%@ elementSubrole=%@ windowRole=%@ windowTitle=%@",
                                                 trigger,
                                                 sequenceID,
@@ -4142,6 +4240,26 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
               sequenceID:sequenceID
                  trigger:trigger];
     CFRelease(targetWindow);
+}
+
+// Bookkeeping for a click that ran out of callback budget: the original event is returned
+// unchanged by the caller, nothing was raised or activated.
+- (void)passThroughForExhaustedBudgetWithSequenceID:(uint64_t)sequenceID trigger:(const char *)trigger stage:(NSString *)stage {
+    NSString *detail = [NSString stringWithFormat:@"callback budget exhausted at %@ (elapsed %.0f ms); original event passed through before focus attempt",
+                        stage,
+                        [self callbackElapsed] * 1000.0];
+    [self recordFocusDecisionWithTrigger:trigger
+                              sequenceID:sequenceID
+                                decision:@"skipped"
+                                  detail:detail];
+    [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                           focusStatus:@"skipped before focus attempt: callback budget exhausted"
+                                             finalNote:detail];
+    [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+    [self completeRecentDecisionForSequenceID:sequenceID
+                                  finalResult:[NSString stringWithFormat:@"skipped: callback budget exhausted at %@", stage]
+             keepActiveForDelayedVerification:NO];
+    [self setLastClickResult:@"Budget Exhausted"];
 }
 
 - (void)recordRecentFinderRightClickForApp:(NSRunningApplication *)targetApp pid:(pid_t)targetPid sequenceID:(uint64_t)sequenceID {
@@ -4296,9 +4414,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 // Blocks the tap callback until windowID is the topmost on-screen normal-level window, or until
-// HoverClickActivationWaitTimeout passes. Returns the elapsed time; sets *reachedFront.
+// HoverClickActivationWaitTimeout passes. The cap never grows; it shrinks to what is left of the
+// callback budget. Returns the elapsed time; sets *reachedFront.
 - (NSTimeInterval)waitForWindowIDToReachFront:(CGWindowID)windowID reachedFront:(BOOL *)reachedFront {
     CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+    NSTimeInterval cap = MIN(HoverClickActivationWaitTimeout, [self callbackBudgetRemaining]);
     BOOL reached = NO;
     while (!reached) {
         NSArray *windowList = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
@@ -4315,7 +4435,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             reached = ((CGWindowID)windowNumber.unsignedIntValue == windowID);
             break;
         }
-        if (reached || CFAbsoluteTimeGetCurrent() - start >= HoverClickActivationWaitTimeout) {
+        if (reached || CFAbsoluteTimeGetCurrent() - start >= cap) {
             break;
         }
         usleep(HoverClickActivationWaitPollMicroseconds);
@@ -4822,10 +4942,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                            focusStatus:@"background focus attempt started"
                                              finalNote:nil];
 
-    [self diagnosticLog:"HoverClick: %s #%llu clicked window %s",
-                        trigger,
-                        sequenceID,
-                        HoverClickAXWindowIdentity(targetWindow).UTF8String];
+    if (_verboseDiagnostics) {
+        // Three AX reads for a log line; skipped when the line would be dropped anyway.
+        [self diagnosticLog:"HoverClick: %s #%llu clicked window %s",
+                            trigger,
+                            sequenceID,
+                            HoverClickAXWindowIdentity(targetWindow).UTF8String];
+    }
 
     // Window first, application second. -activateWithOptions: carries the application's own main
     // window forward with it. While that main window is still the sibling the user focused earlier,
@@ -4833,11 +4956,21 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // symptom. Pointing the application at the clicked window before activation makes the clicked
     // window the one activation carries, and the sibling keeps its z-order position.
     AXUIElementRef appElement = AXUIElementCreateApplication(targetPid);
+    [self applyAccessibilityMessagingTimeoutToElement:appElement];
+    [self applyAccessibilityMessagingTimeoutToElement:targetWindow];
     BOOL appElementCreated = (appElement != NULL);
     BOOL focusedWindowAttempted = NO;
+    BOOL raiseAttempted = NO;
+    BOOL mainWindowAttempted = NO;
+    BOOL focusedAttrAttempted = NO;
     AXError focusedWindowError = kAXErrorIllegalArgument;
+    AXError raiseError = kAXErrorIllegalArgument;
     AXError mainWindowError = kAXErrorIllegalArgument;
     AXError focusedAttrError = kAXErrorIllegalArgument;
+    // kAXErrorCannotComplete means the application did not answer within the messaging timeout.
+    // The remaining operations would block the same way, so the attempt stops at the first one:
+    // nothing else is written, the application is not activated, the click is passed through.
+    const char *abandonedAfter = NULL;
     if (appElement != NULL) {
         // kAXFrontmostAttribute is deliberately not set on the application element. It raises the
         // whole application, which carries every other window of the same process forward with it.
@@ -4847,24 +4980,56 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         // and the window-level operations that follow.
         focusedWindowAttempted = YES;
         focusedWindowError = AXUIElementSetAttributeValue(appElement, kAXFocusedWindowAttribute, targetWindow);
+        if (focusedWindowError == kAXErrorCannotComplete) {
+            abandonedAfter = "focusedWindow";
+        }
         // appElement is released after the focused-window readback below.
     }
 
-    BOOL raiseAttempted = (targetWindow != NULL);
-    AXError raiseError = AXUIElementPerformAction(targetWindow, kAXRaiseAction);
-    HoverClickLog("HoverClick: %s #%llu AXRaise %s", trigger, sequenceID, HoverClickAXErrorName(raiseError));
+    if (abandonedAfter == NULL) {
+        raiseAttempted = YES;
+        raiseError = AXUIElementPerformAction(targetWindow, kAXRaiseAction);
+        if (raiseError == kAXErrorCannotComplete) {
+            abandonedAfter = "raise";
+        }
+    }
+    HoverClickLog("HoverClick: %s #%llu AXRaise %s", trigger, sequenceID, raiseAttempted ? HoverClickAXErrorName(raiseError) : "skipped");
 
-    BOOL mainWindowAttempted = (targetWindow != NULL);
-    BOOL focusedAttrAttempted = (targetWindow != NULL);
-    mainWindowError = AXUIElementSetAttributeValue(targetWindow, kAXMainAttribute, kCFBooleanTrue);
-    focusedAttrError = AXUIElementSetAttributeValue(targetWindow, kAXFocusedAttribute, kCFBooleanTrue);
+    if (abandonedAfter == NULL) {
+        mainWindowAttempted = YES;
+        mainWindowError = AXUIElementSetAttributeValue(targetWindow, kAXMainAttribute, kCFBooleanTrue);
+        if (mainWindowError == kAXErrorCannotComplete) {
+            abandonedAfter = "mainWindow";
+        }
+    }
+    if (abandonedAfter == NULL) {
+        focusedAttrAttempted = YES;
+        focusedAttrError = AXUIElementSetAttributeValue(targetWindow, kAXFocusedAttribute, kCFBooleanTrue);
+        if (focusedAttrError == kAXErrorCannotComplete) {
+            abandonedAfter = "focused";
+        }
+    }
 
-    _lastBackgroundFocusAXOperations = [NSString stringWithFormat:@"appElement=%@ focusedWindow=%@ raise=%@ mainWindow=%@ focused=%@",
+    NSUInteger axFailures = (focusedWindowAttempted && focusedWindowError != kAXErrorSuccess ? 1 : 0) +
+                            (raiseAttempted && raiseError != kAXErrorSuccess ? 1 : 0) +
+                            (mainWindowAttempted && mainWindowError != kAXErrorSuccess ? 1 : 0) +
+                            (focusedAttrAttempted && focusedAttrError != kAXErrorSuccess ? 1 : 0);
+    if (abandonedAfter != NULL) {
+        HoverClickLog("HoverClick: %s #%llu focus attempt abandoned reason=ax-timeout operation=%s elapsed=%.0fms",
+                      trigger,
+                      sequenceID,
+                      abandonedAfter,
+                      [self callbackElapsed] * 1000.0);
+    }
+
+    _lastBackgroundFocusAXOperations = [NSString stringWithFormat:@"appElement=%@ focusedWindow=%@ raise=%@ mainWindow=%@ focused=%@ failures=%lu abandonedAfter=%s",
                                         appElementCreated ? @"yes" : @"no",
                                         HoverClickAXAttemptSummary(focusedWindowAttempted, focusedWindowError),
                                         HoverClickAXAttemptSummary(raiseAttempted, raiseError),
                                         HoverClickAXAttemptSummary(mainWindowAttempted, mainWindowError),
-                                        HoverClickAXAttemptSummary(focusedAttrAttempted, focusedAttrError)];
+                                        HoverClickAXAttemptSummary(focusedAttrAttempted, focusedAttrError),
+                                        (unsigned long)axFailures,
+                                        abandonedAfter != NULL ? abandonedAfter : "none"];
     [self updateRecentDecisionForSequenceID:sequenceID key:@"axOperations" value:_lastBackgroundFocusAXOperations];
     [self recordClickThroughInvestigationForSequenceID:sequenceID
                                            focusStatus:@"AX operations attempted"
@@ -4886,7 +5051,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // on, because activation is asynchronous: without the wait the click reached the application
     // 60 to 120 ms before it became frontmost in 147 of 147 measured attempts.
     CGWindowID clickedWindowID = kCGNullWindowID;
-    BOOL clickedIsTopmost = [self isWindow:targetWindow topmostWindowOfPid:targetPid outWindowID:&clickedWindowID];
+    BOOL budgetLeft = ([self callbackBudgetRemaining] > 0.0);
+    BOOL clickedIsTopmost = (abandonedAfter == NULL && budgetLeft) ?
+        [self isWindow:targetWindow topmostWindowOfPid:targetPid outWindowID:&clickedWindowID] : NO;
     BOOL activateAttempted = (targetApp != nil && clickedIsTopmost);
     BOOL activateResult = NO;
     BOOL activationReachedFront = NO;
@@ -4897,7 +5064,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             activationWait = [self waitForWindowIDToReachFront:clickedWindowID reachedFront:&activationReachedFront];
         }
     }
-    const char *activationSkipReason = activateAttempted ? "none" : (targetApp == nil ? "no-running-application" : "clicked-window-not-topmost-of-app");
+    const char *activationSkipReason = activateAttempted ? "none" :
+        (targetApp == nil ? "no-running-application" :
+         (abandonedAfter != NULL ? "ax-operation-timeout" :
+          (!budgetLeft ? "callback-budget-exhausted" : "clicked-window-not-topmost-of-app")));
     HoverClickLog("HoverClick: %s #%llu activation decision clickedWindowTopmostOfApp=%s skipReason=%s wait=%.0fms reachedFront=%s",
                   trigger,
                   sequenceID,
@@ -4922,31 +5092,49 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   activateResult ? "YES" : "NO");
 
     // Readback after activation: does the application now treat the clicked window as its focused
-    // window? The frontmost-process verification further down cannot observe this.
-    [self diagnosticLog:"HoverClick: %s #%llu focused window readback %s",
-                        trigger,
-                        sequenceID,
-                        HoverClickFocusedWindowComparison(appElement, targetWindow).UTF8String];
+    // window? The frontmost-process verification further down cannot observe this. Up to four AX
+    // reads, so only when the line is kept and the attempt was not already cut short.
+    if (_verboseDiagnostics && abandonedAfter == NULL && [self callbackBudgetRemaining] > 0.0) {
+        [self diagnosticLog:"HoverClick: %s #%llu focused window readback %s",
+                            trigger,
+                            sequenceID,
+                            HoverClickFocusedWindowComparison(appElement, targetWindow).UTF8String];
+    }
     if (appElement != NULL) {
         CFRelease(appElement);
         appElement = NULL;
     }
 
-    NSRunningApplication *frontAfter = [NSWorkspace sharedWorkspace].frontmostApplication;
-    BOOL frontImmediate = (frontAfter != nil && frontAfter.processIdentifier == targetPid);
-    NSString *frontAfterDescription = HoverClickRunningApplicationDescription(frontAfter);
-    _lastBackgroundFocusImmediateFrontmost = HoverClickFrontmostVerificationDescription(frontAfter, targetPid);
+    // Immediate verification. NSWorkspace.frontmostApplication is refreshed on the main run loop,
+    // which this callback blocks; it passed in 0 of 170 attempts across the c700de2 and 65c130f
+    // builds. Two signals that do not go through the run loop replace it: the window list read by
+    // the wait (the clicked window reached the front) and the focused application as the
+    // Accessibility server reports it. Both are logged so a later measurement can compare them.
+    pid_t focusedAppPid = ([self callbackBudgetRemaining] > 0.0) ? HoverClickAXFocusedApplicationPid() : 0;
+    BOOL frontImmediate = (activateAttempted && activationReachedFront) || (focusedAppPid > 0 && focusedAppPid == targetPid);
+    NSString *focusedAppDescription = focusedAppPid > 0 ?
+        HoverClickRunningApplicationDescription([NSRunningApplication runningApplicationWithProcessIdentifier:focusedAppPid]) :
+        @"not-read";
+    _lastBackgroundFocusImmediateFrontmost = [NSString stringWithFormat:@"%@ (windowList=%@ focusedAppAX=%@ pid=%d)",
+                                              frontImmediate ? @"yes" : @"no",
+                                              activateAttempted ? (activationReachedFront ? @"reached" : @"not-reached") : @"not-applicable",
+                                              focusedAppDescription,
+                                              focusedAppPid];
     [self updateRecentDecisionForSequenceID:sequenceID key:@"immediateVerification" value:_lastBackgroundFocusImmediateFrontmost];
-    HoverClickLog("HoverClick: %s #%llu %s-to-focus immediate verify frontApp=%s current=%s",
+    HoverClickLog("HoverClick: %s #%llu %s-to-focus immediate verify frontApp=%s windowList=%s focusedAppAX=%s elapsed=%.0fms",
                   trigger,
                   sequenceID,
                   trigger,
                   frontImmediate ? "YES" : "NO",
-                  frontAfterDescription.UTF8String);
+                  activateAttempted ? (activationReachedFront ? "reached" : "not-reached") : "not-applicable",
+                  focusedAppDescription.UTF8String,
+                  [self callbackElapsed] * 1000.0);
+    NSString *frontAfterDescription = focusedAppDescription;
 
     NSString *triggerLabel = HoverClickFocusTriggerLabel(trigger);
     if (frontImmediate) {
-        _lastBackgroundFocusDelayedVerification = @"not scheduled (immediate verification passed)";
+        _lastBackgroundFocusDelayedVerification = [NSString stringWithFormat:@"scheduled after %.2fs (immediate verification passed)",
+                                                   HoverClickDelayedVerificationDelay];
         [self setLastClickResult:@"Succeeded"];
         [self recordBackgroundFocusResult:@"success"
                               verification:@"immediate passed"
@@ -4966,9 +5154,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                  finalNote:@"focus succeeded; any remaining missed click is likely app/web-content-level and outside HoverClick observation"];
         [self completeRecentDecisionForSequenceID:sequenceID
                                       finalResult:@"success: immediate verification passed"
-                 keepActiveForDelayedVerification:NO];
+                 keepActiveForDelayedVerification:YES];
     } else {
-        NSString *verificationFailureReason = [NSString stringWithFormat:@"frontmost after immediate check was %@", frontAfterDescription];
+        NSString *verificationFailureReason = abandonedAfter != NULL ?
+            [NSString stringWithFormat:@"AX operation %s timed out; focus attempt abandoned", abandonedAfter] :
+            [NSString stringWithFormat:@"focused application after immediate check was %@", frontAfterDescription];
         _lastBackgroundFocusDelayedVerification = [NSString stringWithFormat:@"scheduled after %.2fs",
                                                    HoverClickDelayedVerificationDelay];
         [self updateRecentDecisionForSequenceID:sequenceID key:@"delayedVerification" value:_lastBackgroundFocusDelayedVerification];
@@ -4988,26 +5178,34 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         [self recordClickThroughInvestigationForSequenceID:sequenceID
                                                focusStatus:@"immediate verification failed; delayed verification scheduled"
                                                  finalNote:verificationFailureReason];
-
-        NSDictionary *verificationContext = @{
-            @"sequenceID": @(sequenceID),
-            @"targetPid": @(targetPid),
-            @"appName": appName ?: @"unknown",
-            @"triggerLabel": triggerLabel ?: @"unknown",
-            @"delay": @(HoverClickDelayedVerificationDelay)
-        };
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(HoverClickDelayedVerificationDelay * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            [self completeDelayedBackgroundFocusVerification:verificationContext];
-        });
     }
-    HoverClickLog("HoverClick: %s #%llu event passed through", trigger, sequenceID);
+
+    // The delayed check runs on the main queue after the callback has returned, where
+    // NSWorkspace is current again. It is the working signal of every measurement so far
+    // (156 of 162 and 6 of 8 YES), so it runs after every attempt, passed or not.
+    NSDictionary *verificationContext = @{
+        @"sequenceID": @(sequenceID),
+        @"targetPid": @(targetPid),
+        @"appName": appName ?: @"unknown",
+        @"triggerLabel": triggerLabel ?: @"unknown",
+        @"delay": @(HoverClickDelayedVerificationDelay)
+    };
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(HoverClickDelayedVerificationDelay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [self completeDelayedBackgroundFocusVerification:verificationContext];
+    });
+    HoverClickLog("HoverClick: %s #%llu event passed through elapsed=%.0fms", trigger, sequenceID, [self callbackElapsed] * 1000.0);
 }
 
 - (AXUIElementRef)copyWindowForElement:(AXUIElementRef)element {
     AXUIElementRef current = (AXUIElementRef)CFRetain(element);
 
     for (NSInteger depth = 0; depth < 10 && current != NULL; depth++) {
+        if ([self callbackBudgetRemaining] <= 0.0) {
+            [self diagnosticLog:"HoverClick: window search stopped depth=%ld reason=callback-budget", (long)depth];
+            CFRelease(current);
+            return NULL;
+        }
         NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:current] ?: @"unknown";
         [self diagnosticLog:"HoverClick: window search depth=%ld role=%s", (long)depth, role.UTF8String];
 
@@ -5058,7 +5256,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 - (NSString *)stringAttribute:(CFStringRef)attribute fromElement:(AXUIElementRef)element {
-    if (element == NULL) {
+    if (element == NULL || [self callbackBudgetRemaining] <= 0.0) {
         return nil;
     }
 
