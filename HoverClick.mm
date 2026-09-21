@@ -1987,6 +1987,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     okButton.target = self;
     okButton.action = @selector(dismissAccessibilityOnboardingAlert:);
     self.accessibilityOnboardingAlert = alert;
+    // The alert window is shown directly, not through runModal, so lay it out first:
+    // without this the nib placeholders (the "<Do not show this message again>" checkbox
+    // and the hidden extra buttons) stay visible and the texts are cut short.
+    [alert layout];
     alert.window.delegate = self;
     [alert.window setReleasedWhenClosed:NO];
     [alert.window makeKeyAndOrderFront:nil];
