@@ -103,9 +103,30 @@ fi
 echo "Running static safety checks:"
 /bin/zsh "$PROJECT_DIR/scripts/ci-safety-check.sh"
 
-SPARKLE_FRAMEWORK_ROOT="$PROJECT_DIR/tmp/sparkle/Sparkle-2.9.3/extracted"
-if [[ -d "$SPARKLE_FRAMEWORK_ROOT/Sparkle.framework" ]]; then
+sparkle_version=$(/usr/bin/awk -F':=' '/^SPARKLE_VERSION[[:space:]]*:=/ {gsub(/[[:space:]]/, "", $2); print $2; exit}' "$PROJECT_DIR/Makefile")
+sparkle_candidates=()
+if [[ -n "$sparkle_version" ]]; then
+  sparkle_candidates+=("$PROJECT_DIR/tmp/sparkle/Sparkle-$sparkle_version/extracted")
+  # A worktree has no tmp/ of its own, so fall back to the main checkout's cache.
+  common_dir=$(/usr/bin/git rev-parse --git-common-dir)
+  main_root="${common_dir:A:h}"
+  if [[ "${common_dir:A:t}" == ".git" && "$main_root" != "$PROJECT_DIR" ]]; then
+    sparkle_candidates+=("$main_root/tmp/sparkle/Sparkle-$sparkle_version/extracted")
+  fi
+fi
+
+SPARKLE_FRAMEWORK_ROOT=""
+for candidate in "${sparkle_candidates[@]}"; do
+  if [[ -d "$candidate/Sparkle.framework" ]]; then
+    SPARKLE_FRAMEWORK_ROOT="$candidate"
+    break
+  fi
+done
+
+syntax_state=SKIPPED
+if [[ -n "$SPARKLE_FRAMEWORK_ROOT" ]]; then
   echo "Running local syntax-only source check:"
+  echo "sparkle framework cache = $SPARKLE_FRAMEWORK_ROOT"
   /usr/bin/clang++ \
     -std=c++17 \
     -fobjc-arc \
@@ -114,12 +135,17 @@ if [[ -d "$SPARKLE_FRAMEWORK_ROOT/Sparkle.framework" ]]; then
     -fsyntax-only \
     "$PROJECT_DIR/HoverClick.mm"
   echo "syntax-only source check = PASS"
+  syntax_state=PASS
 else
-  echo "syntax-only source check = SKIPPED (local pinned Sparkle framework cache is unavailable)"
+  echo "syntax-only source check = SKIPPED (local pinned Sparkle framework cache is unavailable; looked in: ${sparkle_candidates[*]:-<SPARKLE_VERSION not found in Makefile>})"
 fi
 
 echo
-echo "static validation = PASS"
+if [[ "$syntax_state" == PASS ]]; then
+  echo "static validation = PASS"
+else
+  echo "static validation = PASS (syntax-only source check SKIPPED)"
+fi
 echo
 echo "This script does not build, sign, launch, or package."
 echo "It cannot tell you whether a behavior change works."
