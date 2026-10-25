@@ -468,9 +468,9 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
         if (self.highlighted && self.rowEnabled) {
             self.stateField.textColor = [NSColor selectedMenuItemTextColor];
         } else if (self.rowEnabled) {
-            self.stateField.textColor = [NSColor colorWithWhite:1.0 alpha:0.65];
+            self.stateField.textColor = [NSColor secondaryLabelColor];
         } else {
-            self.stateField.textColor = [NSColor colorWithWhite:1.0 alpha:0.3];
+            self.stateField.textColor = [NSColor disabledControlTextColor];
         }
     }
 }
