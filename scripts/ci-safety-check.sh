@@ -61,6 +61,11 @@ if (( rc != 0 )); then
 fi
 source_files=(${(0)source_list})
 (( ${#source_files} )) || fail "No tracked source files found for the runtime API check."
+# Swift spells these APIs differently (.post(tap:), addGlobalMonitorForEvents(matching:)), so the
+# patterns below would not see them.
+for source_file in "${source_files[@]}"; do
+  [[ "$source_file" != *.swift ]] || fail "Swift sources need their own runtime API patterns: ${source_file}"
+done
 echo "Source files checked: ${source_files[*]}"
 
 # Posting, creating or replaying events, moving the cursor and observing mouse movement.
@@ -82,6 +87,10 @@ runtime_forbidden=(
   "addLocalMonitorForEventsMatchingMask"
   "NSEventMaskMouseMoved"
   "NSMouseMovedMask"
+  "AXUIElementPostKeyboardEvent"
+  "CGEventKeyboardSet"
+  "dlsym"
+  "dlopen"
 )
 
 runtime_hits=""
@@ -106,12 +115,23 @@ if (( rc == 0 )) && [[ -n "$matches" ]]; then
   runtime_hits+="${matches}"$'\n'
 fi
 
+# A C++ reference to an event or a macro that returns can hide a write or a return from the
+# callback checks below.
+rc=0
+matches=$(/usr/bin/grep -H -n -E 'CGEventRef[[:space:]]*&|^[[:space:]]*#[[:space:]]*define.*return' -- "${source_files[@]}") || rc=$?
+if (( rc > 1 )); then
+  fail "grep failed (exit $rc) while checking event references and returning macros"
+fi
+if (( rc == 0 )) && [[ -n "$matches" ]]; then
+  runtime_hits+="${matches}"$'\n'
+fi
+
 if [[ -n "$runtime_hits" ]]; then
   echo "Forbidden runtime API text found in tracked source files:"
   printf '%s' "$runtime_hits"
   exit 1
 fi
-echo "No forbidden runtime API text found in HoverClick.mm."
+echo "No forbidden runtime API text found in tracked source files."
 
 section "Stable Event Tap Mask Check"
 /usr/bin/grep -F "kCGEventLeftMouseDown" HoverClick.mm >/dev/null || fail "Missing kCGEventLeftMouseDown."
@@ -191,6 +211,18 @@ fi
 if (( rc == 0 )); then
   echo "$event_writes"
   fail "HoverClickEventTapCallback writes to event or takes its address."
+fi
+
+# std::swap and std::exchange write to event without an assignment, a preprocessor line can hide
+# a return and releasing event would hand the window server a freed object.
+rc=0
+callback_hidden=$(print -r -- "$callback_body" | /usr/bin/grep -E 'std::(swap|exchange)|^[[:space:]]*#|CFRelease[[:space:]]*\([[:space:]]*event[[:space:]]*\)') || rc=$?
+if (( rc > 1 )); then
+  fail "grep failed (exit $rc) while checking the callback for hidden writes"
+fi
+if (( rc == 0 )); then
+  echo "$callback_hidden"
+  fail "HoverClickEventTapCallback contains std::swap, std::exchange, CFRelease(event) or a preprocessor line."
 fi
 echo "Event tap callback returns the original event on every path."
 
