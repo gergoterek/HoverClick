@@ -228,8 +228,8 @@ static NSString *HoverClickDiagnosticValue(NSString *value, NSString *fallback) 
     return value;
 }
 
-// The first cutIndex UTF-16 units, or fewer: the cut moves back to the start of a surrogate pair
-// or combining sequence that straddles it. A lone surrogate makes -UTF8String return NULL, and the
+// The first cutIndex UTF-16 units or fewer: the cut moves back to the start of a surrogate pair
+// or combining sequence that straddles it. A lone surrogate makes -UTF8String return NULL and the
 // whole log line then prints (null).
 static NSString *HoverClickSafePrefix(NSString *value, NSUInteger cutIndex) {
     if (cutIndex >= value.length) {
@@ -364,7 +364,7 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
     _stateField.font = [NSFont menuFontOfSize:0.0];
     _stateField.lineBreakMode = NSLineBreakByClipping;
     // showsStateView is kept for the call sites only: -syncFromMenuItem shows the state field
-    // exactly when there is a glyph to draw, so the argument never changed the result.
+    // exactly when there is a glyph to draw so the argument never changed the result.
     (void)showsStateView;
     [self addSubview:_stateField];
 
@@ -862,15 +862,16 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     return [NSString stringWithFormat:@"attempted:%s", HoverClickAXErrorName(error)];
 }
 
-// One AX read for a diagnostic line, held to the callback deadline. Once a read has been cut
-// short, by the deadline or by a timed-out read, every later read is skipped as well: an
-// application that did not answer one read blocks the next one the same way.
-static AXError HoverClickCopyAXAttributeBeforeDeadline(AXUIElementRef element, CFStringRef attribute, CFTypeRef *outValue, CFAbsoluteTime deadline, const char **cutShort) {
+// One AX read for a diagnostic line, held to the callback deadline. The deadline is on the
+// HoverClickMonotonicSeconds() clock, like the callback budget it is derived from. Once a read
+// has been cut short, by the deadline or by a timed-out read, every later read is skipped as
+// well: an application that did not answer one read blocks the next one the same way.
+static AXError HoverClickCopyAXAttributeBeforeDeadline(AXUIElementRef element, CFStringRef attribute, CFTypeRef *outValue, NSTimeInterval deadline, const char **cutShort) {
     *outValue = NULL;
     if (*cutShort != NULL) {
         return kAXErrorCannotComplete;
     }
-    if (CFAbsoluteTimeGetCurrent() >= deadline) {
+    if (HoverClickMonotonicSeconds() >= deadline) {
         *cutShort = "budget";
         return kAXErrorCannotComplete;
     }
@@ -884,7 +885,7 @@ static AXError HoverClickCopyAXAttributeBeforeDeadline(AXUIElementRef element, C
 
 // Title plus geometry. Two windows of the same application frequently share a title, so the
 // geometry is what makes a focus diagnostic line usable.
-static NSString *HoverClickAXWindowIdentity(AXUIElementRef window, CFAbsoluteTime deadline) {
+static NSString *HoverClickAXWindowIdentity(AXUIElementRef window, NSTimeInterval deadline) {
     if (window == NULL) {
         return @"none";
     }
@@ -937,11 +938,11 @@ static NSString *HoverClickAXWindowIdentity(AXUIElementRef window, CFAbsoluteTim
 // Reads back the application's own kAXFocusedWindowAttribute and reports whether it is the window
 // that was clicked. The frontmost-process check cannot answer that question: it only sees which
 // process is in front, never which of its windows holds focus.
-static NSString *HoverClickFocusedWindowComparison(AXUIElementRef appElement, AXUIElementRef targetWindow, CFAbsoluteTime deadline) {
+static NSString *HoverClickFocusedWindowComparison(AXUIElementRef appElement, AXUIElementRef targetWindow, NSTimeInterval deadline) {
     if (appElement == NULL) {
         return @"appFocusedWindow=no-app-element match=unknown";
     }
-    if (CFAbsoluteTimeGetCurrent() >= deadline) {
+    if (HoverClickMonotonicSeconds() >= deadline) {
         return @"appFocusedWindow=skipped(budget) match=unknown";
     }
 
@@ -1937,7 +1938,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 // Shows a feedback title on a menu row for 2 seconds, then runs completion and restores the
-// row. Each call bumps *generation, so the timer of an earlier click leaves a newer feedback
+// row. Each call bumps *generation so the timer of an earlier click leaves a newer feedback
 // alone. generation points at an ivar of self, which the block keeps alive.
 - (void)showTransientTitle:(NSString *)feedbackTitle
                     onItem:(NSMenuItem *)item
@@ -3113,8 +3114,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 }
 
-// Click-path setter: no menu row shows the last click result, and menuWillOpen: refreshes the
-// menu, so this must not call updateMenuTitles (it runs inside the event tap callback).
+// Click-path setter: no menu row shows the last click result and menuWillOpen: refreshes the
+// menu so this must not call updateMenuTitles (it runs inside the event tap callback).
 - (void)setLastClickResult:(NSString *)result {
     _lastClickResult = result ?: @"None";
     if ([self shouldPreserveAsLastNonMenuClickResult:_lastClickResult]) {
@@ -3813,10 +3814,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return element;
 }
 
-- (void)handleResolvedElement:(AXUIElementRef)element rawPoint:(CGPoint)rawPoint axPoint:(CGPoint)axPoint clickID:(uint64_t)clickID topmostWindowInfo:(NSDictionary *)topmostWindowInfo {
-    [self handleResolvedElement:element rawPoint:rawPoint axPoint:axPoint sequenceID:clickID trigger:"click" topmostWindowInfo:topmostWindowInfo];
-}
-
 - (void)handleResolvedElement:(AXUIElementRef)element rawPoint:(CGPoint)rawPoint axPoint:(CGPoint)axPoint sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger topmostWindowInfo:(NSDictionary *)topmostWindowInfo {
     NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:element] ?: @"unknown";
     NSString *subrole = [self stringAttribute:kAXSubroleAttribute fromElement:element] ?: @"";
@@ -3966,7 +3963,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         [self setLastClickResult:@"Ignored Own App"];
         return;
     }
-    // After the own-app exit, so opening HoverClick's menu to copy the summary keeps the value.
+    // After the own-app exit so opening HoverClick's menu to copy the summary keeps the value.
     _lastBypassDecision = @"not-bypassed";
 
     if (strcmp(trigger, "right-click") == 0) {
@@ -4417,7 +4414,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // A floating panel, inspector or palette of the application itself (window layer != 0) can
     // never be the process's front layer-0 window, yet it is in front of every document window:
     // clicking it is not a click behind a sibling. Only when the clicked AX window is that very
-    // window under the cursor, so a target-owned overlay above a real sibling still counts.
+    // window under the cursor so a target-owned overlay above a real sibling still counts.
     if (topmostWindowInfo != nil &&
         [self layerForWindowInfo:topmostWindowInfo] != 0 &&
         [self ownerPidForWindowInfo:topmostWindowInfo] == pid) {
@@ -4962,7 +4959,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSRunningApplication *frontDelayed = [NSWorkspace sharedWorkspace].frontmostApplication;
     BOOL frontAppMatches = (frontDelayed != nil && frontDelayed.processIdentifier == targetPid);
-    // A sibling click starts with the target application already in front, so the pid alone
+    // A sibling click starts with the target application already in front so the pid alone
     // proves nothing there; the clicked window itself has to be the front window.
     BOOL windowCheckApplies = appWasFrontBefore;
     BOOL clickedWindowFront = windowCheckApplies && clickedWindowID != kCGNullWindowID && [self frontmostNormalWindowID] == clickedWindowID;
@@ -4985,7 +4982,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSString *failureReason = verified ?
         @"none" :
         (frontAppMatches ?
-         [NSString stringWithFormat:@"clicked window %u was not the front window after delayed check; frontmost=%@", clickedWindowID, frontDelayedDescription] :
+         (clickedWindowID == kCGNullWindowID ?
+          [NSString stringWithFormat:@"clicked window id was not resolved (raise did not settle or attempt abandoned); frontmost=%@", frontDelayedDescription] :
+          [NSString stringWithFormat:@"clicked window %u was not the front window after delayed check; frontmost=%@", clickedWindowID, frontDelayedDescription]) :
          [NSString stringWithFormat:@"frontmost after delayed check was %@", frontDelayedDescription]);
     [self recordBackgroundFocusResult:verified ? @"success" : @"verification failed"
                           verification:verified ? @"delayed passed" : @"delayed failed"
@@ -5087,11 +5086,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (_verboseDiagnostics && [self callbackBudgetRemaining] > 0.0) {
         // Three AX reads for a log line; skipped when the line would be dropped anyway or the
-        // callback budget is spent, and cut short at the first read that times out.
+        // callback budget is spent and cut short at the first read that times out.
         [self diagnosticLog:"HoverClick: %s #%llu clicked window %s",
                             trigger,
                             sequenceID,
-                            HoverClickAXWindowIdentity(targetWindow, _lastEventTapCallbackTime + HoverClickCallbackBudgetSeconds).UTF8String];
+                            HoverClickAXWindowIdentity(targetWindow, _lastEventTapCallbackTime + HoverClickCallbackBudgetSeconds).UTF8String ?: "unknown"];
     }
 
     // Window first, application second. -activateWithOptions: carries the application's own main
@@ -5261,13 +5260,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     // Readback after activation: does the application now treat the clicked window as its focused
     // window? The frontmost-process verification further down cannot observe this. Up to four AX
-    // reads, so only when the line is kept and the attempt was not already cut short. Each read is
+    // reads so only when the line is kept and the attempt was not already cut short. Each read is
     // skipped once the callback budget is spent; the identity stops at the first timed-out read.
     if (_verboseDiagnostics && abandonedAfter == NULL && [self callbackBudgetRemaining] > 0.0) {
         [self diagnosticLog:"HoverClick: %s #%llu focused window readback %s",
                             trigger,
                             sequenceID,
-                            HoverClickFocusedWindowComparison(appElement, targetWindow, _lastEventTapCallbackTime + HoverClickCallbackBudgetSeconds).UTF8String];
+                            HoverClickFocusedWindowComparison(appElement, targetWindow, _lastEventTapCallbackTime + HoverClickCallbackBudgetSeconds).UTF8String ?: "unknown"];
     }
     // The window list says the clicked window is in front; it cannot say whether the page inside
     // has taken focus. For Chrome the focused UI element comes from the renderer, so waiting for
@@ -5298,7 +5297,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // Accessibility server reports it. Both are logged so a later measurement can compare them.
     pid_t focusedAppPid = ([self callbackBudgetRemaining] > 0.0) ? HoverClickAXFocusedApplicationPid() : 0;
     BOOL frontImmediate = (activateAttempted && activationReachedFront) || (focusedAppPid > 0 && focusedAppPid == targetPid);
-    // For a sibling click the target was already the focused application, so the pid clause
+    // For a sibling click the target was already the focused application so the pid clause
     // proves nothing; only the clicked window reaching the front counts.
     BOOL immediatePassed = appWasFrontBefore ? (activateAttempted && activationReachedFront) : frontImmediate;
     NSString *focusedAppDescription = focusedAppPid > 0 ?
@@ -5405,7 +5404,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:current error:&roleError] ?: @"unknown";
         [self diagnosticLog:"HoverClick: window search depth=%ld role=%s", (long)depth, role.UTF8String];
         // Same rule as the focus attempt: an application that did not answer one read blocks the
-        // next one the same way, so the search stops at the first timed-out read.
+        // next one the same way so the search stops at the first timed-out read.
         if (roleError == kAXErrorCannotComplete) {
             HoverClickLog("HoverClick: window search abandoned depth=%ld reason=ax-timeout attribute=role elapsed=%.0fms", (long)depth, [self callbackElapsed] * 1000.0);
             CFRelease(current);
@@ -5477,7 +5476,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return [self stringAttribute:attribute fromElement:element error:NULL];
 }
 
-// *outError is the AX read's error, or kAXErrorSuccess when no read was made.
+// *outError is the AX read's error or kAXErrorSuccess when no read was made.
 - (NSString *)stringAttribute:(CFStringRef)attribute fromElement:(AXUIElementRef)element error:(AXError *)outError {
     if (outError != NULL) {
         *outError = kAXErrorSuccess;
