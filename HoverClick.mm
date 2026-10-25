@@ -60,6 +60,9 @@ static const CGFloat HoverClickMenuRowWidth = HoverClickMenuContentWidth;
 static const CGFloat HoverClickMenuRowHeight = 22.0;
 static const CGFloat HoverClickMenuRowIconX = HoverClickMenuLeadingInset;
 static const CGFloat HoverClickMenuRowTextX = HoverClickMenuRowIconX + HoverClickMenuImageSize + HoverClickMenuIconTitleSpacing;
+static const CGFloat HoverClickMenuRowFieldY = 2.0;
+static const CGFloat HoverClickMenuRowFieldHeight = 18.0;
+static const CGFloat HoverClickMenuRowAccessoryOverhang = 36.0;
 static const CGFloat HoverClickSectionHeaderHeight = 18.0;
 static const CGFloat HoverClickSectionHeaderLeadingInset = HoverClickMenuLeadingInset;
 static const CGFloat HoverClickSectionHeaderLabelY = 2.0;
@@ -304,7 +307,6 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
                   accessoryTitle:(NSString *)accessoryTitle
                   showsStateView:(BOOL)showsStateView
                         rowWidth:(CGFloat)rowWidth {
-    CGFloat rightAccessoryX = rowWidth - HoverClickMenuTrailingInset - HoverClickMenuRightAccessoryWidth;
     self = [super initWithFrame:NSMakeRect(0.0, 0.0, rowWidth, HoverClickMenuRowHeight)];
     if (self == nil) {
         return nil;
@@ -315,7 +317,6 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
     _actionSelector = menuItem.action;
     _rowEnabled = menuItem.enabled;
 
-    CGFloat titleX = HoverClickMenuLeadingInset;
     if (image != nil) {
         _iconView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickMenuRowIconX,
                                                                   3.0,
@@ -324,24 +325,15 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
         _iconView.image = image;
         _iconView.imageScaling = NSImageScaleProportionallyDown;
         [self addSubview:_iconView];
-        titleX = HoverClickMenuRowTextX;
     }
 
     _titleField = [NSTextField labelWithString:menuItem.title ?: @""];
-    _titleField.frame = NSMakeRect(titleX,
-                                   2.0,
-                                   rightAccessoryX - titleX,
-                                   18.0);
     _titleField.font = [NSFont menuFontOfSize:0.0];
     _titleField.lineBreakMode = NSLineBreakByTruncatingTail;
     [self addSubview:_titleField];
 
     if (accessoryTitle.length > 0) {
         _accessoryField = [NSTextField labelWithString:accessoryTitle];
-        _accessoryField.frame = NSMakeRect(rightAccessoryX - 36.0,
-                                           2.0,
-                                           HoverClickMenuRightAccessoryWidth + 36.0,
-                                           18.0);
         _accessoryField.alignment = NSTextAlignmentRight;
         _accessoryField.font = [NSFont menuFontOfSize:0.0];
         _accessoryField.lineBreakMode = NSLineBreakByClipping;
@@ -349,16 +341,15 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
     }
 
     _stateField = [NSTextField labelWithString:@""];
-    _stateField.frame = NSMakeRect(rightAccessoryX - 36.0,
-                                   2.0,
-                                   HoverClickMenuRightAccessoryWidth + 36.0,
-                                   18.0);
     _stateField.alignment = NSTextAlignmentRight;
     _stateField.font = [NSFont menuFontOfSize:0.0];
     _stateField.lineBreakMode = NSLineBreakByClipping;
-    _stateField.hidden = !showsStateView;
+    // showsStateView is kept for the call sites only: -syncFromMenuItem shows the state field
+    // exactly when there is a glyph to draw, so the argument never changed the result.
+    (void)showsStateView;
     [self addSubview:_stateField];
 
+    [self layoutRowSubviewsForWidth:rowWidth];
     [self syncFromMenuItem];
     return self;
 }
@@ -367,19 +358,24 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
     return YES;
 }
 
-- (void)setFrameSize:(NSSize)newSize {
-    [super setFrameSize:newSize];
-    CGFloat w = newSize.width;
+- (void)layoutRowSubviewsForWidth:(CGFloat)w {
     CGFloat rightAccessoryX = w - HoverClickMenuTrailingInset - HoverClickMenuRightAccessoryWidth;
     CGFloat titleX = (_iconView != nil) ? HoverClickMenuRowTextX : HoverClickMenuLeadingInset;
-    _titleField.frame = NSMakeRect(titleX, 2.0,
-                                   rightAccessoryX - titleX, 18.0);
+    NSRect accessoryFrame = NSMakeRect(rightAccessoryX - HoverClickMenuRowAccessoryOverhang,
+                                       HoverClickMenuRowFieldY,
+                                       HoverClickMenuRightAccessoryWidth + HoverClickMenuRowAccessoryOverhang,
+                                       HoverClickMenuRowFieldHeight);
+    _titleField.frame = NSMakeRect(titleX, HoverClickMenuRowFieldY,
+                                   rightAccessoryX - titleX, HoverClickMenuRowFieldHeight);
     if (_accessoryField != nil) {
-        _accessoryField.frame = NSMakeRect(rightAccessoryX - 36.0, 2.0,
-                                           HoverClickMenuRightAccessoryWidth + 36.0, 18.0);
+        _accessoryField.frame = accessoryFrame;
     }
-    _stateField.frame = NSMakeRect(rightAccessoryX - 36.0, 2.0,
-                                   HoverClickMenuRightAccessoryWidth + 36.0, 18.0);
+    _stateField.frame = accessoryFrame;
+}
+
+- (void)setFrameSize:(NSSize)newSize {
+    [super setFrameSize:newSize];
+    [self layoutRowSubviewsForWidth:newSize.width];
 }
 
 - (void)setHighlighted:(BOOL)highlighted {
@@ -515,22 +511,34 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
 
 @end
 
+static void HoverClickUseCustomSubmenuRow(NSMenuItem *item,
+                                           NSString *symbolName,
+                                           NSString *fallbackSymbolName,
+                                           NSString *accessoryTitle,
+                                           BOOL showsStateView,
+                                           BOOL closesMenuAfterAction,
+                                           CGFloat rowWidth) {
+    NSImage *image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
+    HoverClickMenuRowView *rowView = [[HoverClickMenuRowView alloc] initWithMenuItem:item
+                                                                               image:image
+                                                                      accessoryTitle:accessoryTitle
+                                                                      showsStateView:showsStateView
+                                                                            rowWidth:rowWidth];
+    rowView.closesMenuAfterAction = closesMenuAfterAction;
+    if (item.toolTip.length > 0) {
+        rowView.toolTip = item.toolTip;
+    }
+    item.view = rowView;
+}
+
 static void HoverClickUseCustomMenuRow(NSMenuItem *item,
                                        NSString *symbolName,
                                        NSString *fallbackSymbolName,
                                        NSString *accessoryTitle,
                                        BOOL showsStateView,
                                        BOOL closesMenuAfterAction) {
-    NSImage *image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
-    HoverClickMenuRowView *rowView = [[HoverClickMenuRowView alloc] initWithMenuItem:item
-                                                                               image:image
-                                                                      accessoryTitle:accessoryTitle
-                                                                      showsStateView:showsStateView];
-    rowView.closesMenuAfterAction = closesMenuAfterAction;
-    if (item.toolTip.length > 0) {
-        rowView.toolTip = item.toolTip;
-    }
-    item.view = rowView;
+    HoverClickUseCustomSubmenuRow(item, symbolName, fallbackSymbolName, accessoryTitle,
+                                  showsStateView, closesMenuAfterAction, HoverClickMenuRowWidth);
 }
 
 static void HoverClickUseClosingMenuRow(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName) {
@@ -571,26 +579,6 @@ static CGFloat HoverClickCalculatedSubmenuWidth(NSArray<NSString *> *titles) {
         width = HoverClickMenuContentWidth;
     }
     return width;
-}
-
-static void HoverClickUseCustomSubmenuRow(NSMenuItem *item,
-                                           NSString *symbolName,
-                                           NSString *fallbackSymbolName,
-                                           NSString *accessoryTitle,
-                                           BOOL showsStateView,
-                                           BOOL closesMenuAfterAction,
-                                           CGFloat rowWidth) {
-    NSImage *image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
-    HoverClickMenuRowView *rowView = [[HoverClickMenuRowView alloc] initWithMenuItem:item
-                                                                               image:image
-                                                                      accessoryTitle:accessoryTitle
-                                                                      showsStateView:showsStateView
-                                                                            rowWidth:rowWidth];
-    rowView.closesMenuAfterAction = closesMenuAfterAction;
-    if (item.toolTip.length > 0) {
-        rowView.toolTip = item.toolTip;
-    }
-    item.view = rowView;
 }
 
 static void HoverClickUseClosingSubmenuRow(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName, CGFloat rowWidth) {
@@ -676,6 +664,18 @@ static NSMenuItem *HoverClickCreateQuickHelpItem(NSString *title, NSString *deta
     return item;
 }
 
+static NSTextField *HoverClickSectionHeaderLabel(NSString *title, CGFloat rowWidth, NSColor *color) {
+    NSTextField *label = [NSTextField labelWithString:HoverClickMenuItemTitle(title)];
+    label.frame = NSMakeRect(HoverClickSectionHeaderLeadingInset,
+                             HoverClickSectionHeaderLabelY,
+                             rowWidth - HoverClickSectionHeaderLeadingInset - HoverClickMenuTrailingInset,
+                             HoverClickSectionHeaderLabelHeight);
+    label.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize weight:NSFontWeightRegular];
+    label.textColor = color;
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    return label;
+}
+
 static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
     NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(title)
                                                         action:nil
@@ -688,16 +688,8 @@ static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
                                                                   0.0,
                                                                   HoverClickMenuContentWidth,
                                                                   HoverClickSectionHeaderHeight)];
-    NSTextField *label = [NSTextField labelWithString:HoverClickMenuItemTitle(title)];
-    label.frame = NSMakeRect(HoverClickSectionHeaderLeadingInset,
-                             HoverClickSectionHeaderLabelY,
-                             HoverClickMenuContentWidth - HoverClickSectionHeaderLeadingInset - HoverClickMenuTrailingInset,
-                             HoverClickSectionHeaderLabelHeight);
-    label.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize
-                                   weight:NSFontWeightRegular];
-    label.textColor = [NSColor disabledControlTextColor];
-    label.lineBreakMode = NSLineBreakByTruncatingTail;
-    [headerView addSubview:label];
+    [headerView addSubview:HoverClickSectionHeaderLabel(title, HoverClickMenuContentWidth,
+                                                        [NSColor disabledControlTextColor])];
     headerItem.view = headerView;
     return headerItem;
 }
@@ -714,15 +706,7 @@ static NSMenuItem *HoverClickCreateSubmenuSectionHeader(NSString *title, CGFloat
                                                  keyEquivalent:@""];
     headerItem.enabled = NO;
     NSView *headerView = [[NSView alloc] initWithFrame:NSMakeRect(0.0, 0.0, rowWidth, HoverClickSectionHeaderHeight)];
-    NSTextField *label = [NSTextField labelWithString:HoverClickMenuItemTitle(title)];
-    label.frame = NSMakeRect(HoverClickSectionHeaderLeadingInset,
-                             HoverClickSectionHeaderLabelY,
-                             rowWidth - HoverClickSectionHeaderLeadingInset - HoverClickMenuTrailingInset,
-                             HoverClickSectionHeaderLabelHeight);
-    label.font = [NSFont systemFontOfSize:HoverClickSectionHeaderFontSize weight:NSFontWeightRegular];
-    label.textColor = [NSColor secondaryLabelColor];
-    label.lineBreakMode = NSLineBreakByTruncatingTail;
-    [headerView addSubview:label];
+    [headerView addSubview:HoverClickSectionHeaderLabel(title, rowWidth, [NSColor secondaryLabelColor])];
     headerItem.view = headerView;
     return headerItem;
 }
