@@ -4355,12 +4355,28 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 // Reads the on-screen bounds of an AX window: two AX reads.
 - (BOOL)readBounds:(CGRect *)outBounds ofAXWindow:(AXUIElementRef)window {
+    return [self readBounds:outBounds ofAXWindow:window timedOut:NULL];
+}
+
+// *outTimedOut is YES when a read failed with kAXErrorCannotComplete. The size read is skipped
+// after a timed-out position read, as it already is after any failed one.
+- (BOOL)readBounds:(CGRect *)outBounds ofAXWindow:(AXUIElementRef)window timedOut:(BOOL *)outTimedOut {
+    if (outTimedOut != NULL) {
+        *outTimedOut = NO;
+    }
     if (window == NULL || outBounds == NULL) {
         return NO;
     }
     CGPoint position = CGPointZero;
     CFTypeRef positionValue = NULL;
-    if (AXUIElementCopyAttributeValue(window, kAXPositionAttribute, &positionValue) != kAXErrorSuccess || positionValue == NULL) {
+    AXError positionError = AXUIElementCopyAttributeValue(window, kAXPositionAttribute, &positionValue);
+    if (positionError != kAXErrorSuccess || positionValue == NULL) {
+        if (positionValue != NULL) {
+            CFRelease(positionValue);
+        }
+        if (positionError == kAXErrorCannotComplete && outTimedOut != NULL) {
+            *outTimedOut = YES;
+        }
         return NO;
     }
     BOOL positionRead = (CFGetTypeID(positionValue) == AXValueGetTypeID() &&
@@ -4369,7 +4385,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     CGSize size = CGSizeZero;
     CFTypeRef sizeValue = NULL;
-    if (AXUIElementCopyAttributeValue(window, kAXSizeAttribute, &sizeValue) != kAXErrorSuccess || sizeValue == NULL) {
+    AXError sizeError = AXUIElementCopyAttributeValue(window, kAXSizeAttribute, &sizeValue);
+    if (sizeError != kAXErrorSuccess || sizeValue == NULL) {
+        if (sizeValue != NULL) {
+            CFRelease(sizeValue);
+        }
+        if (sizeError == kAXErrorCannotComplete && outTimedOut != NULL) {
+            *outTimedOut = YES;
+        }
         return NO;
     }
     BOOL sizeRead = (CFGetTypeID(sizeValue) == AXValueGetTypeID() &&
@@ -4418,7 +4441,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 // Answers whether the clicked AX window is the topmost on-screen normal-level window of its own
-// application, matched by frame. Activation only carries the main and key windows forward, and
+// application, matched by frame. Activation only carries the main and key windows forward and
 // the key window is whatever the application had in front before the click; when that is the
 // clicked window itself, activation cannot raise a sibling. On success the CG window number is
 // returned through outWindowID so the caller can wait for that window to reach the front.
@@ -4452,15 +4475,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
     [self applyAccessibilityMessagingTimeoutToElement:window];
     CGRect bounds = CGRectNull;
-    BOOL boundsRead = [self readBounds:&bounds ofAXWindow:window];
+    BOOL boundsTimedOut = NO;
+    BOOL boundsRead = [self readBounds:&bounds ofAXWindow:window timedOut:&boundsTimedOut];
     CFRelease(window);
     if (!boundsRead) {
+        if (boundsTimedOut && outTimedOut != NULL) {
+            *outTimedOut = YES;
+        }
         return NO;
     }
     // A floating panel, inspector or palette of the application itself (window layer != 0) can
     // never be the process's front layer-0 window, yet it is in front of every document window:
-    // clicking it is not a click behind a sibling. Only when the clicked AX window is that very
-    // window under the cursor so a target-owned overlay above a real sibling still counts.
+    // clicking it is not a click behind a sibling. This applies only when the clicked AX window is
+    // that very window under the cursor. A target-owned overlay above a real sibling still counts.
     if (topmostWindowInfo != nil &&
         [self layerForWindowInfo:topmostWindowInfo] != 0 &&
         [self ownerPidForWindowInfo:topmostWindowInfo] == pid) {
@@ -5052,7 +5079,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   delay,
                   frontAppMatches ? "YES" : "NO",
                   frontDelayedDescription.UTF8String,
-                  windowCheckApplies ? (clickedWindowFront ? "YES" : "NO") : "not-applicable");
+                  windowCheckApplies ? (clickedWindowFront ? (clickedWindowID == kCGNullWindowID ? "YES(bounds)" : "YES") : "NO") : "not-applicable");
 
     NSString *failureReason = verified ?
         @"none" :
@@ -5484,10 +5511,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         [self completeDelayedBackgroundFocusVerification:verificationContext];
     });
     HoverClickLog("HoverClick: %s #%llu event passed through elapsed=%.0fms", trigger, sequenceID, [self callbackElapsed] * 1000.0);
-}
-
-- (AXUIElementRef)copyWindowForElement:(AXUIElementRef)element {
-    return [self copyWindowForElement:element timedOut:NULL];
 }
 
 // *outTimedOut is YES when the search returned NULL because a role, window or parent read got
