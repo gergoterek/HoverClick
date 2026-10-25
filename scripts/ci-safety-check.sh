@@ -230,14 +230,22 @@ artifact_paths=(
   "logs"
 )
 
-tracked_artifacts=$(/usr/bin/git ls-files -- "${artifact_paths[@]}" || true)
+rc=0
+tracked_artifacts=$(/usr/bin/git ls-files -- "${artifact_paths[@]}") || rc=$?
+if (( rc != 0 )); then
+  fail "git ls-files failed (exit $rc) while checking generated artifacts"
+fi
 if [[ -n "$tracked_artifacts" ]]; then
   echo "Generated artifacts are tracked:"
   echo "$tracked_artifacts"
   exit 1
 fi
 
-staged_artifacts=$(/usr/bin/git diff --cached --name-only -- "${artifact_paths[@]}" || true)
+rc=0
+staged_artifacts=$(/usr/bin/git diff --cached --name-only -- "${artifact_paths[@]}") || rc=$?
+if (( rc != 0 )); then
+  fail "git diff failed (exit $rc) while checking staged artifacts"
+fi
 if [[ -n "$staged_artifacts" ]]; then
   echo "Generated artifacts are staged:"
   echo "$staged_artifacts"
@@ -249,15 +257,24 @@ section "Documentation Safety Check"
 docs_files=(README.md docs/*.md)
 doc_hits=""
 
+rc=0
+doc_matches=$(/usr/bin/git grep -n -E '(^|[^[:alnum:]_])sudo([^[:alnum:]_]|$)|tccutil[[:space:]]+reset|ad-hoc signing|raw binary|Contents/MacOS/HoverClick' -- "${docs_files[@]}") || rc=$?
+if (( rc > 1 )); then
+  fail "git grep failed (exit $rc) while checking documentation wording"
+fi
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
   lower=$(printf '%s' "$line" | /usr/bin/tr '[:upper:]' '[:lower:]')
   if [[ "$lower" != *"do not"* && "$lower" != *"does not"* && "$lower" != *"not "* && "$lower" != *"never"* ]]; then
     doc_hits+="${line}"$'\n'
   fi
-done < <(/usr/bin/git grep -n -E '(^|[^[:alnum:]_])sudo([^[:alnum:]_]|$)|tccutil[[:space:]]+reset|ad-hoc signing|raw binary|Contents/MacOS/HoverClick' -- "${docs_files[@]}" || true)
+done <<< "$doc_matches"
 
-release_hits=$(/usr/bin/git grep -n -E 'current.*(Developer ID signed|notarized)|is (Developer ID signed|notarized)' -- "${docs_files[@]}" || true)
+rc=0
+release_hits=$(/usr/bin/git grep -n -E 'current.*(Developer ID signed|notarized)|is (Developer ID signed|notarized)' -- "${docs_files[@]}") || rc=$?
+if (( rc > 1 )); then
+  fail "git grep failed (exit $rc) while checking release wording"
+fi
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
   lower=$(printf '%s' "$line" | /usr/bin/tr '[:upper:]' '[:lower:]')
