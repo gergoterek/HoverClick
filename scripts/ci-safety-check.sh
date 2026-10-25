@@ -254,7 +254,7 @@ fi
 echo "No generated artifacts are tracked or staged."
 
 section "Documentation Safety Check"
-docs_files=(README.md docs/*.md)
+docs_files=(README.md CLAUDE.md docs/**/*.md(N))
 doc_hits=""
 
 rc=0
