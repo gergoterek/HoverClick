@@ -986,7 +986,7 @@ static pid_t HoverClickAXFocusedApplicationPid(void) {
 - (void)chooseExcludedApp:(id)sender;
 - (BOOL)addExcludedBundleID:(NSString *)candidate;
 - (void)removeExcludedApp:(id)sender;
-- (void)showExcludedAppsAlertWithTitle:(NSString *)title message:(NSString *)message;
+- (void)showInformationalAlertWithTitle:(NSString *)title message:(NSString *)message;
 - (BOOL)isChromeApplication:(NSRunningApplication *)app;
 - (BOOL)isBuiltInCompatibilityBypassApplication:(NSRunningApplication *)app;
 - (BOOL)isExcludedApplication:(NSRunningApplication *)app;
@@ -2979,19 +2979,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 - (void)showAboutHoverClick:(id)sender {
     (void)sender;
 
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"HoverClick";
-    alert.informativeText = [NSString stringWithFormat:
-                             @"Version %@\n"
-                              "Build %@\n"
-                              "Bundle ID: %@\n\n"
-                              "Windows-like click focus for macOS.",
-                             HoverClickDisplayVersion(),
-                             HoverClickBuildVersion(),
-                             HoverClickBundleIdentifier()];
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    NSString *message = [NSString stringWithFormat:
+                         @"Version %@\n"
+                          "Build %@\n"
+                          "Bundle ID: %@\n\n"
+                          "Windows-like click focus for macOS.",
+                         HoverClickDisplayVersion(),
+                         HoverClickBuildVersion(),
+                         HoverClickBundleIdentifier()];
+    [self showInformationalAlertWithTitle:@"HoverClick" message:message];
 }
 
 - (void)openURLString:(NSString *)urlString label:(NSString *)label {
@@ -3026,13 +3022,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (void)showUninstallInstructions:(id)sender {
     (void)sender;
-
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Uninstall HoverClick";
-    alert.informativeText = @"To uninstall HoverClick, turn off Launch at Login, quit HoverClick, then move HoverClick.app to the Trash.";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    [self showInformationalAlertWithTitle:@"Uninstall HoverClick"
+                                  message:@"To uninstall HoverClick, turn off Launch at Login, quit HoverClick, then move HoverClick.app to the Trash."];
 }
 
 - (void)updateMenuTitles {
@@ -3369,8 +3360,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     dispatch_async(dispatch_get_main_queue(), ^{
         NSArray<NSDictionary<NSString *, id> *> *apps = [self installedApplicationsForSelector];
         if (apps.count == 0) {
-            [self showExcludedAppsAlertWithTitle:@"No Applications Found"
-                                         message:@"HoverClick could not find any installed applications to exclude."];
+            [self showInformationalAlertWithTitle:@"No Applications Found"
+                                          message:@"HoverClick could not find any installed applications to exclude."];
             return;
         }
 
@@ -3417,22 +3408,22 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 - (BOOL)addExcludedBundleID:(NSString *)candidate {
     NSString *normalized = [candidate stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (normalized.length == 0) {
-        [self showExcludedAppsAlertWithTitle:@"Could Not Add Application"
-                                     message:@"The selected application does not report a bundle identifier and cannot be excluded."];
+        [self showInformationalAlertWithTitle:@"Could Not Add Application"
+                                      message:@"The selected application does not report a bundle identifier and cannot be excluded."];
         return NO;
     }
 
     if ([normalized isEqualToString:HoverClickMaccyBundleID]) {
-        [self showExcludedAppsAlertWithTitle:@"Already Handled Automatically"
-                                     message:@"Maccy is already handled automatically by HoverClick for clipboard compatibility, so it does not need to be added."];
+        [self showInformationalAlertWithTitle:@"Already Handled Automatically"
+                                      message:@"Maccy is already handled automatically by HoverClick for clipboard compatibility, so it does not need to be added."];
         return NO;
     }
 
     NSArray<NSString *> *existing = [self userExcludedBundleIDs];
     if ([existing containsObject:normalized]) {
         NSString *displayName = [self displayNameForExcludedBundleID:normalized];
-        [self showExcludedAppsAlertWithTitle:@"Already Excluded"
-                                     message:[NSString stringWithFormat:@"%@ is already in the excluded apps list.", displayName]];
+        [self showInformationalAlertWithTitle:@"Already Excluded"
+                                      message:[NSString stringWithFormat:@"%@ is already in the excluded apps list.", displayName]];
         return NO;
     }
 
@@ -3446,7 +3437,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return YES;
 }
 
-- (void)showExcludedAppsAlertWithTitle:(NSString *)title message:(NSString *)message {
+- (void)showInformationalAlertWithTitle:(NSString *)title message:(NSString *)message {
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = title ?: @"";
     alert.informativeText = message ?: @"";
@@ -5361,16 +5352,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (void)openAccessibilitySettings:(id)sender {
     (void)sender;
-
-    NSURL *url = [NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"];
-    if (url == nil) {
-        HoverClickLog("HoverClick: failed to create Accessibility settings URL");
-        return;
-    }
-
-    if (![[NSWorkspace sharedWorkspace] openURL:url]) {
-        HoverClickLog("HoverClick: failed to open Accessibility settings URL");
-    }
+    [self openURLString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                  label:@"Accessibility settings"];
 }
 
 - (void)quitApplication:(id)sender {
