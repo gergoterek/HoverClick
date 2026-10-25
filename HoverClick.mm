@@ -1027,6 +1027,8 @@ static pid_t HoverClickAXFocusedApplicationPid(void) {
     BOOL _eventTapRemovedDueToMissingPermission;
     BOOL _eventTapRemovalScheduledDueToMissingPermission;
     BOOL _showRefreshStatusFeedback;
+    NSUInteger _copyFeedbackGeneration;
+    NSUInteger _refreshFeedbackGeneration;
     CFMachPortRef _eventTap;
     CFRunLoopSourceRef _eventTapSource;
     CFAbsoluteTime _lastMouseDownLogTime;
@@ -1895,6 +1897,31 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateMenuTitles];
 }
 
+// Shows a feedback title on a menu row for 2 seconds, then runs completion and restores the
+// row. Each call bumps *generation, so the timer of an earlier click leaves a newer feedback
+// alone. generation points at an ivar of self, which the block keeps alive.
+- (void)showTransientTitle:(NSString *)feedbackTitle
+                    onItem:(NSMenuItem *)item
+              restoreTitle:(NSString *)restoreTitle
+                generation:(NSUInteger *)generation
+                completion:(void (^)(void))completion {
+    NSUInteger currentGeneration = ++(*generation);
+    item.title = HoverClickMenuItemTitle(feedbackTitle);
+    HoverClickSyncMenuRowView(item);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        (void)self;
+        if (*generation != currentGeneration) {
+            return;
+        }
+        if (completion != nil) {
+            completion();
+        }
+        item.title = HoverClickMenuItemTitle(restoreTitle);
+        HoverClickSyncMenuRowView(item);
+    });
+}
+
 - (void)refreshAccessibilityStatus:(id)sender {
     BOOL userInitiated = (sender != nil);
     [self refreshAccessibilityStatusForReason:userInitiated ? @"manual refresh" : @"refresh"
@@ -1902,14 +1929,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                              updateLastAction:userInitiated];
     if (userInitiated) {
         _showRefreshStatusFeedback = YES;
-        self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refreshed");
-        HoverClickSyncMenuRowView(self.permissionRefreshItem);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
+        [self showTransientTitle:@"Refreshed"
+                          onItem:self.permissionRefreshItem
+                    restoreTitle:@"Refresh Status"
+                      generation:&_refreshFeedbackGeneration
+                      completion:^{
             _showRefreshStatusFeedback = NO;
-            self.permissionRefreshItem.title = HoverClickMenuItemTitle(@"Refresh Status");
-            HoverClickSyncMenuRowView(self.permissionRefreshItem);
-        });
+        }];
     }
 }
 
@@ -2966,13 +2992,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self setLastClickResult:@"Diagnostics Summary Copied"];
 
     if (self.diagnosticsCopyItem != nil) {
-        self.diagnosticsCopyItem.title = HoverClickMenuItemTitle(@"Copied");
-        HoverClickSyncMenuRowView(self.diagnosticsCopyItem);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            self.diagnosticsCopyItem.title = HoverClickMenuItemTitle(@"Copy Summary");
-            HoverClickSyncMenuRowView(self.diagnosticsCopyItem);
-        });
+        [self showTransientTitle:@"Copied"
+                          onItem:self.diagnosticsCopyItem
+                    restoreTitle:@"Copy Summary"
+                      generation:&_copyFeedbackGeneration
+                      completion:nil];
     }
 }
 
