@@ -2751,6 +2751,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return @"target window unavailable";
     }
 
+    if ([result isEqualToString:@"Window Search Timed Out"]) {
+        return @"target window search timed out";
+    }
+
     if ([result isEqualToString:@"Ignored Transient UI"]) {
         return @"transient menu or popover click ignored";
     }
@@ -4046,10 +4050,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // #52 to #63, every one of them needed a second click. Such a click now gets the same focus
     // treatment as a click on a background application: the window is focused first, the click
     // arrives afterwards. Clicks on the key window itself still pass through untouched.
-    BOOL clickedWindowBehindSibling = targetIsFrontmost && [self clickedWindowOfElement:element isBehindSiblingOfPid:targetPid topmostWindowInfo:topmostWindowInfo];
+    BOOL siblingTestTimedOut = NO;
+    BOOL clickedWindowBehindSibling = targetIsFrontmost && [self clickedWindowOfElement:element isBehindSiblingOfPid:targetPid topmostWindowInfo:topmostWindowInfo timedOut:&siblingTestTimedOut];
     [self updateRecentDecisionForSequenceID:sequenceID
                                         key:@"targetAlreadyFrontmost"
-                                      value:targetIsFrontmost ? (clickedWindowBehindSibling ? @"yes-sibling-window" : @"yes") : @"no"];
+                                      value:targetIsFrontmost ? (clickedWindowBehindSibling ? @"yes-sibling-window" : (siblingTestTimedOut ? @"yes-window-search-timed-out" : @"yes")) : @"no"];
+    // A timed-out window search decided nothing: the click is neither a key-window click nor a
+    // sibling click. It is passed through under its own result.
+    if (siblingTestTimedOut) {
+        [self passThroughForTimedOutWindowSearchWithSequenceID:sequenceID trigger:trigger logStage:"sibling-test" stage:@"sibling test"];
+        return;
+    }
     if (targetIsFrontmost && !clickedWindowBehindSibling &&
         [self callbackBudgetExhaustedForSequenceID:sequenceID trigger:trigger stage:"sibling-test"]) {
         [self passThroughForExhaustedBudgetWithSequenceID:sequenceID trigger:trigger stage:@"sibling test"];
@@ -4089,8 +4100,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
-    AXUIElementRef targetWindow = [self copyWindowForElement:element];
+    BOOL windowSearchTimedOut = NO;
+    AXUIElementRef targetWindow = [self copyWindowForElement:element timedOut:&windowSearchTimedOut];
     if (targetWindow == NULL) {
+        if (windowSearchTimedOut) {
+            [self passThroughForTimedOutWindowSearchWithSequenceID:sequenceID trigger:trigger logStage:"window-resolution" stage:@"window resolution"];
+            return;
+        }
         if ([self callbackBudgetExhaustedForSequenceID:sequenceID trigger:trigger stage:"window-resolution"]) {
             [self passThroughForExhaustedBudgetWithSequenceID:sequenceID trigger:trigger stage:@"window resolution"];
             return;
@@ -4226,6 +4242,27 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   finalResult:[NSString stringWithFormat:@"skipped: callback budget exhausted at %@", stage]
              keepActiveForDelayedVerification:NO];
     [self setLastClickResult:@"Budget Exhausted"];
+}
+
+// Bookkeeping for a click whose window search stopped at an AX read that timed out: the window
+// is unknown rather than missing. The original event is returned unchanged by the caller,
+// nothing was raised or activated. logStage names the stage in the log line, stage in the
+// decision text.
+- (void)passThroughForTimedOutWindowSearchWithSequenceID:(uint64_t)sequenceID
+                                                 trigger:(const char *)trigger
+                                                logStage:(const char *)logStage
+                                                   stage:(NSString *)stage {
+    HoverClickLog("HoverClick: %s #%llu window search timed out stage=%s; event passed through", trigger, sequenceID, logStage);
+    NSString *detail = [NSString stringWithFormat:@"window search timed out at %@ (elapsed %.0f ms); original event passed through before focus attempt",
+                        stage,
+                        [self callbackElapsed] * 1000.0];
+    [self finishSkippedClickWithSequenceID:sequenceID
+                                   trigger:trigger
+                                    detail:detail
+                               focusStatus:@"skipped before focus attempt: window search timed out"
+                                 finalNote:detail
+                               finalResult:[NSString stringWithFormat:@"skipped: window search timed out at %@", stage]
+                               clickResult:@"Window Search Timed Out"];
 }
 
 - (void)recordRecentFinderRightClickForApp:(NSRunningApplication *)targetApp pid:(pid_t)targetPid sequenceID:(uint64_t)sequenceID {
@@ -4396,12 +4433,16 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 // YES when the element's window resolves and is not the application's own topmost window, that
 // is, a background sibling of the key window. A non-normal-layer window of pid that is itself the
 // window under the cursor is not a sibling. Three AX reads and one window-list read; used only
-// for clicks on the frontmost application.
-- (BOOL)clickedWindowOfElement:(AXUIElementRef)element isBehindSiblingOfPid:(pid_t)pid topmostWindowInfo:(NSDictionary *)topmostWindowInfo {
+// for clicks on the frontmost application. NO with *outTimedOut YES means undetermined: the window
+// search timed out before it could tell a sibling from the key window.
+- (BOOL)clickedWindowOfElement:(AXUIElementRef)element isBehindSiblingOfPid:(pid_t)pid topmostWindowInfo:(NSDictionary *)topmostWindowInfo timedOut:(BOOL *)outTimedOut {
+    if (outTimedOut != NULL) {
+        *outTimedOut = NO;
+    }
     if (element == NULL || [self callbackBudgetRemaining] <= 0.0) {
         return NO;
     }
-    AXUIElementRef window = [self copyWindowForElement:element];
+    AXUIElementRef window = [self copyWindowForElement:element timedOut:outTimedOut];
     if (window == NULL) {
         return NO;
     }
@@ -5393,6 +5434,15 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 - (AXUIElementRef)copyWindowForElement:(AXUIElementRef)element {
+    return [self copyWindowForElement:element timedOut:NULL];
+}
+
+// *outTimedOut is YES when the search returned NULL because a role, window or parent read got
+// kAXErrorCannotComplete: the window is then unknown, not missing. NO on every other exit.
+- (AXUIElementRef)copyWindowForElement:(AXUIElementRef)element timedOut:(BOOL *)outTimedOut {
+    if (outTimedOut != NULL) {
+        *outTimedOut = NO;
+    }
     AXUIElementRef current = (AXUIElementRef)CFRetain(element);
 
     for (NSInteger depth = 0; depth < 10 && current != NULL; depth++) {
@@ -5408,6 +5458,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         // next one the same way so the search stops at the first timed-out read.
         if (roleError == kAXErrorCannotComplete) {
             HoverClickLog("HoverClick: window search abandoned depth=%ld reason=ax-timeout attribute=role elapsed=%.0fms", (long)depth, [self callbackElapsed] * 1000.0);
+            if (outTimedOut != NULL) {
+                *outTimedOut = YES;
+            }
             CFRelease(current);
             return NULL;
         }
@@ -5432,6 +5485,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         }
         if (windowError == kAXErrorCannotComplete) {
             HoverClickLog("HoverClick: window search abandoned depth=%ld reason=ax-timeout attribute=window elapsed=%.0fms", (long)depth, [self callbackElapsed] * 1000.0);
+            if (outTimedOut != NULL) {
+                *outTimedOut = YES;
+            }
             CFRelease(current);
             return NULL;
         }
@@ -5447,6 +5503,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             [self diagnosticLog:"HoverClick: window search stopped depth=%ld parentError=%s",
                                 (long)depth,
                                 HoverClickAXErrorName(parentError)];
+            if (parentError == kAXErrorCannotComplete && outTimedOut != NULL) {
+                *outTimedOut = YES;
+            }
             CFRelease(current);
             return NULL;
         }
