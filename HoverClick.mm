@@ -4047,14 +4047,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // treatment as a click on a background application: the window is focused first, the click
     // arrives afterwards. Clicks on the key window itself still pass through untouched.
     BOOL clickedWindowBehindSibling = targetIsFrontmost && [self clickedWindowOfElement:element isBehindSiblingOfPid:targetPid topmostWindowInfo:topmostWindowInfo];
-    if (targetIsFrontmost && !clickedWindowBehindSibling &&
-        [self callbackBudgetExhaustedForSequenceID:sequenceID trigger:trigger stage:"window-resolution"]) {
-        [self passThroughForExhaustedBudgetWithSequenceID:sequenceID trigger:trigger stage:@"window resolution"];
-        return;
-    }
     [self updateRecentDecisionForSequenceID:sequenceID
                                         key:@"targetAlreadyFrontmost"
                                       value:targetIsFrontmost ? (clickedWindowBehindSibling ? @"yes-sibling-window" : @"yes") : @"no"];
+    if (targetIsFrontmost && !clickedWindowBehindSibling &&
+        [self callbackBudgetExhaustedForSequenceID:sequenceID trigger:trigger stage:"sibling-test"]) {
+        [self passThroughForExhaustedBudgetWithSequenceID:sequenceID trigger:trigger stage:@"sibling test"];
+        return;
+    }
     if (clickedWindowBehindSibling) {
         HoverClickLog("HoverClick: %s #%llu frontmost app pid=%d but the clicked window is behind a sibling window; focus attempt continues",
                       trigger,
