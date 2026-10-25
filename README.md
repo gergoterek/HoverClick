@@ -36,7 +36,7 @@ If the app still shows **Accessibility: Required**, quit and relaunch the signed
 
 HoverClick runs as a status-bar item with no Dock icon. The menu is organized into sections:
 
-**Functions:** Left Click Focus · Right Click Focus · Bypass Key · Excluded Apps
+**HoverClick:** Left Click Focus · Right Click Focus · Bypass Key · Excluded Apps
 
 **Access > Permissions:** Accessibility status · Launch at Login · Refresh Status · Accessibility Settings
 
