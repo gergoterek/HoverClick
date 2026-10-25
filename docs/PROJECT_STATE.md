@@ -204,7 +204,7 @@ evidence for the skipped-activation hypothesis: 1 skipped of 22, no repeat after
 (deprecated public API, plausible, unmeasured; needs the click test first); the
 already-frontmost gate still reads `NSWorkspace.frontmostApplication` (`HoverClick.mm`,
 `handleResolvedElement:`), which can lag a fresh activation by one run-loop turn; window titles
-still logged as `%{public}`; `docs/ARCHITECTURE.md` click path still stale.
+still logged as `%{public}`.
 
 **Click test for the next relaunch** (Gergő; the build is `scripts/build-app.sh` once
 `HoverClick Dev` exists, or the scratch recipe in the audit chat):
@@ -219,12 +219,23 @@ still logged as `%{public}`; `docs/ARCHITECTURE.md` click path still stale.
    Repeat 10 times; count the clicks that needed a second click.
 3. Same arrangement, but click the Docs window that is **not** Chrome's topmost (the one
    behind the other Chrome window). Expected: only that window comes forward, the sibling stays.
-   Log: `skipReason=clicked-window-not-topmost-of-app`.
-4. Timeout check: open a Docs page with a long document, click Chrome's menu bar from another
-   application ten times quickly. Expected: no `click listener paused by macOS` line; if an AX
-   call blocks, a `callback budget exhausted stage=` or `focus attempt abandoned
-   reason=ax-timeout` line instead, and the click still lands.
-5. Export: `/usr/bin/log show --predicate 'processImagePath CONTAINS "HoverClick" AND
+   Log: `activation decision clickedWindowTopmostOfApp=YES mode=front-window-only
+   skipReason=none ... reachedFront=YES`. A failure shows
+   `skipReason=clicked-window-not-front-of-app-after-raise` (the raise did not settle within
+   60 ms) or `skipReason=clicked-window-not-topmost-of-app` (no successful raise).
+4. Sibling check with Chrome in front: the two Docs windows side by side with no other
+   application over them, the right one key. Click once on a word in the text of the left
+   window and type one letter. Expected: the letter lands where the click was, without a second
+   click. Log: `behind a sibling window; focus attempt continues`, `immediate verify ...
+   windowList=reached ... passed=YES`, `delayed verify ... frontApp=YES ...
+   clickedWindowFront=YES`. Repeat 10 times; count the clicks that needed a second click.
+5. Timeout check: open a Docs page with a long document, click Chrome's menu bar from another
+   application ten times quickly. Expected: the click still lands and no `click listener paused
+   by macOS` line appears. If an AX call blocks, one of these lines appears instead:
+   `callback budget exhausted stage=`; `window search abandoned ... reason=ax-timeout`, then
+   `window search timed out stage=`; `focus attempt abandoned reason=ax-timeout`. A window
+   search cut off this way names its stage: `stage=window-resolution` or `stage=sibling-test`.
+6. Export: `/usr/bin/log show --predicate 'processImagePath CONTAINS "HoverClick" AND
    eventMessage CONTAINS "[HoverClick]"' --start '<time from step 1>' --style compact` into a
    file; count the markers above.
 
@@ -276,9 +287,9 @@ Out of scope for this cycle:
 
 Keep each of these on its own branch.
 
-- `CLAUDE.md` invariant 6 and the `docs/ARCHITECTURE.md` safety constraints do not say that
-  a bounded in-callback wait is allowed; the reading lives only in `docs/DECISIONS.md`
-  (2026-09-14). Consider stating it in `CLAUDE.md` when that file is next edited.
+- `CLAUDE.md` invariant 6 does not say that a bounded in-callback wait is allowed; the reading
+  lives in `docs/DECISIONS.md` (2026-09-14) and is restated in `docs/ARCHITECTURE.md`. Consider
+  stating it in `CLAUDE.md` when that file is next edited.
 - Accumulate clicks on a non-topmost Chrome window under `65c130f` (the baseline had 8 in
   11.5 hours) and re-run `verdict.py`, `verdict2.py` and `hypo.py`. Target: 0 sibling rises
   within 0.2 s.
@@ -296,8 +307,6 @@ Keep each of these on its own branch.
 - The already-frontmost gate reads `NSWorkspace.frontmostApplication` inside the callback;
   compare it with the `focusedAppAX=` value on the `immediate verify` line once `fd5035d` runs,
   and switch the gate if the AX value is the live one.
-- `docs/ARCHITECTURE.md` step 8 of the click path still lists "AX frontmost", removed in
-  `93ae113`, and does not know the conditional activation or the wait.
 - Replace the hardcoded `PROJECT_DIR` in the `Makefile` and the seven affected scripts with
   a path derived from the script location, as `ci-safety-check.sh` already does.
 - Correct every document that still claims the old signing certificate is present.
