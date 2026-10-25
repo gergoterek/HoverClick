@@ -977,6 +977,14 @@ static pid_t HoverClickAXFocusedApplicationPid(void) {
 - (void)handleEventTapCallbackWithMissingAccessibilityForType:(CGEventType)type;
 - (void)handleLeftMouseDown:(CGEventRef)event;
 - (void)handleRightMouseDown:(CGEventRef)event;
+- (BOOL)skipKeyHeldForEvent:(CGEventRef)event clickLabel:(const char *)clickLabel;
+- (void)finishSkippedClickWithSequenceID:(uint64_t)sequenceID
+                                 trigger:(const char *)trigger
+                                  detail:(NSString *)detail
+                             focusStatus:(NSString *)focusStatus
+                               finalNote:(NSString *)finalNote
+                             finalResult:(NSString *)finalResult
+                             clickResult:(NSString *)clickResult;
 // Both loggers are printf-style: clang checks their arguments, so an NSString handed to %s or
 // a %@ conversion is a compile error instead of a garbled log line.
 - (void)diagnosticLog:(const char *)format, ... __attribute__((format(printf, 1, 2)));
@@ -3549,6 +3557,49 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [self updateRecentDecisionForSequenceID:sequenceID key:@"browserContentNote" value:summary];
 }
 
+// YES when the configured skip key is held for this mouse-down. clickLabel is "left" or "right"
+// and only names the click in the log line.
+- (BOOL)skipKeyHeldForEvent:(CGEventRef)event clickLabel:(const char *)clickLabel {
+    if (_bypassKey == HoverClickBypassKeyShift || _bypassKey == HoverClickBypassKeyFn) {
+        CGEventFlags flags = CGEventGetFlags(event);
+        BOOL bypass = (_bypassKey == HoverClickBypassKeyShift && (flags & kCGEventFlagMaskShift) != 0) ||
+                      (_bypassKey == HoverClickBypassKeyFn && (flags & kCGEventFlagMaskSecondaryFn) != 0);
+        if (bypass) {
+            _lastBypassDecision = (_bypassKey == HoverClickBypassKeyShift) ? @"bypassed-by-shift" : @"bypassed-by-fn";
+            HoverClickLog("HoverClick: %s click skipped: skip key held (%s); original event returned unchanged",
+                          clickLabel,
+                          _bypassKey == HoverClickBypassKeyShift ? "shift" : "fn");
+            return YES;
+        }
+        _lastBypassDecision = @"not-bypassed";
+    }
+    return NO;
+}
+
+// Records a click that is skipped after its recent decision began, for the skip paths that also
+// record a click-through investigation. -passThroughUnresolvedClickForTopmostWindowInfo: records
+// no investigation and intentionally does not use it.
+- (void)finishSkippedClickWithSequenceID:(uint64_t)sequenceID
+                                 trigger:(const char *)trigger
+                                  detail:(NSString *)detail
+                             focusStatus:(NSString *)focusStatus
+                               finalNote:(NSString *)finalNote
+                             finalResult:(NSString *)finalResult
+                             clickResult:(NSString *)clickResult {
+    [self recordFocusDecisionWithTrigger:trigger
+                              sequenceID:sequenceID
+                                decision:@"skipped"
+                                  detail:detail];
+    [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                           focusStatus:focusStatus
+                                             finalNote:finalNote];
+    [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
+    [self completeRecentDecisionForSequenceID:sequenceID
+                                  finalResult:finalResult
+             keepActiveForDelayedVerification:NO];
+    [self setLastClickResult:clickResult];
+}
+
 - (void)handleLeftMouseDown:(CGEventRef)event {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     if (now - _lastMouseDownLogTime < 0.02) {
@@ -3556,17 +3607,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
     _lastMouseDownLogTime = now;
 
-    if (_bypassKey == HoverClickBypassKeyShift || _bypassKey == HoverClickBypassKeyFn) {
-        CGEventFlags flags = CGEventGetFlags(event);
-        BOOL bypass = (_bypassKey == HoverClickBypassKeyShift && (flags & kCGEventFlagMaskShift) != 0) ||
-                      (_bypassKey == HoverClickBypassKeyFn && (flags & kCGEventFlagMaskSecondaryFn) != 0);
-        if (bypass) {
-            _lastBypassDecision = (_bypassKey == HoverClickBypassKeyShift) ? @"bypassed-by-shift" : @"bypassed-by-fn";
-            HoverClickLog("HoverClick: left click skipped: skip key held (%s); original event returned unchanged",
-                          _bypassKey == HoverClickBypassKeyShift ? "shift" : "fn");
-            return;
-        }
-        _lastBypassDecision = @"not-bypassed";
+    if ([self skipKeyHeldForEvent:event clickLabel:"left"]) {
+        return;
     }
 
     _clickSequence++;
@@ -3585,18 +3627,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (!_clickToFocusEnabled) {
         HoverClickLog("HoverClick: click #%llu left click focus disabled; event passed through", clickID);
-        [self recordFocusDecisionWithTrigger:"click"
-                                  sequenceID:clickID
-                                    decision:@"skipped"
-                                      detail:@"Left Click Focus disabled; original event passed through unchanged"];
-        [self recordClickThroughInvestigationForSequenceID:clickID
-                                               focusStatus:@"skipped before target detection: Left Click Focus disabled"
-                                                 finalNote:@"original left mouse-down returned unchanged; swallowed=no"];
-        [self includeRecentDecisionInHistoryForSequenceID:clickID];
-        [self completeRecentDecisionForSequenceID:clickID
-                                      finalResult:@"skipped: Left Click Focus disabled"
-                 keepActiveForDelayedVerification:NO];
-        [self setLastClickResult:@"Disabled"];
+        [self finishSkippedClickWithSequenceID:clickID
+                                       trigger:"click"
+                                        detail:@"Left Click Focus disabled; original event passed through unchanged"
+                                   focusStatus:@"skipped before target detection: Left Click Focus disabled"
+                                     finalNote:@"original left mouse-down returned unchanged; swallowed=no"
+                                   finalResult:@"skipped: Left Click Focus disabled"
+                                   clickResult:@"Disabled"];
         return;
     }
 
@@ -3620,22 +3657,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         }
 
         HoverClickLog("HoverClick: click #%llu AX element not found at x=%.1f, y=%.1f; event passed through", clickID, axPoint.x, axPoint.y);
-        [self recordFocusDecisionWithTrigger:"click"
-                                  sequenceID:clickID
-                                    decision:@"skipped"
-                                      detail:@"AX element not found; original event passed through unchanged"];
-        [self recordClickThroughInvestigationForSequenceID:clickID
-                                               focusStatus:@"target detection failed: AX element not found"
-                                                 finalNote:@"original left mouse-down returned unchanged; swallowed=no"];
-        [self includeRecentDecisionInHistoryForSequenceID:clickID];
-        [self completeRecentDecisionForSequenceID:clickID
-                                      finalResult:@"skipped: AX element not found"
-                 keepActiveForDelayedVerification:NO];
-        [self setLastClickResult:@"No AX Element"];
+        [self finishSkippedClickWithSequenceID:clickID
+                                       trigger:"click"
+                                        detail:@"AX element not found; original event passed through unchanged"
+                                   focusStatus:@"target detection failed: AX element not found"
+                                     finalNote:@"original left mouse-down returned unchanged; swallowed=no"
+                                   finalResult:@"skipped: AX element not found"
+                                   clickResult:@"No AX Element"];
         return;
     }
 
-    [self handleResolvedElement:element rawPoint:rawPoint axPoint:axPoint clickID:clickID topmostWindowInfo:topmostWindowInfo];
+    [self handleResolvedElement:element rawPoint:rawPoint axPoint:axPoint sequenceID:clickID trigger:"click" topmostWindowInfo:topmostWindowInfo];
     CFRelease(element);
 }
 
@@ -3646,17 +3678,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
     _lastRightMouseDownLogTime = now;
 
-    if (_bypassKey == HoverClickBypassKeyShift || _bypassKey == HoverClickBypassKeyFn) {
-        CGEventFlags flags = CGEventGetFlags(event);
-        BOOL bypass = (_bypassKey == HoverClickBypassKeyShift && (flags & kCGEventFlagMaskShift) != 0) ||
-                      (_bypassKey == HoverClickBypassKeyFn && (flags & kCGEventFlagMaskSecondaryFn) != 0);
-        if (bypass) {
-            _lastBypassDecision = (_bypassKey == HoverClickBypassKeyShift) ? @"bypassed-by-shift" : @"bypassed-by-fn";
-            HoverClickLog("HoverClick: right click skipped: skip key held (%s); original event returned unchanged",
-                          _bypassKey == HoverClickBypassKeyShift ? "shift" : "fn");
-            return;
-        }
-        _lastBypassDecision = @"not-bypassed";
+    if ([self skipKeyHeldForEvent:event clickLabel:"right"]) {
+        return;
     }
 
     _clickSequence++;
@@ -3676,18 +3699,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (!_rightClickFocusEnabled) {
         HoverClickLog("HoverClick: right-click #%llu right click focus disabled; event passed through", clickID);
-        [self recordFocusDecisionWithTrigger:"right-click"
-                                  sequenceID:clickID
-                                    decision:@"skipped"
-                                      detail:@"Right Click Focus disabled; right mouse down observed and original event passed through unchanged"];
-        [self recordClickThroughInvestigationForSequenceID:clickID
-                                               focusStatus:@"skipped before target detection: Right Click Focus disabled"
-                                                 finalNote:@"original right mouse-down returned unchanged; swallowed=no"];
-        [self includeRecentDecisionInHistoryForSequenceID:clickID];
-        [self completeRecentDecisionForSequenceID:clickID
-                                      finalResult:@"skipped: Right Click Focus disabled"
-                 keepActiveForDelayedVerification:NO];
-        [self setLastClickResult:@"Right Click Disabled"];
+        [self finishSkippedClickWithSequenceID:clickID
+                                       trigger:"right-click"
+                                        detail:@"Right Click Focus disabled; right mouse down observed and original event passed through unchanged"
+                                   focusStatus:@"skipped before target detection: Right Click Focus disabled"
+                                     finalNote:@"original right mouse-down returned unchanged; swallowed=no"
+                                   finalResult:@"skipped: Right Click Focus disabled"
+                                   clickResult:@"Right Click Disabled"];
         return;
     }
 
@@ -3712,18 +3730,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         }
 
         HoverClickLog("HoverClick: right-click #%llu AX element not found at x=%.1f, y=%.1f; event passed through", clickID, axPoint.x, axPoint.y);
-        [self recordFocusDecisionWithTrigger:"right-click"
-                                  sequenceID:clickID
-                                    decision:@"skipped"
-                                      detail:@"AX element not found; original event passed through unchanged"];
-        [self recordClickThroughInvestigationForSequenceID:clickID
-                                               focusStatus:@"target detection failed: AX element not found"
-                                                 finalNote:@"original right mouse-down returned unchanged; swallowed=no"];
-        [self includeRecentDecisionInHistoryForSequenceID:clickID];
-        [self completeRecentDecisionForSequenceID:clickID
-                                      finalResult:@"skipped: AX element not found"
-                 keepActiveForDelayedVerification:NO];
-        [self setLastClickResult:@"No AX Element"];
+        [self finishSkippedClickWithSequenceID:clickID
+                                       trigger:"right-click"
+                                        detail:@"AX element not found; original event passed through unchanged"
+                                   focusStatus:@"target detection failed: AX element not found"
+                                     finalNote:@"original right mouse-down returned unchanged; swallowed=no"
+                                   finalResult:@"skipped: AX element not found"
+                                   clickResult:@"No AX Element"];
         return;
     }
 
