@@ -1,8 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 
-PROJECT_DIR="/Users/gergoterek/Movies/OBS/GPT/HoverClick"
-APP_PATH="$PROJECT_DIR/HoverClick.app"
+source "${0:A:h}/release-config.sh"
 PROCESS_NAME="HoverClick"
 
 if /usr/bin/pgrep -x "$PROCESS_NAME" >/dev/null; then

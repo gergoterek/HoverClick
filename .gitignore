@@ -22,3 +22,6 @@ tmp/
 # Local diagnostics
 *.trace
 *.swp
+
+# Local signing certificate and Sparkle public key copy (scripts/setup-signing.sh)
+.signing/

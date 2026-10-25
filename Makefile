@@ -1,7 +1,11 @@
-PROJECT_DIR := /Users/gergoterek/Movies/OBS/GPT/HoverClick
+PROJECT_DIR := $(CURDIR)
 APP_NAME := HoverClick
 BUNDLE_ID := com.gergoterek.HoverClick
-SIGNING_IDENTITY := Apple Development: rizsutt@gmail.com (MVQ5PX4679)
+SIGNING_IDENTITY := HoverClick Dev
+# The self-signed identity carries no Team ID, so the hardened runtime's library validation
+# would reject the embedded Sparkle framework. Pass CODESIGN_OPTIONS="--options runtime" only
+# with an Apple-issued identity.
+CODESIGN_OPTIONS :=
 SPARKLE_VERSION := 2.9.3
 SPARKLE_ARCHIVE_SHA256 := 74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6
 SPARKLE_URL := https://github.com/sparkle-project/Sparkle/releases/download/$(SPARKLE_VERSION)/Sparkle-$(SPARKLE_VERSION).tar.xz
@@ -32,12 +36,12 @@ app: check-signing prepare-sparkle clean dirs
 		$(SRC) -o $(BINARY)
 	/bin/cp $(PLIST) $(CONTENTS)/Info.plist
 	/usr/bin/ditto $(SPARKLE_FRAMEWORK_SOURCE) $(SPARKLE_FRAMEWORK_DEST)
-	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" --options runtime --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B/XPCServices/Downloader.xpc
-	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" --options runtime --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B/XPCServices/Installer.xpc
-	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" --options runtime --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B/Updater.app
-	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" --options runtime --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B/Autoupdate
-	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" --options runtime --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B
-	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" --options runtime --timestamp=none $(APP)
+	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" $(CODESIGN_OPTIONS) --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B/XPCServices/Downloader.xpc
+	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" $(CODESIGN_OPTIONS) --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B/XPCServices/Installer.xpc
+	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" $(CODESIGN_OPTIONS) --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B/Updater.app
+	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" $(CODESIGN_OPTIONS) --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B/Autoupdate
+	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" $(CODESIGN_OPTIONS) --timestamp=none $(SPARKLE_FRAMEWORK_DEST)/Versions/B
+	/usr/bin/codesign --force --sign "$(SIGNING_IDENTITY)" $(CODESIGN_OPTIONS) --timestamp=none $(APP)
 
 check-signing:
 	@/usr/bin/security find-identity -v -p codesigning | /usr/bin/grep -F '"$(SIGNING_IDENTITY)"' >/dev/null || { \
