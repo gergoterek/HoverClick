@@ -27,39 +27,13 @@ scripts/verify-app.sh
 scripts/run-app.sh
 ```
 
-The signing identity is valid until 2027-05-06, so behavior changes can and should be
-verified at runtime. A static PASS never proves runtime behavior — report which one you have.
+Signing uses the identity named by `SIGNING_IDENTITY` in the `Makefile` (see `CLAUDE.md`,
+"Commands", and `docs/DECISIONS.md` for its history). Verify behavior changes at runtime
+whenever that identity is in the login keychain. A static PASS never proves runtime behavior:
+report which one you have.
 
 Do not use `scripts/checkpoint.sh`: it builds, signs, commits and pushes as one operation.
-Use explicit Git commands so each step is visible.
-
-## Signed Build Workflow (Reference)
-
-`main` is the stable baseline. Development work should happen on task branches and should be merged back to `main` only after review and manual approval.
-
-Use the checkpoint script after a successful change:
-
-```zsh
-/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/checkpoint.sh --branch "work/<short-task-name>" "Short commit message"
-```
-
-If no branch is provided while on `main`, the script creates a task branch named:
-
-```text
-work/<slug>-YYYYMMDD-HHMMSS
-```
-
-The checkpoint workflow:
-
-- builds the app
-- verifies codesigning
-- stages intentional project source, documentation, and script changes
-- commits staged changes when present
-- pushes the task branch with `git push -u origin HEAD`
-
-The checkpoint script refuses generated artifacts such as `HoverClick.app/`, `DerivedData/`, `build/`, `logs/`, and `dist/*.dmg`.
-
-Do not merge task branches into `main` automatically.
+Use explicit Git commands so each step is visible, and follow the Git policy in `CLAUDE.md`.
 
 ## Continuous Integration
 
@@ -71,16 +45,16 @@ Manual release and performance validation is local. Use `docs/RELEASE_TEST.md` b
 
 ## Internal DMG Packaging
 
-Create an internal/test Apple Development signed DMG with:
+Create an internal/test signed DMG with:
 
 ```zsh
-/Users/gergoterek/Movies/OBS/GPT/HoverClick/scripts/package-dmg.sh
+scripts/package-dmg.sh
 ```
 
 The packaging script builds HoverClick, verifies codesigning, copies the signed `HoverClick.app` bundle into a temporary staging directory, adds an `Applications` symlink, creates a compressed read-only DMG under `dist/`, and verifies the image with non-GUI command-line checks.
 
-This workflow keeps the existing Apple Development signing identity. It is for local/internal testing only; it is not Developer ID signed, not notarized, and not a polished public installer.
+This workflow signs with the same identity as `scripts/build-app.sh`. It is for local/internal testing only; it is not Developer ID signed, not notarized, and not a polished public installer.
 
-The current public distribution path is GitHub/source-first: clone the repository, build locally from source, run the signed `.app` bundle, and grant Accessibility permission through System Settings. Apple Developer Program membership is not required for that current path.
+For the public distribution model see `docs/RELEASE.md`; `README.md` names the latest public release.
 
 Generated DMG artifacts are ignored and should not be committed.

@@ -1,6 +1,6 @@
 # REVIEW chat — starter
 
-Open Claude Code in `/Users/gergoterek/Movies/OBS/GPT/HoverClick`.
+Open Claude Code in the HoverClick repository root.
 `CLAUDE.md` loads automatically, so this prompt only needs to add the role.
 
 Paste the block below:

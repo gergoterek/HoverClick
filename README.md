@@ -36,13 +36,13 @@ If the app still shows **Accessibility: Required**, quit and relaunch the signed
 
 HoverClick runs as a status-bar item with no Dock icon. The menu is organized into sections:
 
-**Functions:** Left Click Focus · Right Click Focus · Bypass Key
+**Functions:** Left Click Focus · Right Click Focus · Bypass Key · Excluded Apps
 
 **Access > Permissions:** Accessibility status · Launch at Login · Refresh Status · Accessibility Settings
 
 **Updates:** Check Now... · Auto Check Updates
 
-**Info > Quick Help:** short explanations of what each menu item does
+**Info > Guide:** short explanations of what each menu item does
 
 **Info > Help:** GitHub · Contact · Release Notes · Uninstall...
 
@@ -57,7 +57,7 @@ HoverClick runs as a status-bar item with no Dock icon. The menu is organized in
 - **Context menus:** **Right Click Focus** is off by default. When on, HoverClick focuses the target first and returns the original right-click unchanged.
 - **Launch at Login not working:** macOS may require user approval. Check **Permissions** > **Launch at Login** status.
 - **Maccy compatibility:** HoverClick automatically skips its focus behavior when you click a Maccy history item, so the paste always goes to the correct target app.
-- **Excluded Apps:** Open **Excluded Apps** > **Configure for...** to pick an installed app from a list and exclude it from HoverClick focus behavior. Excluded apps appear by name and can be removed by clicking them. Maccy is always handled automatically for clipboard compatibility.
+- **Excluded Apps:** Open **Excluded Apps** > **Add App Exclusion...** to pick an installed app from a list and exclude it from HoverClick focus behavior. Excluded apps appear by name and can be removed by clicking them. Maccy is always handled automatically for clipboard compatibility.
 
 ## Privacy and Safety
 
