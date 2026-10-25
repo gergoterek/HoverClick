@@ -3096,6 +3096,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             @"Left Click Focus Disabled",
             @"Right Click Focus Enabled",
             @"Right Click Focus Disabled",
+            @"Right Click Disabled",
             @"Automatic Update Checks Enabled",
             @"Automatic Update Checks Disabled"
         ]];
