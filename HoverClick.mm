@@ -4068,6 +4068,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSString *nonNormalSkipReason = [self nonNormalTopWindowSkipReasonForWindowInfo:topmostWindowInfo
                                                                           targetPid:targetPid
+                                                                          targetApp:targetApp
                                                                             appName:appName
                                                                                role:role
                                                                             subrole:subrole
@@ -4639,7 +4640,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return YES;
 }
 
-- (NSString *)nonNormalTopWindowSkipReasonForWindowInfo:(NSDictionary *)windowInfo targetPid:(pid_t)targetPid appName:(NSString *)appName role:(NSString *)role subrole:(NSString *)subrole point:(CGPoint)point {
+- (NSString *)nonNormalTopWindowSkipReasonForWindowInfo:(NSDictionary *)windowInfo targetPid:(pid_t)targetPid targetApp:(NSRunningApplication *)targetApp appName:(NSString *)appName role:(NSString *)role subrole:(NSString *)subrole point:(CGPoint)point {
     if ([self layerForWindowInfo:windowInfo] == 0) {
         return nil;
     }
@@ -4660,6 +4661,20 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     if (ownerPid == targetPid && [self windowInfoLooksLikeCompactOverlay:windowInfo]) {
         return @"target app owns a compact non-normal popup or overlay at the click point";
+    }
+
+    // A menu bar utility (accessory activation policy, no Dock tile) with a window at the status
+    // or pop-up level is showing a panel: a clipboard history, an emoji picker, a launcher. Such a
+    // panel takes keyboard focus by itself without activating its application, precisely so that
+    // the application the user was typing in stays frontmost and receives what the panel inserts.
+    // Activating the utility pulls activation away from that application. Measured 2026-09-07
+    // with Emojist over Google Chrome: the picker is 466x385 at layer 25, 25 points taller than
+    // the compact limit above, so HoverClick activated Emojist, Chrome resigned, and Google Docs
+    // dropped the text field the emoji was meant for. Size is not the signal here; the owner is.
+    if (ownerPid == targetPid &&
+        [self windowInfoLooksLikePopupLayer:windowInfo] &&
+        [self applicationLooksLikeMenuBarUtility:targetApp]) {
+        return @"target app is a menu bar utility and owns the status-level panel at the click point";
     }
 
     if ([self windowInfoLooksLikePassThroughWindowServerPointerSurface:windowInfo
@@ -4848,6 +4863,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     CGFloat area = bounds.size.width * bounds.size.height;
     return bounds.size.height <= 360.0 && bounds.size.width <= 1800.0 && area <= 500000.0;
+}
+
+- (BOOL)applicationLooksLikeMenuBarUtility:(NSRunningApplication *)app {
+    return app != nil && app.activationPolicy == NSApplicationActivationPolicyAccessory;
 }
 
 - (BOOL)windowInfoLooksLikePopupLayer:(NSDictionary *)windowInfo {
