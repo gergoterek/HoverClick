@@ -3602,7 +3602,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (void)handleLeftMouseDown:(CGEventRef)event {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-    if (now - _lastMouseDownLogTime < 0.02) {
+    CFAbsoluteTime sinceLastLeftMouseDown = now - _lastMouseDownLogTime;
+    // A negative interval means the wall clock stepped backward. Let the click through instead of
+    // dropping every click until the clock catches up.
+    if (sinceLastLeftMouseDown >= 0.0 && sinceLastLeftMouseDown < 0.02) {
         return;
     }
     _lastMouseDownLogTime = now;
@@ -3673,7 +3676,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (void)handleRightMouseDown:(CGEventRef)event {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-    if (now - _lastRightMouseDownLogTime < 0.02) {
+    CFAbsoluteTime sinceLastRightMouseDown = now - _lastRightMouseDownLogTime;
+    // A negative interval means the wall clock stepped backward. Let the click through instead of
+    // dropping every click until the clock catches up.
+    if (sinceLastRightMouseDown >= 0.0 && sinceLastRightMouseDown < 0.02) {
         return;
     }
     _lastRightMouseDownLogTime = now;
