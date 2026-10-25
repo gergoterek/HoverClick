@@ -862,16 +862,37 @@ static NSString *HoverClickAXAttemptSummary(BOOL attempted, AXError error) {
     return [NSString stringWithFormat:@"attempted:%s", HoverClickAXErrorName(error)];
 }
 
+// One AX read for a diagnostic line, held to the callback deadline. Once a read has been cut
+// short, by the deadline or by a timed-out read, every later read is skipped as well: an
+// application that did not answer one read blocks the next one the same way.
+static AXError HoverClickCopyAXAttributeBeforeDeadline(AXUIElementRef element, CFStringRef attribute, CFTypeRef *outValue, CFAbsoluteTime deadline, const char **cutShort) {
+    *outValue = NULL;
+    if (*cutShort != NULL) {
+        return kAXErrorCannotComplete;
+    }
+    if (CFAbsoluteTimeGetCurrent() >= deadline) {
+        *cutShort = "budget";
+        return kAXErrorCannotComplete;
+    }
+
+    AXError error = AXUIElementCopyAttributeValue(element, attribute, outValue);
+    if (error == kAXErrorCannotComplete) {
+        *cutShort = "cannotComplete";
+    }
+    return error;
+}
+
 // Title plus geometry. Two windows of the same application frequently share a title, so the
 // geometry is what makes a focus diagnostic line usable.
-static NSString *HoverClickAXWindowIdentity(AXUIElementRef window) {
+static NSString *HoverClickAXWindowIdentity(AXUIElementRef window, CFAbsoluteTime deadline) {
     if (window == NULL) {
         return @"none";
     }
 
+    const char *cutShort = NULL;
     NSString *title = nil;
     CFTypeRef titleValue = NULL;
-    if (AXUIElementCopyAttributeValue(window, kAXTitleAttribute, &titleValue) == kAXErrorSuccess && titleValue != NULL) {
+    if (HoverClickCopyAXAttributeBeforeDeadline(window, kAXTitleAttribute, &titleValue, deadline, &cutShort) == kAXErrorSuccess && titleValue != NULL) {
         if (CFGetTypeID(titleValue) == CFStringGetTypeID()) {
             title = [(__bridge NSString *)titleValue copy];
         }
@@ -885,7 +906,7 @@ static NSString *HoverClickAXWindowIdentity(AXUIElementRef window) {
 
     CGPoint position = CGPointMake(-1.0, -1.0);
     CFTypeRef positionValue = NULL;
-    if (AXUIElementCopyAttributeValue(window, kAXPositionAttribute, &positionValue) == kAXErrorSuccess && positionValue != NULL) {
+    if (HoverClickCopyAXAttributeBeforeDeadline(window, kAXPositionAttribute, &positionValue, deadline, &cutShort) == kAXErrorSuccess && positionValue != NULL) {
         if (CFGetTypeID(positionValue) == AXValueGetTypeID()) {
             AXValueGetValue((AXValueRef)positionValue, kAXValueTypeCGPoint, &position);
         }
@@ -894,27 +915,34 @@ static NSString *HoverClickAXWindowIdentity(AXUIElementRef window) {
 
     CGSize size = CGSizeMake(-1.0, -1.0);
     CFTypeRef sizeValue = NULL;
-    if (AXUIElementCopyAttributeValue(window, kAXSizeAttribute, &sizeValue) == kAXErrorSuccess && sizeValue != NULL) {
+    if (HoverClickCopyAXAttributeBeforeDeadline(window, kAXSizeAttribute, &sizeValue, deadline, &cutShort) == kAXErrorSuccess && sizeValue != NULL) {
         if (CFGetTypeID(sizeValue) == AXValueGetTypeID()) {
             AXValueGetValue((AXValueRef)sizeValue, kAXValueTypeCGSize, &size);
         }
         CFRelease(sizeValue);
     }
 
-    return [NSString stringWithFormat:@"title=\"%@\" pos=(%.0f,%.0f) size=(%.0fx%.0f)",
-                                      title,
-                                      position.x,
-                                      position.y,
-                                      size.width,
-                                      size.height];
+    NSString *identity = [NSString stringWithFormat:@"title=\"%@\" pos=(%.0f,%.0f) size=(%.0fx%.0f)",
+                                                    title,
+                                                    position.x,
+                                                    position.y,
+                                                    size.width,
+                                                    size.height];
+    if (cutShort != NULL) {
+        identity = [identity stringByAppendingFormat:@" identity=partial(%s)", cutShort];
+    }
+    return identity;
 }
 
 // Reads back the application's own kAXFocusedWindowAttribute and reports whether it is the window
 // that was clicked. The frontmost-process check cannot answer that question: it only sees which
 // process is in front, never which of its windows holds focus.
-static NSString *HoverClickFocusedWindowComparison(AXUIElementRef appElement, AXUIElementRef targetWindow) {
+static NSString *HoverClickFocusedWindowComparison(AXUIElementRef appElement, AXUIElementRef targetWindow, CFAbsoluteTime deadline) {
     if (appElement == NULL) {
         return @"appFocusedWindow=no-app-element match=unknown";
+    }
+    if (CFAbsoluteTimeGetCurrent() >= deadline) {
+        return @"appFocusedWindow=skipped(budget) match=unknown";
     }
 
     CFTypeRef focusedValue = NULL;
@@ -931,7 +959,7 @@ static NSString *HoverClickFocusedWindowComparison(AXUIElementRef appElement, AX
         AXUIElementRef focusedWindow = (AXUIElementRef)focusedValue;
         BOOL matches = (targetWindow != NULL && CFEqual(focusedWindow, targetWindow));
         result = [NSString stringWithFormat:@"appFocusedWindow=[%@] match=%s",
-                                            HoverClickAXWindowIdentity(focusedWindow),
+                                            HoverClickAXWindowIdentity(focusedWindow, deadline),
                                             matches ? "YES" : "NO"];
     }
 
@@ -4999,12 +5027,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                            focusStatus:@"background focus attempt started"
                                              finalNote:nil];
 
-    if (_verboseDiagnostics) {
-        // Three AX reads for a log line; skipped when the line would be dropped anyway.
+    if (_verboseDiagnostics && [self callbackBudgetRemaining] > 0.0) {
+        // Three AX reads for a log line; skipped when the line would be dropped anyway or the
+        // callback budget is spent, and cut short at the first read that times out.
         [self diagnosticLog:"HoverClick: %s #%llu clicked window %s",
                             trigger,
                             sequenceID,
-                            HoverClickAXWindowIdentity(targetWindow).UTF8String];
+                            HoverClickAXWindowIdentity(targetWindow, _lastEventTapCallbackTime + HoverClickCallbackBudgetSeconds).UTF8String];
     }
 
     // Window first, application second. -activateWithOptions: carries the application's own main
@@ -5174,12 +5203,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     // Readback after activation: does the application now treat the clicked window as its focused
     // window? The frontmost-process verification further down cannot observe this. Up to four AX
-    // reads, so only when the line is kept and the attempt was not already cut short.
+    // reads, so only when the line is kept and the attempt was not already cut short. Each read is
+    // skipped once the callback budget is spent; the identity stops at the first timed-out read.
     if (_verboseDiagnostics && abandonedAfter == NULL && [self callbackBudgetRemaining] > 0.0) {
         [self diagnosticLog:"HoverClick: %s #%llu focused window readback %s",
                             trigger,
                             sequenceID,
-                            HoverClickFocusedWindowComparison(appElement, targetWindow).UTF8String];
+                            HoverClickFocusedWindowComparison(appElement, targetWindow, _lastEventTapCallbackTime + HoverClickCallbackBudgetSeconds).UTF8String];
     }
     // The window list says the clicked window is in front; it cannot say whether the page inside
     // has taken focus. For Chrome the focused UI element comes from the renderer, so waiting for
