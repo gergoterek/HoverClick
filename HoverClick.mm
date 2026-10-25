@@ -4593,6 +4593,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                               sequenceID:sequenceID
                                 decision:@"skipped"
                                   detail:@"non-normal top window and unresolved AX hit-test; original event passed through before focus attempt"];
+    [self recordClickThroughInvestigationForSequenceID:sequenceID
+                                           focusStatus:@"skipped before focus attempt: non-normal top window (AX element not found)"
+                                             finalNote:reason];
     [self includeRecentDecisionInHistoryForSequenceID:sequenceID];
     [self completeRecentDecisionForSequenceID:sequenceID
                                   finalResult:@"skipped: non-normal top window and unresolved AX hit-test"
