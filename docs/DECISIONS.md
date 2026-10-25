@@ -77,7 +77,8 @@ global sequence; unreachable protected-role checks and window-info parsing dupli
 touch the pending patch); the Finder context-menu follow-up that ignores the click target (needs a
 Finder runtime test); Left Click Focus not persisted and the first-launch dialog stack (product
 decisions); the exclusion picker that cannot offer Finder (an enhancement); the old machine path
-in the committed `Makefile` and scripts (fixed by another chat's uncommitted work).
+in the committed `Makefile` and scripts (fixed by another chat's work, committed as `92c2678` on
+2026-10-25 and merged in at `d47e853`; four unused scripts still carry it).
 
 **Evidence:** Static only. `clang++ -Wall -Wextra` warnings went from 6 to 0, the static analyzer
 reports 0, `scripts/ci-safety-check.sh` and `scripts/source-only-check.sh` pass in the worktree and

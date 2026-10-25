@@ -13,13 +13,13 @@ Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
 |---|---|
 | Released version | `v1.2.1` / build `43` |
 | `main` commit | `f24f506b3247bafcf00bd1d9610870a299bebdf8` |
-| Branch tip in use | `fix/single-window-focus` @ `afc97b3` |
-| Cleanup branch | `worktree-codebase-audit` (on top of `afc97b3`, not merged; see "Codebase audit cleanup" below) |
+| Branch tip in use | `fix/single-window-focus` @ `1d1450e` (`afc97b3` plus the four commits of 2026-10-25 that committed the shared checkout's pending work) |
+| Cleanup branch | `worktree-codebase-audit` (on top of `afc97b3`, `fix/single-window-focus` merged in at `d47e853`, not merged back; see "Codebase audit cleanup" below) |
 | Bundle ID | `com.gergoterek.HoverClick` |
 | Project path | `/Users/terekgergo/Projects/HoverClick` |
-| Signing identity | `HoverClick Dev` (self-signed) is in the login keychain: `security find-identity -v -p codesigning` lists it (measured 2026-10-25). The committed `Makefile` still names the old Apple Development identity; the switch to `HoverClick Dev` is uncommitted in the shared checkout. |
-| Sparkle EdDSA private key | **Not available on this machine.** |
-| Build status | Compiles clean on macOS 26.6.2 / clang 21. Local builds are not signed with a certificate and are not distributable. The process `pid 5918` runs since 2026-09-17 19:04:27 from `HoverClick.app`, whose binary was built 2026-09-17 13:22 and contains the 2026-09-17 menu bar utility clause (inferred from the timestamps and the string in the binary, not from a version marker). It does not contain the 2026-09-20 commits. |
+| Signing identity | `HoverClick Dev` (self-signed) is in the login keychain: `security find-identity -v -p codesigning` lists it (measured 2026-10-25). The `Makefile` and the build scripts name it since `92c2678`. |
+| Sparkle EdDSA private key | The old key is gone. A new key pair is in the login keychain since 2026-09-21 (`scripts/setup-signing.sh`; public key in `.signing/sparkle-public-key.txt`). `Info.plist:SUPublicEDKey` still holds the old public key, so `scripts/release.sh` stops until the release step replaces it. |
+| Build status | Compiles with 0 warnings on macOS 27.0.1 / Apple clang 21. `scripts/build-app.sh` builds and signs with `HoverClick Dev`; the designated requirement is the same as the earlier build's, so the Accessibility grant carries over (measured 2026-10-25). Not notarized: a downloaded copy gets the Gatekeeper prompt. Since 2026-10-25 18:38 `pid 21413` runs the `worktree-codebase-audit` build (`d47e853` plus docs) from the worktree's `HoverClick.app` for the click test below. Before that `pid 1503` (started 2026-10-19 10:56) ran the project root's `HoverClick.app`, built 2026-09-21 12:23 from `afc97b3` plus the menu bar utility clause (inferred from the timestamps). |
 
 ---
 
@@ -45,9 +45,11 @@ and `docs/UPDATER_DESIGN.md` still describe the old certificate as present and r
 Those statements are false on this machine. Do not trust them; run
 `security find-identity -v -p codesigning` instead.
 
-`PROJECT_DIR` is hardcoded to the old machine's path in the `Makefile` and in seven
-scripts. `scripts/ci-safety-check.sh` and `scripts/source-only-check.sh` are unaffected
-because they derive the path from their own location.
+Since `92c2678` the `Makefile`, `scripts/build-app.sh`, `scripts/run-app.sh` and
+`scripts/verify-app.sh` derive `PROJECT_DIR` through `scripts/release-config.sh`.
+`scripts/package-dmg.sh`, `scripts/prepare-appcast.sh`, `scripts/checkpoint.sh` and
+`scripts/performance-snapshot.sh` still hardcode the old machine's path; `scripts/release.sh`
+does not use them.
 
 ---
 
@@ -57,8 +59,8 @@ Only one branch is worked on at a time. Finish or park the top item before start
 
 | # | Branch | State |
 |---|---|---|
-| 1 | `fix/single-window-focus` | **Six commits on the branch, one change still uncommitted** (menu bar utility panels, see below). `93ae113` and `c700de2` verified at runtime. `65c130f` (conditional activation plus a bounded wait) measured on 2026-09-14 and again on 2026-09-20 (22 Chrome attempts, 22 delayed YES). `fd5035d`, `ec56fc9`, `936d137` (2026-09-20 stability audit, see below) **not verified at runtime**. Not merged to `main`. |
-| 1a | `worktree-codebase-audit` | In-place cleanup after the 2026-10-25 audit, on top of `afc97b3`. Static checks PASS, **not run**. Not merged into `fix/single-window-focus`: that branch is under runtime measurement and the shared checkout holds another chat's uncommitted `HoverClick.mm` change. |
+| 1 | `fix/single-window-focus` | **18 commits on the branch, nothing uncommitted** (the menu bar utility clause is `eae5588`, see below; the build chain and the release pipeline are `92c2678` and `9353eb9`). `93ae113` and `c700de2` verified at runtime. `65c130f` (conditional activation plus a bounded wait) measured on 2026-09-14 and again on 2026-09-20 (22 Chrome attempts, 22 delayed YES). `fd5035d`, `ec56fc9`, `936d137` (2026-09-20 stability audit, see below) **not verified at runtime**. Not merged to `main`. |
+| 1a | `worktree-codebase-audit` | In-place cleanup after the 2026-10-25 audit, on top of `afc97b3`, with `fix/single-window-focus` merged in (`d47e853`). Static checks PASS, **runtime test pending**. Fast-forwards `fix/single-window-focus` once the click test below passes. |
 | 2 | `feature/menu-help-tooltips` | Not started. Replace the `Guide` submenu with hover tooltips. **Blocked on a decision — see below.** |
 
 ### Queued: Guide submenu → tooltips
@@ -78,7 +80,9 @@ before planning this. The first step is a decision, not an implementation.
 
 ## Codebase audit cleanup, 2026-10-25: static PASS, runtime test pending
 
-Branch `worktree-codebase-audit`, on top of `afc97b3`. What changed, why and what was
+Branch `worktree-codebase-audit`, on top of `afc97b3`, with `fix/single-window-focus` merged in
+at `d47e853` (the HoverClick Dev build chain, the release pipeline and the menu bar utility
+clause). What changed, why and what was
 deferred: `docs/DECISIONS.md`, entry 2026-10-25. The architecture breakdown and the staged
 modularization plan: `docs/ARCHITECTURE_AUDIT_2026-10-25.md`. In short: a stricter safety gate, the menu
 refresh off the tap callback, a monotonic budget clock, a window search that stops at its first
@@ -188,7 +192,7 @@ Chrome) made HoverClick activate the utility, so Chrome resigned and Google Docs
 inline tab-rename field before Emojist could type into it. Adding Emojist to Excluded Apps
 worked around it for one app.
 
-**Fix (uncommitted, 2026-09-17):** one clause in `nonNormalTopWindowSkipReasonForWindowInfo:`
+**Fix (2026-09-17, committed as `eae5588` on 2026-10-25):** one clause in `nonNormalTopWindowSkipReasonForWindowInfo:`
 plus `applicationLooksLikeMenuBarUtility:`. Owner of the topmost window is the target, the
 window is at layer 24 or above, the target's activation policy is accessory: pass the click
 through before any focus attempt (`Ignored Non-Normal UI`). Reasoning, numbers and rejected
@@ -333,8 +337,9 @@ Keep each of these on its own branch.
 - The already-frontmost gate reads `NSWorkspace.frontmostApplication` inside the callback;
   compare it with the `focusedAppAX=` value on the `immediate verify` line once `fd5035d` runs,
   and switch the gate if the AX value is the live one.
-- Replace the hardcoded `PROJECT_DIR` in the `Makefile` and the seven affected scripts with
-  a path derived from the script location, as `ci-safety-check.sh` already does.
+- Replace the hardcoded `PROJECT_DIR` in the four remaining scripts (`package-dmg.sh`,
+  `prepare-appcast.sh`, `checkpoint.sh`, `performance-snapshot.sh`) or retire them; the
+  `Makefile` and the build, run and verify scripts are done (`92c2678`).
 - Correct every document that still claims the old signing certificate is present.
 - Decide the signing strategy for local development and for release.
 - Decide what happens to the Sparkle update channel now that the private key is gone.

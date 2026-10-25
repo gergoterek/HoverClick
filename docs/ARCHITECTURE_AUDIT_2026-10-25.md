@@ -20,7 +20,7 @@ the reasons are recorded in `docs/DECISIONS.md`, entry 2026-10-25.
 | 9. Configuration split across sources | Unchanged; persisting Left Click Focus is a product decision. |
 | 10. Menu row view re-implements NSMenu | Layout code merged; behavior unchanged. |
 | 11. Testability | Unchanged; stage 4 below. |
-| 12. Tooling drift | Gate fixed and hardened; the old machine path in the committed `Makefile` and scripts is fixed only in another chat's uncommitted work. |
+| 12. Tooling drift | Gate fixed and hardened. The `Makefile` and the build, run and verify scripts derive their path since `92c2678` (merged in at `d47e853`); `package-dmg.sh`, `prepare-appcast.sh`, `checkpoint.sh` and `performance-snapshot.sh` still carry the old machine path. |
 
 
 Some reviewer notes were wrong and the code wins:
