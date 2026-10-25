@@ -5121,9 +5121,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                            focusStatus:@"AX operations attempted"
                                              finalNote:_lastBackgroundFocusAXOperations];
 
-    HoverClickLog("HoverClick: %s #%llu AX focusedWindow set %s", trigger, sequenceID, HoverClickAXErrorName(focusedWindowError));
-    [self diagnosticLog:"HoverClick: %s #%llu AX mainWindow set %s", trigger, sequenceID, HoverClickAXErrorName(mainWindowError)];
-    [self diagnosticLog:"HoverClick: %s #%llu AX focused attribute set %s", trigger, sequenceID, HoverClickAXErrorName(focusedAttrError)];
+    HoverClickLog("HoverClick: %s #%llu AX focusedWindow set %s", trigger, sequenceID, focusedWindowAttempted ? HoverClickAXErrorName(focusedWindowError) : "skipped");
+    [self diagnosticLog:"HoverClick: %s #%llu AX mainWindow set %s", trigger, sequenceID, mainWindowAttempted ? HoverClickAXErrorName(mainWindowError) : "skipped"];
+    [self diagnosticLog:"HoverClick: %s #%llu AX focused attribute set %s", trigger, sequenceID, focusedAttrAttempted ? HoverClickAXErrorName(focusedAttrError) : "skipped"];
 
     // Activation is conditional. -activateWithOptions: carries the main and the key window forward,
     // and the key window stays whatever the application had in front before the click: the AX
