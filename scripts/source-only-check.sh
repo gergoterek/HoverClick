@@ -107,7 +107,7 @@ sparkle_version=$(/usr/bin/awk -F':=' '/^SPARKLE_VERSION[[:space:]]*:=/ {gsub(/[
 sparkle_candidates=()
 if [[ -n "$sparkle_version" ]]; then
   sparkle_candidates+=("$PROJECT_DIR/tmp/sparkle/Sparkle-$sparkle_version/extracted")
-  # A worktree has no tmp/ of its own, so fall back to the main checkout's cache.
+  # A worktree has no tmp/ of its own so fall back to the main checkout's cache.
   common_dir=$(/usr/bin/git rev-parse --git-common-dir)
   main_root="${common_dir:A:h}"
   if [[ "${common_dir:A:t}" == ".git" && "$main_root" != "$PROJECT_DIR" ]]; then

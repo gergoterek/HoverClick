@@ -96,8 +96,14 @@ mask_decl_count=$(/usr/bin/grep -c -E 'CGEventMask[[:space:]]+[[:alnum:]_]+[[:sp
 mask_bit_count=$({ /usr/bin/grep -o -E 'CGEventMaskBit[[:space:]]*\(' HoverClick.mm || true; } | /usr/bin/wc -l | /usr/bin/tr -d '[:space:]')
 [[ "$mask_bit_count" == "2" ]] || fail "Expected exactly two CGEventMaskBit uses, found ${mask_bit_count}."
 
-if /usr/bin/grep -n -E '(^|[^[:alnum:]_.>])mask[[:space:]]*([|&^+-]|<<|>>)?=[^=]' HoverClick.mm | /usr/bin/grep -v -F 'CGEventMask mask ='; then
+# An assignment may end its line, with the value on the next one.
+if /usr/bin/grep -n -E '(^|[^[:alnum:]_.>])mask[[:space:]]*([|&^+-]|<<|>>)?=([^=]|$)' HoverClick.mm | /usr/bin/grep -v -F 'CGEventMask mask ='; then
   fail "The event tap mask is reassigned after its declaration."
+fi
+
+# The mask is passed by value; taking its address would allow a write through a pointer.
+if /usr/bin/grep -n -E '&[[:space:]]*mask([^[:alnum:]_]|$)' HoverClick.mm; then
+  fail "The event tap mask has its address taken."
 fi
 
 expected_mask='CGEventMaskmask=CGEventMaskBit(kCGEventLeftMouseDown)|CGEventMaskBit(kCGEventRightMouseDown);'
