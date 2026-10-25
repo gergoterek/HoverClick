@@ -5334,13 +5334,26 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             CFRelease(current);
             return NULL;
         }
-        NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:current] ?: @"unknown";
+        AXError roleError = kAXErrorSuccess;
+        NSString *role = [self stringAttribute:kAXRoleAttribute fromElement:current error:&roleError] ?: @"unknown";
         [self diagnosticLog:"HoverClick: window search depth=%ld role=%s", (long)depth, role.UTF8String];
+        // Same rule as the focus attempt: an application that did not answer one read blocks the
+        // next one the same way, so the search stops at the first timed-out read.
+        if (roleError == kAXErrorCannotComplete) {
+            HoverClickLog("HoverClick: window search abandoned depth=%ld reason=ax-timeout attribute=role elapsed=%.0fms", (long)depth, [self callbackElapsed] * 1000.0);
+            CFRelease(current);
+            return NULL;
+        }
 
         if ([self roleLooksLikeWindow:role]) {
             return current;
         }
 
+        if ([self callbackBudgetRemaining] <= 0.0) {
+            [self diagnosticLog:"HoverClick: window search stopped depth=%ld reason=callback-budget", (long)depth];
+            CFRelease(current);
+            return NULL;
+        }
         CFTypeRef windowValue = NULL;
         AXError windowError = AXUIElementCopyAttributeValue(current, kAXWindowAttribute, &windowValue);
         if (windowError == kAXErrorSuccess && windowValue != NULL) {
@@ -5350,7 +5363,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             }
             CFRelease(windowValue);
         }
+        if (windowError == kAXErrorCannotComplete) {
+            HoverClickLog("HoverClick: window search abandoned depth=%ld reason=ax-timeout attribute=window elapsed=%.0fms", (long)depth, [self callbackElapsed] * 1000.0);
+            CFRelease(current);
+            return NULL;
+        }
 
+        if ([self callbackBudgetRemaining] <= 0.0) {
+            [self diagnosticLog:"HoverClick: window search stopped depth=%ld reason=callback-budget", (long)depth];
+            CFRelease(current);
+            return NULL;
+        }
         CFTypeRef parentValue = NULL;
         AXError parentError = AXUIElementCopyAttributeValue(current, kAXParentAttribute, &parentValue);
         if (parentError != kAXErrorSuccess || parentValue == NULL) {
@@ -5384,6 +5407,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 - (NSString *)stringAttribute:(CFStringRef)attribute fromElement:(AXUIElementRef)element {
+    return [self stringAttribute:attribute fromElement:element error:NULL];
+}
+
+// *outError is the AX read's error, or kAXErrorSuccess when no read was made.
+- (NSString *)stringAttribute:(CFStringRef)attribute fromElement:(AXUIElementRef)element error:(AXError *)outError {
+    if (outError != NULL) {
+        *outError = kAXErrorSuccess;
+    }
     if (element == NULL || [self callbackBudgetRemaining] <= 0.0) {
         return nil;
     }
@@ -5391,6 +5422,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CFTypeRef value = NULL;
     AXError error = AXUIElementCopyAttributeValue(element, attribute, &value);
     if (error != kAXErrorSuccess || value == NULL) {
+        if (outError != NULL) {
+            *outError = error;
+        }
         return nil;
     }
 
