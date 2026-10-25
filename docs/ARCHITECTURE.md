@@ -23,21 +23,22 @@ Event tap lifecycle guards:
 - Re-enables the existing tap when the user still wants it enabled, the CFMachPort is valid, and the run loop source is valid, then logs `click listener resumed after ...`.
 - Recreates the tap when disabled-event recovery finds a missing or invalid port/source, or when `CGEventTapEnable` does not leave the tap enabled.
 - Removes the run loop source and CFMach port on app quit or menu disable.
-- Logs `event tap remove requested but no active tap` for no-op cleanup.
+- Logs `click listener remove requested but none active` for no-op cleanup.
 
 For each click, HoverClick:
 
 1. Reads the global click point from `CGEventGetLocation`.
 2. Uses `AXUIElementCreateSystemWide` and `AXUIElementCopyElementAtPosition` to resolve the element under the cursor.
 3. Reads the target pid and app name.
-4. Records the topmost CoreGraphics window under the point for overlay diagnostics.
+4. Reads the topmost CoreGraphics window under the point; Verbose Mode logs it for overlay diagnostics.
 5. Uses AX hit-testing before treating a non-layer-0 CoreGraphics window as a hard skip.
 6. Ignores HoverClick itself, menu roles, status items, protected menu-bar/system UI overlays, compact popup-style overlays, and unresolved targets.
 7. Resolves a target window from `AXWindow` or by bounded `AXParent` climbing.
-8. Attempts app activation, AX frontmost, `AXRaise`, and focused-window attributes.
-9. Records frontmost-before, activation return value, AX operation results, and immediate front-app verification.
-10. If immediate verification fails, schedules a short main-queue delayed verification diagnostic.
-11. Returns the original event unchanged.
+8. Focuses the window first and the application second (`-focusTargetApp:...`, `docs/DECISIONS.md` 2026-09-06). Every AX call carries a 200 ms messaging timeout (`HoverClickAXMessagingTimeoutSeconds`). HoverClick sets `kAXFocusedWindowAttribute` on the application element, performs `AXRaise` on the window, then sets `AXMain` and `AXFocused` on it. If any of these calls returns `kAXErrorCannotComplete`, the attempt is abandoned (`focus attempt abandoned reason=ax-timeout`), the application is not activated and the click passes through. `kAXFrontmostAttribute` is deliberately not set, because it brings the sibling windows of the same process forward as well (see the comment in `-focusTargetApp:...`).
+9. Activates the application only under a condition (`docs/DECISIONS.md` 2026-09-14). If the clicked window is already the application's topmost window, the application is activated with `-activateWithOptions:NSApplicationActivateIgnoringOtherApps`. If it is not, and `AXRaise` succeeded, the callback waits up to 60 ms (`HoverClickRaiseSettleTimeout`, `-waitForWindow:toBecomeFrontWindowOfPid:outWindowID:reached:`) for the window server to list the clicked window as the process's front window. Once it does, the process is activated with `SetFrontProcessWithOptions` and `kSetFrontProcessFrontWindowOnly` (`-activateFrontWindowOnlyOfPid:`, commit `afc97b3`, runtime measurement pending), so the sibling windows stay where they were. Otherwise activation is skipped, and the reason is logged as `skipReason=` on the `activation decision` line.
+10. After a successful activation, runs two bounded waits that share a 150 ms cap (`HoverClickActivationWaitTimeout`): `-waitForWindowIDToReachFront:reachedFront:` and `-waitForFocusedElementOfApp:toBeInWindow:cap:reached:`. They are logged as `activation decision ... wait=` and `focus wait=...ms focusedElementInClickedWindow=`. Every wait is also capped by what is left of the 500 ms callback budget (`HoverClickCallbackBudgetSeconds`, `docs/DECISIONS.md` 2026-09-20).
+11. Records frontmost-before, activation return value, AX operation results, and immediate verification from the window list and the AX focused application. If immediate verification fails, schedules a short main-queue delayed verification diagnostic.
+12. Returns the original event unchanged.
 
 `observed leftMouseDown` from Phase 1 was only event observation. Phase 2 success requires target resolution plus a focus/raise action result.
 
@@ -46,6 +47,8 @@ Diagnostics intentionally remain detailed. Logs distinguish click receipt, AX el
 `Diagnostics` > `Copy Summary` exposes the event tap lifecycle state needed for long-running failures: requested state, object/source presence, port/source validity, believed installed/enabled state, detected enabled state when available, last event tap callback type, last left/right mouse-down callback timestamps, and last recovery attempt/result. It also separates volatile last click handling from persistent background-focus diagnostics, including the last focus decision detail, the last right-click focus decision, the last background-focus attempt, trigger, target app, frontmost app before the attempt, activation return value, AX operation results, immediate frontmost app, delayed verification state, final result, failure reason, and last verified successful background focus. Later menu or overlay clicks may update the volatile last handled action, but they do not erase the stable last real/background click decision, recent non-menu mouse-down decision history, last focus decision detail, last right-click focus decision, last non-menu focus decision, last background-focus attempt, or last verified background-focus success. Overlay diagnostics record the last overlay/system UI skip reason, the topmost CoreGraphics owner/window/layer/title/bounds involved, the AX role/subrole/app seen at the click point, and the last eligible AX hit-test candidate when one is safely available. A narrow policy exception treats tiny untitled no-bundle high-layer Window Server surfaces near the click point as pass-through only when AX hit-testing resolves a normal non-menu app/window target underneath; this prevents cursor-like Window Server surfaces from blocking normal background focus while preserving actual menu/status/system UI skips. HoverClick must not ignore all Window Server windows globally, and this exception must not weaken real menu, status, popover, or system UI protection. The recent decision history keeps the latest 10 non-menu mouse-down decisions with sequence id, timestamp, trigger, click location, frontmost app before the click, topmost CG window summary, AX target summary, eligible-candidate state, policy decision or skip reason, overlay/system UI and compact-popup involvement, focus-attempt start, AX operation summary, immediate verification, delayed verification, and final result. Aggregate counters track mouse callbacks, left/right callbacks, non-menu decisions, focus attempts, successful verifications, policy skips, overlay/system UI skips, compact-popup skips, and HoverClick menu/status UI skips.
 
 Delayed verification is diagnostic-only and runs only after immediate frontmost verification fails. It is scheduled on the main queue after the original event has been left unmodified; it does not sleep in the event tap callback, consume the event, synthesize clicks, replay events, move the cursor, or add hover-assist-like work.
+
+The callback itself does contain bounded polling waits before it returns the original event (steps 9 and 10 above), each with an exit condition and a cap. Per the user's reading recorded in `docs/DECISIONS.md` 2026-09-14 ("Invariant 6"), this is not delayed click delivery, because the event is neither held back nor posted.
 
 ## Chrome / Web Content Click-Through Diagnostics
 
@@ -76,7 +79,7 @@ The old persisted Hover Focus defaults key is intentionally no longer read, so a
 
 Stable Left Click Focus is the normal behavior and defaults ON. It focuses, raises, and activates a background window immediately before the original left-click event is delivered, then returns that original event unchanged.
 
-Right Click Focus is an independent trigger and defaults OFF. It persists under `rightClickFocusEnabled`; when OFF, right-click events are returned unchanged without running the focus path, and copied diagnostics record that the right mouse down was observed but skipped because Right Click Focus was disabled. When ON, right-clicking a valid background window uses the same target-window filters, app activation, AX frontmost, `AXRaise`, immediate verification, and diagnostic delayed verification path as Left Click Focus, then returns the original right-click event unchanged so context menus remain normal. Copied diagnostics keep a right-click-specific decision line so manual tests can distinguish observation, target resolution, focus attempt, immediate or delayed verification, ineligible-target skips, and disabled-setting skips.
+Right Click Focus is an independent trigger and defaults OFF. It persists under `rightClickFocusEnabled`; when OFF, right-click events are returned unchanged without running the focus path, and copied diagnostics record that the right mouse down was observed but skipped because Right Click Focus was disabled. When ON, right-clicking a valid background window uses the same target-window filters, AX focused-window and `AXRaise` operations, conditional app activation and its bounded waits, immediate verification, and diagnostic delayed verification path as Left Click Focus, then returns the original right-click event unchanged so context menus remain normal. Copied diagnostics keep a right-click-specific decision line so manual tests can distinguish observation, target resolution, focus attempt, immediate or delayed verification, ineligible-target skips, and disabled-setting skips.
 
 Finder context-menu follow-up handling is intentionally narrow. After a recent Finder right-click, if Finder is already frontmost when the next left-click arrives, HoverClick clears the short-lived Finder state and passes that left-click through before AX hit-testing, focusing, raising, or activation. This helps Finder context menus dismiss and lets Finder handle the follow-up click as natively as possible without synthetic click replay. HoverClick still does not force Finder actual selection; Finder may show a context-target highlight on right-click while keeping the previous actual selection.
 
@@ -100,7 +103,7 @@ Intentional shipped behavior or UI changes should bump `CFBundleShortVersionStri
 
 ## Distribution Packaging
 
-HoverClick is distributed from GitHub. The latest public release is v1.2.0 / build 42, which adds Bypass Key (Off / Shift / Fn), Maccy compatibility, and menu UI polish.
+HoverClick is distributed from GitHub. The latest public release is v1.2.1 / build 43 (`Info.plist`). v1.2.0 / build 42 added Bypass Key (Off / Shift / Fn), Maccy compatibility and menu UI polish.
 
 `scripts/package-dmg.sh` remains an internal/test DMG workflow. It uses the current Apple Development signing identity, is useful for local/internal testing, is not notarized, and is not a release-publishing path by itself.
 
@@ -136,6 +139,10 @@ Current menu controls expose:
 
 - Left Click Focus
 - Right Click Focus
+- Bypass Key
+- Excluded Apps
+- Launch at Login
+- Verbose Mode
 - Auto Check Updates
 
 The event tap should continue to observe only the current stable click inputs: `kCGEventLeftMouseDown` and `kCGEventRightMouseDown`.
@@ -146,9 +153,9 @@ Modifier Key Focus / Hold-to-Focus remains a future idea only. The failed 35 ms 
 
 Hover Click Assist is not part of the current product surface. The v0.9.0 updater-completion branch removes the default-off no-op placeholder from the menu and copied diagnostics. This is a UI/product-surface cleanup only: it does not add hover focus, mouse movement observation, cursor movement, synthetic clicks, replacement events, delayed click delivery, or any new event-tap trigger.
 
-## Excluded Apps (v1.3)
+## Excluded Apps
 
-The `feature-excluded-apps` branch adds a user-configurable Excluded Apps layer on top of the existing built-in Maccy bypass.
+Excluded Apps adds a user-configurable Excluded Apps layer on top of the existing built-in Maccy bypass.
 
 **Runtime bypass hierarchy:**
 1. Modifier bypass (Shift / Fn): fires before AX target resolution; returns original event unchanged.
@@ -162,8 +169,8 @@ The `feature-excluded-apps` branch adds a user-configurable Excluded Apps layer 
 
 **App selector (`Add App Exclusion...`):** `chooseExcludedApp:` presents a dedicated app list selector — an `NSAlert` with an `NSPopUpButton` whose items are installed applications (display name + icon), sorted alphabetically and deduplicated by bundle ID. This is a list picker in the LinearMouse "Configure for" spirit, not a Finder/`NSOpenPanel` file browser. `installedApplicationsForSelector` enumerates apps from standard locations only — `/Applications`, `/Applications/Utilities`, `/System/Applications`, `/System/Applications/Utilities`, and `~/Applications` — with a shallow, non-recursive `NSFileManager contentsOfDirectoryAtPath:` scan (no full-disk scan, no deep recursion). For each `.app`: display name from `CFBundleDisplayName`/`CFBundleName`/file name, bundle ID from `NSBundle bundleWithURL:`, and icon from `NSWorkspace iconForFile:` (copied and sized to the menu image size). Apps without a bundle ID are skipped.
 
-Selecting an app funnels its bundle ID into the shared `addExcludedBundleID:`, which trims whitespace, rejects missing IDs and duplicates, and treats the built-in Maccy bundle ID as already-handled (a friendly message, not an added entry), shown via `showExcludedAppsAlertWithTitle:message:`. It then saves to `NSUserDefaults`, logs, and rebuilds the submenu. No app restart is required.
+Selecting an app funnels its bundle ID into the shared `addExcludedBundleID:`, which trims whitespace, rejects missing IDs and duplicates, and treats the built-in Maccy bundle ID as already-handled (a friendly message, not an added entry), shown via `showInformationalAlertWithTitle:message:`. It then saves to `NSUserDefaults`, logs, and rebuilds the submenu. No app restart is required.
 
 The earlier `NSOpenPanel`-based `Choose Application...`, the manual `Add by Bundle ID...` dialog, the `HoverClickEditableTextField` subclass, and the `panel:shouldEnableURL:` delegate were removed: the normal user path no longer requires browsing files or typing bundle IDs.
 
-**Safety constraints (unchanged):** Event tap mask remains `kCGEventLeftMouseDown | kCGEventRightMouseDown` only. All bypass paths return the original event unchanged. NULL is never returned for normal user events. No synthetic clicks, event replay, delayed delivery, cursor movement, CGEventPost, or CGEventCreateMouseEvent in any new code path.
+**Safety constraints (unchanged):** Event tap mask remains `kCGEventLeftMouseDown | kCGEventRightMouseDown` only. All bypass paths return the original event unchanged. NULL is never returned for normal user events. No synthetic clicks, event replay, delayed delivery, cursor movement, CGEventPost, or CGEventCreateMouseEvent in any new code path. The bounded waits inside the callback (click path steps 9 and 10) are not delayed delivery under the reading recorded in `docs/DECISIONS.md` 2026-09-14 ("Invariant 6").
