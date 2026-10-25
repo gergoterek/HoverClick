@@ -4902,6 +4902,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSString *triggerLabel = context[@"triggerLabel"] ?: @"unknown";
     BOOL appWasFrontBefore = [context[@"appWasFrontBefore"] boolValue];
     CGWindowID clickedWindowID = (CGWindowID)[context[@"clickedWindowID"] unsignedIntValue];
+    BOOL immediatePassed = [context[@"immediatePassed"] boolValue];
     uint64_t sequenceID = sequenceNumber.unsignedLongLongValue;
     pid_t targetPid = targetPidNumber.intValue;
     NSTimeInterval delay = delayNumber.doubleValue;
@@ -4968,7 +4969,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                                     targetPid,
                                                                     frontDelayedDescription]];
 
-    if (verified) {
+    // An attempt that passed the immediate check was counted there already.
+    if (verified && !immediatePassed) {
         [self recordSuccessfulBackgroundFocusWithTriggerLabel:triggerLabel
                                                    sequenceID:sequenceID
                                                       appName:appName
@@ -5349,7 +5351,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         @"triggerLabel": triggerLabel ?: @"unknown",
         @"delay": @(HoverClickDelayedVerificationDelay),
         @"appWasFrontBefore": @(appWasFrontBefore),
-        @"clickedWindowID": @((unsigned int)clickedWindowID)
+        @"clickedWindowID": @((unsigned int)clickedWindowID),
+        @"immediatePassed": @(immediatePassed)
     };
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(HoverClickDelayedVerificationDelay * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
