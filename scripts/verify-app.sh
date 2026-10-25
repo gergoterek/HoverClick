@@ -1,17 +1,17 @@
 #!/bin/zsh
 set -euo pipefail
 
-PROJECT_DIR="/Users/gergoterek/Movies/OBS/GPT/HoverClick"
-APP_PATH="$PROJECT_DIR/HoverClick.app"
+source "${0:A:h}/release-config.sh"
 BINARY_PATH="$APP_PATH/Contents/MacOS/HoverClick"
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 PROCESS_NAME="HoverClick"
 SPARKLE_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sparkle.framework"
 SPARKLE_INFO_PLIST="$SPARKLE_FRAMEWORK/Versions/B/Resources/Info.plist"
 EXPECTED_SPARKLE_VERSION="2.9.3"
-EXPECTED_SPARKLE_FEED_URL="https://gergoterek.github.io/HoverClick/appcast.xml"
-EXPECTED_SPARKLE_PUBLIC_KEY="093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o="
-EXPECTED_SIGNING_IDENTITY="Apple Development: rizsutt@gmail.com (MVQ5PX4679)"
+EXPECTED_SPARKLE_FEED_URL="$SPARKLE_FEED_URL"
+# The public key the source tree ships; the bundle must carry the same one.
+EXPECTED_SPARKLE_PUBLIC_KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$PROJECT_DIR/Info.plist")
+EXPECTED_SIGNING_IDENTITY="$SIGNING_IDENTITY"
 
 echo "app path = $APP_PATH"
 echo "binary path = $BINARY_PATH"

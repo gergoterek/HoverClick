@@ -55,11 +55,14 @@ scripts/source-only-check.sh      # static gate: whitespace, safety suite, shell
 scripts/build-app.sh              # compile + codesign into HoverClick.app
 scripts/verify-app.sh             # codesign verification
 scripts/run-app.sh                # launch the signed app
+scripts/setup-signing.sh          # one-time: signing certificate + Sparkle key (asks for the login password)
+scripts/release.sh                # build | prepare | publish, see docs/RELEASE.md
 ```
 
-Signing identity `Apple Development: rizsutt@gmail.com (MVQ5PX4679)` is valid until
-**2027-05-06** and is required by the Makefile. Do not change it, do not replace the
-certificate, do not touch the bundle identifier.
+Signing identity `HoverClick Dev` is a self-signed certificate in the login keychain, created
+by `scripts/setup-signing.sh` (decision of 2026-09-14 in `docs/DECISIONS.md`). The Makefile
+requires it. Do not replace the certificate, do not touch the bundle identifier. Shared
+settings (identity, Sparkle account, feed URL) live in `scripts/release-config.sh`.
 
 **Never run:** `sudo`, `tccutil reset`, raw binary execution from `HoverClick.app/Contents/MacOS/`.
 

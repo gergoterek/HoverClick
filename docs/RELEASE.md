@@ -1,186 +1,62 @@
-# Release Positioning
+# Release
 
-This document records the current GitHub/source-first distribution model and the optional future requirements for a polished Developer ID signed and notarized HoverClick binary release. Developer ID signing, notarization, stapling, release packaging scripts, certificates, app identity, and Accessibility behavior are not implemented or changed here.
+How a HoverClick version ships and how installed copies update. Superseded on 2026-09-14 the
+earlier source-first positioning; the reasoning is in `docs/DECISIONS.md` under that date.
 
-## Release Status
+## Distribution model
 
-- HoverClick is currently distributed as a GitHub/source-first macOS utility.
-- Users should build locally from source and run the signed `.app` bundle.
-- An internal/test Apple Development signed DMG exists for local/internal testing.
-- A public Developer ID signed and notarized binary release is not available yet.
-- There is no Mac App Store release and no signed `.pkg` installer.
+- Every version is a GitHub Release with two assets: `HoverClick-<version>.dmg` and
+  `appcast.xml`.
+- Installed copies update through Sparkle. `SUFeedURL` is
+  `https://github.com/gergoterek/HoverClick/releases/latest/download/appcast.xml`, which
+  GitHub redirects to the `appcast.xml` attached to the newest non-prerelease Release. No
+  `gh-pages` branch and no separate publish commit are involved.
+- Updates are verified by the Sparkle EdDSA signature in the appcast, not by Apple.
+- The app is signed with the self-signed `HoverClick Dev` certificate and is not notarized.
+  Gatekeeper warns on the first launch of a downloaded copy; the user opens it through
+  System Settings, Privacy & Security, Open Anyway. Because the identity is stable, macOS keeps
+  the Accessibility grant across updates. An ad hoc signature would lose it on every update.
+- Automatic checks stay off (`SUEnableAutomaticChecks = false`); the user checks from the
+  menu (`Check Now...`).
 
-Apple Developer Program membership is not required for the current GitHub/source-first project. Membership would be needed later for a polished Developer ID signed and notarized public binary release. Because Apple Developer Program membership is not wanted right now, that binary-release path is deferred.
+## Credentials
 
-## Current Distribution Model
+Both live in the login keychain and are created once by `scripts/setup-signing.sh`, which
+needs the login password and therefore runs in Terminal, not from automation:
 
-Current:
+| credential | keychain item | backup |
+|---|---|---|
+| code signing identity `HoverClick Dev` | My Certificates | `~/Documents/HoverClick secrets/HoverClick-Dev-identity.p12` (+ password file) |
+| Sparkle EdDSA private key | `https://sparkle-project.org`, account `com.gergoterek.HoverClick` | `~/Documents/HoverClick secrets/HoverClick-sparkle-eddsa-private-key.txt` |
 
-- GitHub source repository.
-- Build locally from source.
-- Run the signed `HoverClick.app` bundle through the project script.
-- Grant Accessibility permission through System Settings.
-- Use the internal/test DMG only for local/internal testing.
+Move the backup folder into a password manager or an encrypted disk. Nothing under
+`.signing/` or `~/Documents/HoverClick secrets/` is ever committed. If the private key is lost
+again, installed copies cannot be updated in place and need one manual reinstall; that is what
+happened between `v1.2.1` and `v1.3.0`.
 
-Not current:
+## Shipping a version
 
-- Notarized public DMG.
-- Developer ID signed public binary.
-- Mac App Store release.
-- Signed `.pkg` installer.
-- Smooth double-click install flow for every Mac.
+Numbers: `CFBundleShortVersionString` is the marketing version (`1.3.0`), `CFBundleVersion` is
+the build number Sparkle compares (`45`). Both only go up.
 
-## Current Internal/Test Packaging
+1. Write `docs/release-notes/<version>.md` (Markdown; `##` headings and `- ` bullets become
+   the appcast description).
+2. `scripts/release.sh prepare --version 1.3.0 --build 45`
+   Writes the version into `Info.plist`, runs the static gate, builds and signs the app,
+   verifies the signature, packages and verifies `dist/HoverClick-1.3.0.dmg`, signs the DMG
+   with `sign_update` and inserts the item into `appcast.xml`.
+3. Review and commit `Info.plist`, `appcast.xml` and the release notes, then push.
+4. `scripts/release.sh publish --version 1.3.0 --build 45`
+   Checks that the commit is pushed and that the appcast item verifies against the DMG,
+   creates the GitHub Release `v1.3.0` (this creates the tag) with both assets and checks that
+   the feed URL serves the new appcast.
+5. On an installed previous build: `Check Now...`, install, confirm the new build number in
+   the menu and that Accessibility is still granted.
 
-`scripts/package-dmg.sh` is the current internal/test Apple Development signed DMG packaging workflow. It builds HoverClick, verifies the signed app bundle, stages `HoverClick.app` with an `Applications` symlink, creates a compressed read-only DMG under `dist/`, and verifies the image with command-line checks.
+`scripts/release.sh build` runs step 2 without the Sparkle signing and the appcast, for a
+local bundle to install as the "previous build" of an update test.
 
-The internal DMG filename for version `0.4.2` is:
+## Older scripts
 
-```text
-HoverClick-0.4.2-internal.dmg
-```
-
-This workflow uses the current Apple Development signing identity:
-
-```text
-Apple Development: rizsutt@gmail.com (MVQ5PX4679)
-```
-
-This is an internal/test DMG. It is Apple Development signed, not Developer ID signed, not notarized, not stapled, not a polished public installer, and not the main public release artifact.
-
-## Optional Future Binary Release Requirements
-
-A future polished public binary release would need:
-
-- Apple Developer Program membership.
-- A Developer ID Application certificate installed and available for code signing.
-- A Developer ID Installer certificate only if a `.pkg` installer is added later.
-- `notarytool`.
-- `stapler`.
-- Apple notarization credentials, such as a Keychain profile or App Store Connect API key.
-- Team ID.
-- A separate release packaging script added in a future task.
-- A separate clean test environment for first-launch Accessibility testing.
-
-This work is deferred. Do not add Developer ID signing, notarization, stapling, release packaging, signing identity changes, or app identity changes until that future path is explicitly chosen.
-
-## Certificate Checklist
-
-- [ ] Developer ID Application identity appears in `security find-identity -v -p codesigning`.
-- [ ] Certificate common name is recorded.
-- [ ] Team ID is known.
-- [ ] No secrets are committed.
-- [ ] No credentials are stored in project files.
-
-## Notarization Credential Checklist
-
-- [ ] `notarytool` exists.
-- [ ] `stapler` exists.
-- [ ] Keychain profile name is chosen.
-- [ ] Credentials are stored in Keychain or external secure storage, not in this repository.
-- [ ] No Apple ID password, app-specific password, API key, or issuer ID is committed.
-
-## Accessibility And TCC Risk
-
-HoverClick requires macOS Accessibility permission. That permission may be tied to the app's signing requirement, which includes code identity information used by macOS privacy controls.
-
-Switching HoverClick from the current Apple Development signing identity to a Developer ID signing identity may require users to grant Accessibility permission again. Users should grant or re-grant permission through the normal System Settings Accessibility privacy flow.
-
-Do not recommend `tccutil reset` as a normal troubleshooting or release step. Do not recommend `sudo` for Accessibility setup. Do not recommend launching the raw binary inside the app bundle; users should launch the signed `HoverClick.app` bundle.
-
-## Recommended Future Release Flow
-
-Only use this flow if the Developer ID/notarization path is explicitly resumed later.
-
-1. Keep the internal DMG workflow stable.
-2. Add Developer ID release packaging on a separate branch.
-3. Keep internal and release packaging scripts separate.
-4. Build a Developer ID signed `HoverClick.app`.
-5. Package a release DMG.
-6. Submit the release artifact for notarization.
-7. Staple the notarization ticket.
-8. Validate on a clean user account, VM, or separate Mac.
-9. Test first launch and Accessibility permission grant behavior.
-10. Create a binary GitHub Release only after clean-environment validation passes.
-
-## GitHub Source-First Release Draft
-
-This draft is for a possible GitHub release entry. Do not create a release from this document automatically.
-
-```text
-HoverClick v0.4.2
-
-HoverClick is currently a source-first macOS utility published through GitHub. A notarized public binary release is not available yet.
-
-Current release path:
-- Clone the repository.
-- Build locally from source.
-- Run the signed HoverClick.app bundle.
-- Grant Accessibility permission through System Settings.
-
-Stable features:
-- Left Click Focus defaults on.
-- Right Click Focus defaults off.
-- Launch at Login is available on supported macOS versions.
-- The status menu includes Hover, Permissions & Startup, Diagnostics, and Copy Diagnostics Summary.
-
-Safety and scope:
-- Accessibility permission is required.
-- No mouse-move focus.
-- No synthetic clicks.
-- No cursor movement.
-- No CGEventPost.
-- No CGDisplayMoveCursorToPoint.
-
-Packaging note:
-- If HoverClick-0.4.2-internal.dmg is attached later, it is an internal/test DMG.
-- The internal/test DMG is Apple Development signed.
-- The internal/test DMG is not notarized and is not a polished public installer.
-```
-
-## Future Script Naming
-
-`scripts/package-dmg.sh` should remain the internal/test Apple Development signed DMG packaging workflow. It should not notarize, staple, or become a polished public installer.
-
-A future task may add:
-
-```text
-scripts/package-release-dmg.sh
-```
-
-That future script may handle Developer ID signing, release DMG creation, notarization submission, and stapling if the optional future binary-release path is resumed.
-
-Future public release DMGs should use this filename pattern:
-
-```text
-HoverClick-<version>-release.dmg
-```
-
-## Public Release Blockers
-
-- No Developer ID Application certificate is installed on this Mac.
-- No notarization credential or profile has been verified.
-- No release packaging script exists.
-- No notarized and stapled release artifact exists.
-- No clean-environment Accessibility test has been completed.
-
-## What Not To Do
-
-- Do not change the bundle ID casually.
-- Do not change the signing identity inside normal feature tasks.
-- Do not reset TCC as a normal troubleshooting step.
-- Do not commit secrets.
-- Do not notarize from the internal packaging script.
-- Do not mix release signing work with event tap, focus, or feature work.
-
-## Next Recommended Task
-
-There is no Developer ID/notarization implementation task recommended for the current GitHub/source-first release path.
-
-If a polished public binary release becomes a priority later, the next implementation task would be:
-
-```text
-Add Developer ID Release Packaging Script
-```
-
-Do that only after Apple Developer Program membership, the Developer ID Application certificate, and the notarization credential plan are available.
+`scripts/package-dmg.sh` and `scripts/prepare-appcast.sh` predate the pipeline and still
+carry the old machine's path; `scripts/release.sh` does not use them.
