@@ -228,12 +228,24 @@ static NSString *HoverClickDiagnosticValue(NSString *value, NSString *fallback) 
     return value;
 }
 
+// The first cutIndex UTF-16 units, or fewer: the cut moves back to the start of a surrogate pair
+// or combining sequence that straddles it. A lone surrogate makes -UTF8String return NULL, and the
+// whole log line then prints (null).
+static NSString *HoverClickSafePrefix(NSString *value, NSUInteger cutIndex) {
+    if (cutIndex >= value.length) {
+        return value;
+    }
+
+    NSUInteger end = [value rangeOfComposedCharacterSequenceAtIndex:cutIndex].location;
+    return [value substringToIndex:end];
+}
+
 static NSString *HoverClickTruncatedDiagnosticString(NSString *value, NSUInteger maxLength) {
     if (value.length == 0 || value.length <= maxLength || maxLength <= 3) {
         return value ?: @"";
     }
 
-    return [[value substringToIndex:maxLength - 3] stringByAppendingString:@"..."];
+    return [HoverClickSafePrefix(value, maxLength - 3) stringByAppendingString:@"..."];
 }
 
 static BOOL HoverClickStringContainsCaseInsensitive(NSString *value, NSString *needle) {
@@ -868,7 +880,7 @@ static NSString *HoverClickAXWindowIdentity(AXUIElementRef window) {
     if (title.length == 0) {
         title = @"untitled";
     } else if (title.length > 48) {
-        title = [[title substringToIndex:48] stringByAppendingString:@"..."];
+        title = [HoverClickSafePrefix(title, 48) stringByAppendingString:@"..."];
     }
 
     CGPoint position = CGPointMake(-1.0, -1.0);
