@@ -3966,6 +3966,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         [self setLastClickResult:@"Ignored Own App"];
         return;
     }
+    // After the own-app exit, so opening HoverClick's menu to copy the summary keeps the value.
+    _lastBypassDecision = @"not-bypassed";
 
     if (strcmp(trigger, "right-click") == 0) {
         [self recordRecentFinderRightClickForApp:targetApp pid:targetPid sequenceID:sequenceID];
