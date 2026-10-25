@@ -14,7 +14,7 @@ Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
 | Released version | `v1.2.1` / build `43` |
 | `main` commit | `f24f506b3247bafcf00bd1d9610870a299bebdf8` |
 | Branch tip in use | `fix/single-window-focus` @ `afc97b3` |
-| Cleanup branch | `worktree-codebase-audit` (49 commits on `afc97b3`, not merged; see "Codebase audit cleanup" below) |
+| Cleanup branch | `worktree-codebase-audit` (on top of `afc97b3`, not merged; see "Codebase audit cleanup" below) |
 | Bundle ID | `com.gergoterek.HoverClick` |
 | Project path | `/Users/terekgergo/Projects/HoverClick` |
 | Signing identity | `HoverClick Dev` (self-signed) is in the login keychain: `security find-identity -v -p codesigning` lists it (measured 2026-10-25). The committed `Makefile` still names the old Apple Development identity; the switch to `HoverClick Dev` is uncommitted in the shared checkout. |
@@ -78,8 +78,9 @@ before planning this. The first step is a decision, not an implementation.
 
 ## Codebase audit cleanup, 2026-10-25: static PASS, runtime test pending
 
-Branch `worktree-codebase-audit`, 49 commits on `afc97b3`. What changed, why and what was
-deferred: `docs/DECISIONS.md`, entry 2026-10-25. In short: a stricter safety gate, the menu
+Branch `worktree-codebase-audit`, on top of `afc97b3`. What changed, why and what was
+deferred: `docs/DECISIONS.md`, entry 2026-10-25. The architecture breakdown and the staged
+modularization plan: `docs/ARCHITECTURE_AUDIT_2026-10-25.md`. In short: a stricter safety gate, the menu
 refresh off the tap callback, a monotonic budget clock, a window search that stops at its first
 timeout, honest verification for sibling-window clicks, the frontmost app's own panels passing
 through again and about 200 lines of dead or duplicated code removed. `HoverClick.mm` is still
