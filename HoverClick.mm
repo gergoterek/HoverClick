@@ -3608,7 +3608,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                           _bypassKey == HoverClickBypassKeyShift ? "shift" : "fn");
             return YES;
         }
-        _lastBypassDecision = @"not-bypassed";
     }
     return NO;
 }
@@ -3963,7 +3962,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         [self setLastClickResult:@"Ignored Own App"];
         return;
     }
-    // After the own-app exit so opening HoverClick's menu to copy the summary keeps the value.
+    // The only not-bypassed writer, whatever the Bypass Key setting. It sits after the own-app
+    // exit so opening HoverClick's menu to copy the summary keeps the value.
     _lastBypassDecision = @"not-bypassed";
 
     if (strcmp(trigger, "right-click") == 0) {
