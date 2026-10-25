@@ -3062,12 +3062,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 }
 
+// Click-path setter: no menu row shows the last click result, and menuWillOpen: refreshes the
+// menu, so this must not call updateMenuTitles (it runs inside the event tap callback).
 - (void)setLastClickResult:(NSString *)result {
     _lastClickResult = result ?: @"None";
     if ([self shouldPreserveAsLastNonMenuClickResult:_lastClickResult]) {
         _lastNonMenuClickResult = _lastClickResult;
     }
-    [self updateMenuTitles];
 }
 
 - (BOOL)shouldPreserveAsLastNonMenuClickResult:(NSString *)result {
