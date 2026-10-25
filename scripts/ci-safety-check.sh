@@ -35,8 +35,12 @@ trace_patterns=(
 
 trace_hits=""
 for pattern in "${trace_patterns[@]}"; do
-  matches=$(/usr/bin/git grep -I -n -F -e "$pattern" -- $(/usr/bin/git ls-files) 2>/dev/null || true)
-  if [[ -n "$matches" ]]; then
+  rc=0
+  matches=$(/usr/bin/git grep -I -n -F -e "$pattern") || rc=$?
+  if (( rc > 1 )); then
+    fail "git grep failed (exit $rc) while checking trace pattern"
+  fi
+  if (( rc == 0 )) && [[ -n "$matches" ]]; then
     trace_hits+="${matches}"$'\n'
   fi
 done
