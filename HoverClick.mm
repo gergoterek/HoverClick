@@ -4047,6 +4047,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // treatment as a click on a background application: the window is focused first, the click
     // arrives afterwards. Clicks on the key window itself still pass through untouched.
     BOOL clickedWindowBehindSibling = targetIsFrontmost && [self clickedWindowOfElement:element isBehindSiblingOfPid:targetPid topmostWindowInfo:topmostWindowInfo];
+    if (targetIsFrontmost && !clickedWindowBehindSibling &&
+        [self callbackBudgetExhaustedForSequenceID:sequenceID trigger:trigger stage:"window-resolution"]) {
+        [self passThroughForExhaustedBudgetWithSequenceID:sequenceID trigger:trigger stage:@"window resolution"];
+        return;
+    }
     [self updateRecentDecisionForSequenceID:sequenceID
                                         key:@"targetAlreadyFrontmost"
                                       value:targetIsFrontmost ? (clickedWindowBehindSibling ? @"yes-sibling-window" : @"yes") : @"no"];
@@ -4086,6 +4091,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     AXUIElementRef targetWindow = [self copyWindowForElement:element];
     if (targetWindow == NULL) {
+        if ([self callbackBudgetExhaustedForSequenceID:sequenceID trigger:trigger stage:"window-resolution"]) {
+            [self passThroughForExhaustedBudgetWithSequenceID:sequenceID trigger:trigger stage:@"window resolution"];
+            return;
+        }
         HoverClickLog("HoverClick: %s #%llu AX window not found for pid=%d app=%s; event passed through", trigger, sequenceID, targetPid, appName.UTF8String);
         [self recordFocusDecisionWithTrigger:trigger
                                   sequenceID:sequenceID
