@@ -4874,12 +4874,34 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 }
 
+// The topmost on-screen normal-level window, by the same filter as waitForWindowIDToReachFront:.
+// One window-list read, no wait: the delayed check runs on the main queue. kCGNullWindowID when
+// no window matches.
+- (CGWindowID)frontmostNormalWindowID {
+    NSArray *windowList = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+                                                                       kCGNullWindowID));
+    for (NSDictionary *windowInfo in windowList) {
+        if ([self layerForWindowInfo:windowInfo] != 0) {
+            continue;
+        }
+        NSNumber *alphaNumber = windowInfo[(__bridge NSString *)kCGWindowAlpha];
+        if (alphaNumber != nil && alphaNumber.doubleValue <= 0.0) {
+            continue;
+        }
+        NSNumber *windowNumber = windowInfo[(__bridge NSString *)kCGWindowNumber];
+        return (CGWindowID)windowNumber.unsignedIntValue;
+    }
+    return kCGNullWindowID;
+}
+
 - (void)completeDelayedBackgroundFocusVerification:(NSDictionary *)context {
     NSNumber *sequenceNumber = context[@"sequenceID"];
     NSNumber *targetPidNumber = context[@"targetPid"];
     NSNumber *delayNumber = context[@"delay"];
     NSString *appName = context[@"appName"] ?: @"unknown";
     NSString *triggerLabel = context[@"triggerLabel"] ?: @"unknown";
+    BOOL appWasFrontBefore = [context[@"appWasFrontBefore"] boolValue];
+    CGWindowID clickedWindowID = (CGWindowID)[context[@"clickedWindowID"] unsignedIntValue];
     uint64_t sequenceID = sequenceNumber.unsignedLongLongValue;
     pid_t targetPid = targetPidNumber.intValue;
     NSTimeInterval delay = delayNumber.doubleValue;
@@ -4907,7 +4929,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     NSRunningApplication *frontDelayed = [NSWorkspace sharedWorkspace].frontmostApplication;
-    BOOL verified = (frontDelayed != nil && frontDelayed.processIdentifier == targetPid);
+    BOOL frontAppMatches = (frontDelayed != nil && frontDelayed.processIdentifier == targetPid);
+    // A sibling click starts with the target application already in front, so the pid alone
+    // proves nothing there; the clicked window itself has to be the front window.
+    BOOL windowCheckApplies = appWasFrontBefore;
+    BOOL clickedWindowFront = windowCheckApplies && clickedWindowID != kCGNullWindowID && [self frontmostNormalWindowID] == clickedWindowID;
+    BOOL verified = frontAppMatches && (!windowCheckApplies || clickedWindowFront);
     NSString *frontDelayedDescription = HoverClickRunningApplicationDescription(frontDelayed);
     _lastBackgroundFocusDelayedVerification = [NSString stringWithFormat:@"%@ after %.2fs frontmost=%@",
                                                verified ? @"passed" : @"failed",
@@ -4915,16 +4942,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                                frontDelayedDescription];
     [self updateRecentDecisionForSequenceID:sequenceID key:@"delayedVerification" value:_lastBackgroundFocusDelayedVerification];
 
-    HoverClickLog("HoverClick: %s #%llu delayed verify after %.2fs frontApp=%s current=%s",
+    HoverClickLog("HoverClick: %s #%llu delayed verify after %.2fs frontApp=%s current=%s clickedWindowFront=%s",
                   triggerLabel.UTF8String,
                   sequenceID,
                   delay,
-                  verified ? "YES" : "NO",
-                  frontDelayedDescription.UTF8String);
+                  frontAppMatches ? "YES" : "NO",
+                  frontDelayedDescription.UTF8String,
+                  windowCheckApplies ? (clickedWindowFront ? "YES" : "NO") : "not-applicable");
 
     NSString *failureReason = verified ?
         @"none" :
-        [NSString stringWithFormat:@"frontmost after delayed check was %@", frontDelayedDescription];
+        (frontAppMatches ?
+         [NSString stringWithFormat:@"clicked window %u was not the front window after delayed check; frontmost=%@", clickedWindowID, frontDelayedDescription] :
+         [NSString stringWithFormat:@"frontmost after delayed check was %@", frontDelayedDescription]);
     [self recordBackgroundFocusResult:verified ? @"success" : @"verification failed"
                           verification:verified ? @"delayed passed" : @"delayed failed"
                         failureReason:failureReason];
@@ -4969,6 +4999,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     NSRunningApplication *frontBefore = [NSWorkspace sharedWorkspace].frontmostApplication;
     pid_t frontBeforePid = frontBefore.processIdentifier;
+    BOOL appWasFrontBefore = (frontBeforePid == targetPid);
     NSString *frontBeforeDescription = HoverClickRunningApplicationDescription(frontBefore);
 
     [self recordBackgroundFocusAttemptWithTrigger:trigger
@@ -5234,6 +5265,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // Accessibility server reports it. Both are logged so a later measurement can compare them.
     pid_t focusedAppPid = ([self callbackBudgetRemaining] > 0.0) ? HoverClickAXFocusedApplicationPid() : 0;
     BOOL frontImmediate = (activateAttempted && activationReachedFront) || (focusedAppPid > 0 && focusedAppPid == targetPid);
+    // For a sibling click the target was already the focused application, so the pid clause
+    // proves nothing; only the clicked window reaching the front counts.
+    BOOL immediatePassed = appWasFrontBefore ? (activateAttempted && activationReachedFront) : frontImmediate;
     NSString *focusedAppDescription = focusedAppPid > 0 ?
         HoverClickRunningApplicationDescription([NSRunningApplication runningApplicationWithProcessIdentifier:focusedAppPid]) :
         @"not-read";
@@ -5254,7 +5288,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSString *frontAfterDescription = focusedAppDescription;
 
     NSString *triggerLabel = HoverClickFocusTriggerLabel(trigger);
-    if (frontImmediate) {
+    if (immediatePassed) {
         _lastBackgroundFocusDelayedVerification = [NSString stringWithFormat:@"scheduled after %.2fs (immediate verification passed)",
                                                    HoverClickDelayedVerificationDelay];
         [self setLastClickResult:@"Succeeded"];
@@ -5280,7 +5314,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     } else {
         NSString *verificationFailureReason = abandonedAfter != NULL ?
             [NSString stringWithFormat:@"AX operation %s timed out; focus attempt abandoned", abandonedAfter] :
-            [NSString stringWithFormat:@"focused application after immediate check was %@", frontAfterDescription];
+            (appWasFrontBefore ?
+             [NSString stringWithFormat:@"sibling window of the frontmost application did not reach the front (windowList=%s)",
+                                        activateAttempted ? (activationReachedFront ? "reached" : "not-reached") : "not-applicable"] :
+             [NSString stringWithFormat:@"focused application after immediate check was %@", frontAfterDescription]);
         _lastBackgroundFocusDelayedVerification = [NSString stringWithFormat:@"scheduled after %.2fs",
                                                    HoverClickDelayedVerificationDelay];
         [self updateRecentDecisionForSequenceID:sequenceID key:@"delayedVerification" value:_lastBackgroundFocusDelayedVerification];
@@ -5310,7 +5347,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         @"targetPid": @(targetPid),
         @"appName": appName ?: @"unknown",
         @"triggerLabel": triggerLabel ?: @"unknown",
-        @"delay": @(HoverClickDelayedVerificationDelay)
+        @"delay": @(HoverClickDelayedVerificationDelay),
+        @"appWasFrontBefore": @(appWasFrontBefore),
+        @"clickedWindowID": @((unsigned int)clickedWindowID)
     };
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(HoverClickDelayedVerificationDelay * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
