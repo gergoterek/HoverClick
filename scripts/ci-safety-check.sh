@@ -132,15 +132,8 @@ fi
 echo "Bundle identifier: $bundle_id"
 
 section "Script Syntax Check"
-syntax_scripts=(
-  scripts/build-app.sh
-  scripts/verify-app.sh
-  scripts/run-app.sh
-  scripts/package-dmg.sh
-  scripts/checkpoint.sh
-  scripts/ci-safety-check.sh
-  scripts/source-only-check.sh
-)
+syntax_scripts=(scripts/*.sh(N))
+(( ${#syntax_scripts} )) || fail "No scripts found for syntax check."
 
 for script in "${syntax_scripts[@]}"; do
   /bin/zsh -n "$script"
