@@ -4353,11 +4353,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return nil;
 }
 
-// Answers whether the clicked AX window is the topmost on-screen normal-level window of its own
-// application, matched by frame. Activation only carries the main and key windows forward, and
-// the key window is whatever the application had in front before the click; when that is the
-// clicked window itself, activation cannot raise a sibling. On success the CG window number is
-// returned through outWindowID so the caller can wait for that window to reach the front.
 // Reads the on-screen bounds of an AX window: two AX reads.
 - (BOOL)readBounds:(CGRect *)outBounds ofAXWindow:(AXUIElementRef)window {
     if (window == NULL || outBounds == NULL) {
@@ -4422,10 +4417,19 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return NO;
 }
 
-- (BOOL)isWindow:(AXUIElementRef)window topmostWindowOfPid:(pid_t)pid outWindowID:(CGWindowID *)outWindowID {
+// Answers whether the clicked AX window is the topmost on-screen normal-level window of its own
+// application, matched by frame. Activation only carries the main and key windows forward, and
+// the key window is whatever the application had in front before the click; when that is the
+// clicked window itself, activation cannot raise a sibling. On success the CG window number is
+// returned through outWindowID so the caller can wait for that window to reach the front.
+// outBounds, when not NULL, receives the AX bounds whenever they were read, whatever the answer.
+- (BOOL)isWindow:(AXUIElementRef)window topmostWindowOfPid:(pid_t)pid outWindowID:(CGWindowID *)outWindowID outBounds:(CGRect *)outBounds {
     CGRect bounds = CGRectNull;
     if (![self readBounds:&bounds ofAXWindow:window]) {
         return NO;
+    }
+    if (outBounds != NULL) {
+        *outBounds = bounds;
     }
     return [self areBounds:bounds frontWindowOfPid:pid outWindowID:outWindowID];
 }
@@ -4945,9 +4949,9 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 // The topmost on-screen normal-level window, by the same filter as waitForWindowIDToReachFront:.
-// One window-list read, no wait: the delayed check runs on the main queue. kCGNullWindowID when
-// no window matches.
-- (CGWindowID)frontmostNormalWindowID {
+// One window-list read, no wait: the delayed check runs on the main queue. nil when no window
+// matches.
+- (NSDictionary *)frontmostNormalWindowInfo {
     NSArray *windowList = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
                                                                        kCGNullWindowID));
     for (NSDictionary *windowInfo in windowList) {
@@ -4958,10 +4962,33 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         if (alphaNumber != nil && alphaNumber.doubleValue <= 0.0) {
             continue;
         }
-        NSNumber *windowNumber = windowInfo[(__bridge NSString *)kCGWindowNumber];
-        return (CGWindowID)windowNumber.unsignedIntValue;
+        return windowInfo;
     }
-    return kCGNullWindowID;
+    return nil;
+}
+
+// YES when the topmost on-screen normal-level window is the clicked window: the CG window number
+// windowID or, when that was never resolved, a window of pid whose bounds are within 2 px of the
+// AX bounds the focus attempt read. NO without a window-list read when neither is known.
+- (BOOL)frontmostNormalWindowIsClickedWindowWithID:(CGWindowID)windowID axBounds:(CGRect)axBounds pid:(pid_t)pid {
+    if (windowID == kCGNullWindowID && CGRectIsNull(axBounds)) {
+        return NO;
+    }
+    NSDictionary *frontWindowInfo = [self frontmostNormalWindowInfo];
+    if (frontWindowInfo == nil) {
+        return NO;
+    }
+    if (windowID != kCGNullWindowID) {
+        NSNumber *windowNumber = frontWindowInfo[(__bridge NSString *)kCGWindowNumber];
+        return (CGWindowID)windowNumber.unsignedIntValue == windowID;
+    }
+    CGRect bounds = [self boundsForWindowInfo:frontWindowInfo];
+    return (!CGRectIsNull(bounds) &&
+            [self ownerPidForWindowInfo:frontWindowInfo] == pid &&
+            fabs(bounds.origin.x - axBounds.origin.x) <= 2.0 &&
+            fabs(bounds.origin.y - axBounds.origin.y) <= 2.0 &&
+            fabs(bounds.size.width - axBounds.size.width) <= 2.0 &&
+            fabs(bounds.size.height - axBounds.size.height) <= 2.0);
 }
 
 - (void)completeDelayedBackgroundFocusVerification:(NSDictionary *)context {
@@ -4972,6 +4999,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSString *triggerLabel = context[@"triggerLabel"] ?: @"unknown";
     BOOL appWasFrontBefore = [context[@"appWasFrontBefore"] boolValue];
     CGWindowID clickedWindowID = (CGWindowID)[context[@"clickedWindowID"] unsignedIntValue];
+    NSValue *clickedWindowBoundsValue = context[@"clickedWindowBounds"];
+    CGRect clickedWindowBounds = clickedWindowBoundsValue != nil ? NSRectToCGRect(clickedWindowBoundsValue.rectValue) : CGRectNull;
     BOOL immediatePassed = [context[@"immediatePassed"] boolValue];
     uint64_t sequenceID = sequenceNumber.unsignedLongLongValue;
     pid_t targetPid = targetPidNumber.intValue;
@@ -5002,9 +5031,13 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     NSRunningApplication *frontDelayed = [NSWorkspace sharedWorkspace].frontmostApplication;
     BOOL frontAppMatches = (frontDelayed != nil && frontDelayed.processIdentifier == targetPid);
     // A sibling click starts with the target application already in front so the pid alone
-    // proves nothing there; the clicked window itself has to be the front window.
+    // proves nothing there; the clicked window itself has to be the front window. When its window
+    // id was never resolved (the raise failed or did not settle within the wait) the AX bounds
+    // read before activation identify it instead. Neither is known for an abandoned attempt.
     BOOL windowCheckApplies = appWasFrontBefore;
-    BOOL clickedWindowFront = windowCheckApplies && clickedWindowID != kCGNullWindowID && [self frontmostNormalWindowID] == clickedWindowID;
+    BOOL clickedWindowFront = windowCheckApplies && [self frontmostNormalWindowIsClickedWindowWithID:clickedWindowID
+                                                                                            axBounds:clickedWindowBounds
+                                                                                                 pid:targetPid];
     BOOL verified = frontAppMatches && (!windowCheckApplies || clickedWindowFront);
     NSString *frontDelayedDescription = HoverClickRunningApplicationDescription(frontDelayed);
     _lastBackgroundFocusDelayedVerification = [NSString stringWithFormat:@"%@ after %.2fs frontmost=%@",
@@ -5025,7 +5058,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         @"none" :
         (frontAppMatches ?
          (clickedWindowID == kCGNullWindowID ?
-          [NSString stringWithFormat:@"clicked window id was not resolved (raise did not settle or attempt abandoned); frontmost=%@", frontDelayedDescription] :
+          (CGRectIsNull(clickedWindowBounds) ?
+           [NSString stringWithFormat:@"clicked window id was not resolved (raise did not settle or attempt abandoned); frontmost=%@", frontDelayedDescription] :
+           [NSString stringWithFormat:@"clicked window at x=%.0f y=%.0f w=%.0f h=%.0f (id not resolved) was not the front window after delayed check; frontmost=%@",
+                                      clickedWindowBounds.origin.x,
+                                      clickedWindowBounds.origin.y,
+                                      clickedWindowBounds.size.width,
+                                      clickedWindowBounds.size.height,
+                                      frontDelayedDescription]) :
           [NSString stringWithFormat:@"clicked window %u was not the front window after delayed check; frontmost=%@", clickedWindowID, frontDelayedDescription]) :
          [NSString stringWithFormat:@"frontmost after delayed check was %@", frontDelayedDescription]);
     [self recordBackgroundFocusResult:verified ? @"success" : @"verification failed"
@@ -5084,7 +5124,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
     // Same rule as the first gate: the frontmost application's key window passes through, its
     // background sibling window gets the focus treatment.
-    if (frontBeforePid == targetPid && [self isWindow:targetWindow topmostWindowOfPid:targetPid outWindowID:NULL]) {
+    if (frontBeforePid == targetPid && [self isWindow:targetWindow topmostWindowOfPid:targetPid outWindowID:NULL outBounds:NULL]) {
         HoverClickLog("HoverClick: %s #%llu ignored reason=already-frontmost pid=%d app=%s; event passed through", trigger, sequenceID, targetPid, appName.UTF8String);
         [self recordBackgroundFocusResult:@"skipped"
                               verification:@"not applicable"
@@ -5236,9 +5276,12 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // on, because activation is asynchronous: without the wait the click reached the application
     // 60 to 120 ms before it became frontmost in 147 of 147 measured attempts.
     CGWindowID clickedWindowID = kCGNullWindowID;
+    // Stays CGRectNull when the read below is skipped (attempt abandoned, budget spent) or fails.
+    // The delayed check falls back to these bounds when clickedWindowID is never resolved.
+    CGRect clickedWindowBounds = CGRectNull;
     BOOL budgetLeft = ([self callbackBudgetRemaining] > 0.0);
     BOOL clickedIsTopmost = (abandonedAfter == NULL && budgetLeft) ?
-        [self isWindow:targetWindow topmostWindowOfPid:targetPid outWindowID:&clickedWindowID] : NO;
+        [self isWindow:targetWindow topmostWindowOfPid:targetPid outWindowID:&clickedWindowID outBounds:&clickedWindowBounds] : NO;
     // A window that is not the application's topmost used to skip activation altogether, which
     // left the application in the background and the click became its activating click: for
     // Google Docs that click is lost (clicks #84 and #89 on 2026-09-21). The raise above makes the
@@ -5424,6 +5467,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         @"delay": @(HoverClickDelayedVerificationDelay),
         @"appWasFrontBefore": @(appWasFrontBefore),
         @"clickedWindowID": @((unsigned int)clickedWindowID),
+        @"clickedWindowBounds": [NSValue valueWithRect:NSRectFromCGRect(clickedWindowBounds)],
         @"immediatePassed": @(immediatePassed)
     };
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(HoverClickDelayedVerificationDelay * NSEC_PER_SEC)),
