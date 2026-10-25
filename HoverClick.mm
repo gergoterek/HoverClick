@@ -5095,8 +5095,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   finalResult:verified ? @"success: delayed verification passed" : @"failed: delayed verification failed"
              keepActiveForDelayedVerification:NO];
 
+    // A volatile result (a menu click, a right click with Right Click Focus off) may have replaced
+    // Verify Pending in _lastClickResult but not in _lastNonMenuClickResult. The stale check above
+    // guarantees a pending value there belongs to this attempt.
+    NSString *delayedResult = verified ? @"Succeeded" : @"Verify Failed";
     if ([_lastClickResult isEqualToString:@"Verify Pending"]) {
-        [self setLastClickResult:verified ? @"Succeeded" : @"Verify Failed"];
+        [self setLastClickResult:delayedResult];
+    } else if ([_lastNonMenuClickResult isEqualToString:@"Verify Pending"]) {
+        _lastNonMenuClickResult = delayedResult;
     }
 }
 
