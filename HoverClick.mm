@@ -4046,7 +4046,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     // #52 to #63, every one of them needed a second click. Such a click now gets the same focus
     // treatment as a click on a background application: the window is focused first, the click
     // arrives afterwards. Clicks on the key window itself still pass through untouched.
-    BOOL clickedWindowBehindSibling = targetIsFrontmost && [self clickedWindowOfElement:element isBehindSiblingOfPid:targetPid];
+    BOOL clickedWindowBehindSibling = targetIsFrontmost && [self clickedWindowOfElement:element isBehindSiblingOfPid:targetPid topmostWindowInfo:topmostWindowInfo];
     [self updateRecentDecisionForSequenceID:sequenceID
                                         key:@"targetAlreadyFrontmost"
                                       value:targetIsFrontmost ? (clickedWindowBehindSibling ? @"yes-sibling-window" : @"yes") : @"no"];
@@ -4385,9 +4385,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 // YES when the element's window resolves and is not the application's own topmost window, that
-// is, a background sibling of the key window. Three AX reads and one window-list read; used only
+// is, a background sibling of the key window. A non-normal-layer window of pid that is itself the
+// window under the cursor is not a sibling. Three AX reads and one window-list read; used only
 // for clicks on the frontmost application.
-- (BOOL)clickedWindowOfElement:(AXUIElementRef)element isBehindSiblingOfPid:(pid_t)pid {
+- (BOOL)clickedWindowOfElement:(AXUIElementRef)element isBehindSiblingOfPid:(pid_t)pid topmostWindowInfo:(NSDictionary *)topmostWindowInfo {
     if (element == NULL || [self callbackBudgetRemaining] <= 0.0) {
         return NO;
     }
@@ -4401,6 +4402,22 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     CFRelease(window);
     if (!boundsRead) {
         return NO;
+    }
+    // A floating panel, inspector or palette of the application itself (window layer != 0) can
+    // never be the process's front layer-0 window, yet it is in front of every document window:
+    // clicking it is not a click behind a sibling. Only when the clicked AX window is that very
+    // window under the cursor, so a target-owned overlay above a real sibling still counts.
+    if (topmostWindowInfo != nil &&
+        [self layerForWindowInfo:topmostWindowInfo] != 0 &&
+        [self ownerPidForWindowInfo:topmostWindowInfo] == pid) {
+        CGRect panelBounds = [self boundsForWindowInfo:topmostWindowInfo];
+        if (!CGRectIsNull(panelBounds) &&
+            fabs(panelBounds.origin.x - bounds.origin.x) <= 2.0 &&
+            fabs(panelBounds.origin.y - bounds.origin.y) <= 2.0 &&
+            fabs(panelBounds.size.width - bounds.size.width) <= 2.0 &&
+            fabs(panelBounds.size.height - bounds.size.height) <= 2.0) {
+            return NO;
+        }
     }
     return ![self areBounds:bounds frontWindowOfPid:pid outWindowID:NULL];
 }
