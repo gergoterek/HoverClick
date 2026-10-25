@@ -89,6 +89,13 @@ static const float HoverClickAXMessagingTimeoutSeconds = 0.2f;
 // so the callback ends after at most budget + timeout, well inside the tap's own limit (a
 // callback of 827 ms did not trip the tap on 2026-09-14, one of 1315 ms did on 2026-09-20).
 static const NSTimeInterval HoverClickCallbackBudgetSeconds = 0.5;
+// Clock for the callback budget and the bounded waits. CFAbsoluteTimeGetCurrent follows the wall
+// clock, which steps when the date is set or corrected; a backward step would let a wait run
+// past its cap. CLOCK_UPTIME_RAW never steps; that it pauses during sleep does not matter for a
+// budget of under a second.
+static inline NSTimeInterval HoverClickMonotonicSeconds(void) {
+    return (NSTimeInterval)clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e9;
+}
 static const NSUInteger HoverClickRecentDecisionHistoryLimit = 10;
 
 static NSString *HoverClickDisplayVersion(void) {
@@ -1034,7 +1041,7 @@ static pid_t HoverClickAXFocusedApplicationPid(void) {
     CFAbsoluteTime _lastRightMouseDownLogTime;
     CFAbsoluteTime _lastLeftMouseDownSeenTime;
     CFAbsoluteTime _lastRightMouseDownSeenTime;
-    CFAbsoluteTime _lastEventTapCallbackTime;
+    NSTimeInterval _lastEventTapCallbackTime;
     CFAbsoluteTime _lastEventTapRecoveryAttemptTime;
     CFAbsoluteTime _lastBackgroundFocusAttemptTime;
     CFAbsoluteTime _lastSuccessfulBackgroundFocusTime;
@@ -1972,7 +1979,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (void)recordEventTapCallbackWithType:(CGEventType)type event:(CGEventRef)event proxy:(CGEventTapProxy)proxy {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-    _lastEventTapCallbackTime = now;
+    _lastEventTapCallbackTime = HoverClickMonotonicSeconds();
     NSString *returnPolicy = event == NULL ?
         @"returnPolicy=NULL only because event input is NULL" :
         @"returnPolicy=original event unchanged for normal left/right mouse-down";
@@ -3121,7 +3128,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 // The budget starts at the tap callback entry, recorded by recordEventTapCallbackWithType:.
 - (NSTimeInterval)callbackElapsed {
-    return CFAbsoluteTimeGetCurrent() - _lastEventTapCallbackTime;
+    return HoverClickMonotonicSeconds() - _lastEventTapCallbackTime;
 }
 
 - (NSTimeInterval)callbackBudgetRemaining {
@@ -4352,14 +4359,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         toBecomeFrontWindowOfPid:(pid_t)pid
                      outWindowID:(CGWindowID *)outWindowID
                          reached:(BOOL *)reached {
-    CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+    NSTimeInterval start = HoverClickMonotonicSeconds();
     NSTimeInterval cap = MIN(HoverClickRaiseSettleTimeout, [self callbackBudgetRemaining]);
     BOOL done = NO;
     CGRect bounds = CGRectNull;
     if ([self readBounds:&bounds ofAXWindow:window]) {
         while (!done) {
             done = [self areBounds:bounds frontWindowOfPid:pid outWindowID:outWindowID];
-            if (done || CFAbsoluteTimeGetCurrent() - start >= cap) {
+            if (done || HoverClickMonotonicSeconds() - start >= cap) {
                 break;
             }
             usleep(HoverClickActivationWaitPollMicroseconds);
@@ -4368,7 +4375,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (reached != NULL) {
         *reached = done;
     }
-    return CFAbsoluteTimeGetCurrent() - start;
+    return HoverClickMonotonicSeconds() - start;
 }
 
 // Activates the process so that only its front window comes forward. -activateWithOptions:
@@ -4396,7 +4403,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                   toBeInWindow:(AXUIElementRef)window
                                            cap:(NSTimeInterval)requestedCap
                                        reached:(BOOL *)reached {
-    CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+    NSTimeInterval start = HoverClickMonotonicSeconds();
     NSTimeInterval cap = MIN(requestedCap, [self callbackBudgetRemaining]);
     BOOL done = NO;
     while (appElement != NULL && window != NULL && cap > 0.0) {
@@ -4414,7 +4421,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             }
             CFRelease(focusedElement);
         }
-        if (done || CFAbsoluteTimeGetCurrent() - start >= cap) {
+        if (done || HoverClickMonotonicSeconds() - start >= cap) {
             break;
         }
         usleep(HoverClickActivationWaitPollMicroseconds);
@@ -4422,14 +4429,14 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (reached != NULL) {
         *reached = done;
     }
-    return CFAbsoluteTimeGetCurrent() - start;
+    return HoverClickMonotonicSeconds() - start;
 }
 
 // Blocks the tap callback until windowID is the topmost on-screen normal-level window, or until
 // HoverClickActivationWaitTimeout passes. The cap never grows; it shrinks to what is left of the
 // callback budget. Returns the elapsed time; sets *reachedFront.
 - (NSTimeInterval)waitForWindowIDToReachFront:(CGWindowID)windowID reachedFront:(BOOL *)reachedFront {
-    CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+    NSTimeInterval start = HoverClickMonotonicSeconds();
     NSTimeInterval cap = MIN(HoverClickActivationWaitTimeout, [self callbackBudgetRemaining]);
     BOOL reached = NO;
     while (!reached) {
@@ -4447,7 +4454,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             reached = ((CGWindowID)windowNumber.unsignedIntValue == windowID);
             break;
         }
-        if (reached || CFAbsoluteTimeGetCurrent() - start >= cap) {
+        if (reached || HoverClickMonotonicSeconds() - start >= cap) {
             break;
         }
         usleep(HoverClickActivationWaitPollMicroseconds);
@@ -4455,7 +4462,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     if (reachedFront != NULL) {
         *reachedFront = reached;
     }
-    return CFAbsoluteTimeGetCurrent() - start;
+    return HoverClickMonotonicSeconds() - start;
 }
 
 - (void)logTopmostWindowInfo:(NSDictionary *)windowInfo atPoint:(CGPoint)point sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger {
