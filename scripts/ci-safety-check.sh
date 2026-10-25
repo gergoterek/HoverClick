@@ -53,6 +53,17 @@ fi
 echo "No forbidden public trace text found in tracked files."
 
 section "Forbidden Runtime API Check"
+# Every tracked source file is scanned; a new file cannot bring a forbidden call in unchecked.
+rc=0
+source_list=$(/usr/bin/git ls-files -z -- '*.m' '*.mm' '*.c' '*.cpp' '*.h' '*.swift') || rc=$?
+if (( rc != 0 )); then
+  fail "git ls-files failed (exit $rc) while listing source files"
+fi
+source_files=(${(0)source_list})
+(( ${#source_files} )) || fail "No tracked source files found for the runtime API check."
+echo "Source files checked: ${source_files[*]}"
+
+# Posting, creating or replaying events, moving the cursor and observing mouse movement.
 runtime_forbidden=(
   "kCGEventMouseMoved"
   "CGEventPost"
@@ -61,18 +72,42 @@ runtime_forbidden=(
   "CGAssociateMouseAndMouseCursorPosition"
   "CGEventCreateMouseEvent"
   "kCGEventScrollWheel"
+  "CGEventTapPostEvent"
+  "CGPostMouseEvent"
+  "CGPostKeyboardEvent"
+  "CGPostScrollWheelEvent"
+  "CGEventCreate"
+  "IOHIDPostEvent"
+  "addGlobalMonitorForEventsMatchingMask"
+  "addLocalMonitorForEventsMatchingMask"
+  "NSEventMaskMouseMoved"
+  "NSMouseMovedMask"
 )
 
 runtime_hits=""
 for pattern in "${runtime_forbidden[@]}"; do
-  matches=$(/usr/bin/grep -n -F "$pattern" HoverClick.mm || true)
-  if [[ -n "$matches" ]]; then
+  rc=0
+  matches=$(/usr/bin/grep -H -n -F -e "$pattern" -- "${source_files[@]}") || rc=$?
+  if (( rc > 1 )); then
+    fail "grep failed (exit $rc) while checking runtime API pattern"
+  fi
+  if (( rc == 0 )) && [[ -n "$matches" ]]; then
     runtime_hits+="${matches}"$'\n'
   fi
 done
 
+# A setter changes the original event in place; the name may end its line, with the arguments on the next one.
+rc=0
+matches=$(/usr/bin/grep -H -n -E 'CGEventSet[[:alnum:]_]*[[:space:]]*(\(|$)' -- "${source_files[@]}") || rc=$?
+if (( rc > 1 )); then
+  fail "grep failed (exit $rc) while checking event setter calls"
+fi
+if (( rc == 0 )) && [[ -n "$matches" ]]; then
+  runtime_hits+="${matches}"$'\n'
+fi
+
 if [[ -n "$runtime_hits" ]]; then
-  echo "Forbidden runtime API text found in HoverClick.mm:"
+  echo "Forbidden runtime API text found in tracked source files:"
   printf '%s' "$runtime_hits"
   exit 1
 fi
@@ -117,6 +152,47 @@ fi
 tap_call=$(/usr/bin/awk '/CGEventTapCreate[[:space:]]*\(/ { found = 1 } found { printf "%s", $0 } found && /\);/ { exit }' HoverClick.mm | /usr/bin/tr -d '[:space:]')
 [[ "$tap_call" == *"CGEventTapCreate(kCGHIDEventTap,kCGHeadInsertEventTap,kCGEventTapOptionDefault,mask,HoverClickEventTapCallback,"* ]] || fail "CGEventTapCreate does not pass the checked mask: ${tap_call}"
 echo "Event tap mask remains left and right mouse down only."
+
+section "Callback Pass-Through Check"
+callback_body=$(/usr/bin/awk '/^static CGEventRef HoverClickEventTapCallback\(/ { found = 1 } found { print } found && /^}/ { exit }' HoverClick.mm)
+[[ -n "$callback_body" ]] || fail "HoverClickEventTapCallback not found in HoverClick.mm."
+
+# Each return stands on its own line as `return event;`, except the one `return NULL;` for a NULL event.
+rc=0
+callback_returns=$(print -r -- "$callback_body" | /usr/bin/grep -E '(^|[^[:alnum:]_])return([^[:alnum:]_]|$)') || rc=$?
+if (( rc > 1 )); then
+  fail "grep failed (exit $rc) while checking the callback returns"
+fi
+(( rc == 0 )) || fail "HoverClickEventTapCallback has no return statement."
+
+return_event_count=0
+return_null_count=0
+while IFS= read -r line; do
+  case "${line//[[:space:]]/}" in
+    "returnevent;") return_event_count=$(( return_event_count + 1 )) ;;
+    "returnNULL;") return_null_count=$(( return_null_count + 1 )) ;;
+    *) fail "HoverClickEventTapCallback returns something other than the original event: ${line}" ;;
+  esac
+done <<< "$callback_returns"
+(( return_event_count > 0 )) || fail "HoverClickEventTapCallback never returns the original event."
+[[ "$return_null_count" == "1" ]] || fail "Expected exactly one return NULL in HoverClickEventTapCallback, found ${return_null_count}."
+
+callback_flat=$(print -r -- "$callback_body" | /usr/bin/tr -d '[:space:]')
+if [[ "$callback_flat" != *"if(event==NULL){returnNULL;"* && "$callback_flat" != *"if(event==NULL)returnNULL;"* ]]; then
+  fail "HoverClickEventTapCallback returns NULL other than for a NULL event."
+fi
+
+# A write to event, directly or through its address, would make `return event;` return something else.
+rc=0
+event_writes=$(print -r -- "$callback_body" | /usr/bin/grep -E '(^|[^[:alnum:]_.>])event[[:space:]]*([-|&^+*/%]|<<|>>)?=([^=]|$)|(^|[^&])&[[:space:]]*event([^[:alnum:]_]|$)') || rc=$?
+if (( rc > 1 )); then
+  fail "grep failed (exit $rc) while checking writes to event"
+fi
+if (( rc == 0 )); then
+  echo "$event_writes"
+  fail "HoverClickEventTapCallback writes to event or takes its address."
+fi
+echo "Event tap callback returns the original event on every path."
 
 section "Bundle Identifier Check"
 if command -v /usr/bin/plutil >/dev/null 2>&1; then
