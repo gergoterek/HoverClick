@@ -56,22 +56,10 @@ static const CGFloat HoverClickMenuIconTitleSpacing = 8.0;
 static const CGFloat HoverClickMenuRightAccessoryWidth = 14.0;
 static const CGFloat HoverClickMenuImagePointSize = 13.0;
 static const CGFloat HoverClickMenuImageSize = 16.0;
-static const CGFloat HoverClickMenuRightAccessoryX = HoverClickMenuContentWidth - HoverClickMenuTrailingInset - HoverClickMenuRightAccessoryWidth;
-static const CGFloat HoverClickHeaderWidth = HoverClickMenuContentWidth;
-static const CGFloat HoverClickHeaderHeight = 24.0;
-static const CGFloat HoverClickHeaderStatusDotSize = 8.0;
-static const CGFloat HoverClickHeaderStatusDotX = HoverClickMenuLeadingInset + (HoverClickMenuImageSize - HoverClickHeaderStatusDotSize) / 2.0;
-static const CGFloat HoverClickHeaderTextX = HoverClickHeaderStatusDotX + HoverClickHeaderStatusDotSize + HoverClickMenuIconTitleSpacing;
-static const CGFloat HoverClickHeaderVersionWidth = 72.0;
-static const CGFloat HoverClickHeaderVersionX = HoverClickMenuRightAccessoryX + HoverClickMenuRightAccessoryWidth - HoverClickHeaderVersionWidth;
-static const CGFloat HoverClickHeaderLabelY = 4.0;
-static const CGFloat HoverClickHeaderLabelHeight = 18.0;
 static const CGFloat HoverClickMenuRowWidth = HoverClickMenuContentWidth;
 static const CGFloat HoverClickMenuRowHeight = 22.0;
 static const CGFloat HoverClickMenuRowIconX = HoverClickMenuLeadingInset;
 static const CGFloat HoverClickMenuRowTextX = HoverClickMenuRowIconX + HoverClickMenuImageSize + HoverClickMenuIconTitleSpacing;
-static const CGFloat HoverClickMenuRowStateSize = 13.0;
-static const CGFloat HoverClickMenuRowStateX = HoverClickMenuRightAccessoryX + ((HoverClickMenuRightAccessoryWidth - HoverClickMenuRowStateSize) / 2.0);
 static const CGFloat HoverClickSectionHeaderHeight = 18.0;
 static const CGFloat HoverClickSectionHeaderLeadingInset = HoverClickMenuLeadingInset;
 static const CGFloat HoverClickSectionHeaderLabelY = 2.0;
@@ -160,10 +148,6 @@ static NSString *HoverClickInfoBoolStatus(NSString *key) {
     }
 
     return @"missing";
-}
-
-static NSString *HoverClickHeaderVersion(void) {
-    return [NSString stringWithFormat:@"v%@", HoverClickDisplayVersion()];
 }
 
 static NSString *HoverClickDiagnosticTimestamp(CFAbsoluteTime timestamp) {
@@ -275,10 +259,6 @@ static NSImage *HoverClickMenuSystemImage(NSString *symbolName, NSString *fallba
     }
 
     return nil;
-}
-
-static void HoverClickSetMenuItemImage(NSMenuItem *item, NSString *symbolName, NSString *fallbackSymbolName) {
-    item.image = HoverClickMenuSystemImage(symbolName, fallbackSymbolName);
 }
 
 @interface HoverClickMenuRowView : NSView
@@ -633,20 +613,6 @@ static void HoverClickUseSubmenuMenuRow(NSMenuItem *item, NSString *symbolName, 
     item.view = rowView;
 }
 
-// Builds a disabled, non-actionable informational submenu row: no icon, no accessory glyph,
-// and a slightly smaller secondary font so it reads as explanatory text rather than a
-// clickable app entry. The owning NSMenuItem must already have enabled = NO.
-static void HoverClickUseInfoSubmenuRow(NSMenuItem *item, CGFloat rowWidth) {
-    HoverClickMenuRowView *rowView = [[HoverClickMenuRowView alloc] initWithMenuItem:item
-                                                                               image:nil
-                                                                      accessoryTitle:nil
-                                                                      showsStateView:NO
-                                                                            rowWidth:rowWidth];
-    rowView.closesMenuAfterAction = NO;
-    rowView.titleField.font = [NSFont menuFontOfSize:12.0];
-    item.view = rowView;
-}
-
 static void HoverClickSyncMenuRowView(NSMenuItem *item) {
     if ([item.view isKindOfClass:[HoverClickMenuRowView class]]) {
         [(HoverClickMenuRowView *)item.view syncFromMenuItem];
@@ -708,19 +674,6 @@ static NSMenuItem *HoverClickCreateQuickHelpItem(NSString *title, NSString *deta
     item.enabled = NO;
     item.view = container;
     return item;
-}
-
-static NSImage *HoverClickStatusDotImage(void) {
-    NSImage *image = [NSImage imageWithSize:NSMakeSize(HoverClickHeaderStatusDotSize, HoverClickHeaderStatusDotSize)
-                                    flipped:NO
-                             drawingHandler:^BOOL(NSRect dstRect) {
-        [[NSColor systemGreenColor] setFill];
-        NSBezierPath *path = [NSBezierPath bezierPathWithOvalInRect:dstRect];
-        [path fill];
-        return YES;
-    }];
-    image.size = NSMakeSize(HoverClickHeaderStatusDotSize, HoverClickHeaderStatusDotSize);
-    return image;
 }
 
 static NSMenuItem *HoverClickCreateSectionHeaderMenuItem(NSString *title) {
@@ -846,49 +799,6 @@ static NSMenuItem *HoverClickCreateUpdatesSectionHeaderMenuItem(void) {
     [headerView addSubview:rightLabel];
 
     headerItem.view = headerView;
-    return headerItem;
-}
-
-static NSMenuItem *HoverClickCreateHeaderMenuItem(void) {
-    NSRect headerFrame = NSMakeRect(0.0, 0.0, HoverClickHeaderWidth, HoverClickHeaderHeight);
-    NSView *headerView = [[NSView alloc] initWithFrame:headerFrame];
-    headerView.toolTip = HoverClickStableHelp;
-
-    CGFloat statusIconSize = HoverClickMenuImageSize;
-    CGFloat statusIconY = (HoverClickHeaderHeight - statusIconSize) / 2.0;
-    NSImage *statusSymbol = HoverClickMenuSystemImage(@"checkmark.circle.fill", @"checkmark.circle");
-    NSImageView *statusDotView = [[NSImageView alloc] initWithFrame:NSMakeRect(HoverClickMenuLeadingInset,
-                                                                               statusIconY,
-                                                                               statusIconSize,
-                                                                               statusIconSize)];
-    statusDotView.image = statusSymbol ?: HoverClickStatusDotImage();
-    statusDotView.imageScaling = NSImageScaleProportionallyDown;
-    if (@available(macOS 10.14, *)) {
-        if (statusSymbol != nil) {
-            statusDotView.contentTintColor = [NSColor disabledControlTextColor];
-        }
-    }
-    statusDotView.toolTip = HoverClickStableHelp;
-    [headerView addSubview:statusDotView];
-
-    NSTextField *statusLabel = [NSTextField labelWithString:@"HoverClick is running"];
-    statusLabel.frame = NSMakeRect(HoverClickHeaderTextX,
-                                   HoverClickHeaderLabelY,
-                                   HoverClickHeaderWidth - HoverClickHeaderTextX - HoverClickMenuTrailingInset,
-                                   HoverClickHeaderLabelHeight);
-    statusLabel.font = [NSFont menuFontOfSize:0.0];
-    statusLabel.textColor = [NSColor disabledControlTextColor];
-    statusLabel.toolTip = HoverClickStableHelp;
-    [headerView addSubview:statusLabel];
-
-    NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:@""
-                                                        action:nil
-                                                 keyEquivalent:@""];
-    headerItem.enabled = NO;
-    headerItem.indentationLevel = 0;
-    headerItem.state = NSControlStateValueOff;
-    headerItem.view = headerView;
-    headerItem.toolTip = HoverClickStableHelp;
     return headerItem;
 }
 
