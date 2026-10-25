@@ -1,0 +1,8 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>HoverClick</title>
+        <link>https://github.com/gergoterek/HoverClick</link>
+        <description>HoverClick updates. Items are added by scripts/release.sh prepare and served from the latest GitHub Release.</description>
+    </channel>
+</rss>
