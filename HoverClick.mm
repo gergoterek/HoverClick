@@ -5400,14 +5400,17 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                               focusedAppDescription,
                                               focusedAppPid];
     [self updateRecentDecisionForSequenceID:sequenceID key:@"immediateVerification" value:_lastBackgroundFocusImmediateFrontmost];
-    HoverClickLog("HoverClick: %s #%llu %s-to-focus immediate verify frontApp=%s windowList=%s focusedAppAX=%s elapsed=%.0fms",
+    // frontApp= keeps its meaning (window list or AX focused application). passed= is the verdict,
+    // which for a sibling click needs the clicked window to reach the front.
+    HoverClickLog("HoverClick: %s #%llu %s-to-focus immediate verify frontApp=%s windowList=%s focusedAppAX=%s elapsed=%.0fms passed=%s",
                   trigger,
                   sequenceID,
                   trigger,
                   frontImmediate ? "YES" : "NO",
                   activateAttempted ? (activationReachedFront ? "reached" : "not-reached") : "not-applicable",
                   focusedAppDescription.UTF8String,
-                  [self callbackElapsed] * 1000.0);
+                  [self callbackElapsed] * 1000.0,
+                  immediatePassed ? "YES" : "NO");
     NSString *frontAfterDescription = focusedAppDescription;
 
     NSString *triggerLabel = HoverClickFocusTriggerLabel(trigger);
