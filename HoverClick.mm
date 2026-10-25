@@ -4485,6 +4485,11 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 }
 
 - (void)logTopmostWindowInfo:(NSDictionary *)windowInfo atPoint:(CGPoint)point sequenceID:(uint64_t)sequenceID trigger:(const char *)trigger {
+    // Every line below is verbose-only; skip building the window description when it is off.
+    if (!_verboseDiagnostics) {
+        return;
+    }
+
     if (windowInfo == nil) {
         [self diagnosticLog:"HoverClick: %s #%llu topmost CG window not found at x=%.1f y=%.1f",
                             trigger,
