@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-09-20
+Last updated: 2026-10-25
 
 Short, current source of truth. Update this file at the end of every work cycle.
 Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
@@ -13,10 +13,11 @@ Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
 |---|---|
 | Released version | `v1.2.1` / build `43` |
 | `main` commit | `f24f506b3247bafcf00bd1d9610870a299bebdf8` |
-| Branch tip in use | `fix/single-window-focus` @ `936d137` |
+| Branch tip in use | `fix/single-window-focus` @ `afc97b3` |
+| Cleanup branch | `worktree-codebase-audit` (49 commits on `afc97b3`, not merged; see "Codebase audit cleanup" below) |
 | Bundle ID | `com.gergoterek.HoverClick` |
 | Project path | `/Users/terekgergo/Projects/HoverClick` |
-| Signing identity | **None available.** `security find-identity -v -p codesigning` returns `0 valid identities found`. |
+| Signing identity | `HoverClick Dev` (self-signed) is in the login keychain: `security find-identity -v -p codesigning` lists it (measured 2026-10-25). The committed `Makefile` still names the old Apple Development identity; the switch to `HoverClick Dev` is uncommitted in the shared checkout. |
 | Sparkle EdDSA private key | **Not available on this machine.** |
 | Build status | Compiles clean on macOS 26.6.2 / clang 21. Local builds are not signed with a certificate and are not distributable. The process `pid 5918` runs since 2026-09-17 19:04:27 from `HoverClick.app`, whose binary was built 2026-09-17 13:22 and contains the 2026-09-17 menu bar utility clause (inferred from the timestamps and the string in the binary, not from a version marker). It does not contain the 2026-09-20 commits. |
 
@@ -57,6 +58,7 @@ Only one branch is worked on at a time. Finish or park the top item before start
 | # | Branch | State |
 |---|---|---|
 | 1 | `fix/single-window-focus` | **Six commits on the branch, one change still uncommitted** (menu bar utility panels, see below). `93ae113` and `c700de2` verified at runtime. `65c130f` (conditional activation plus a bounded wait) measured on 2026-09-14 and again on 2026-09-20 (22 Chrome attempts, 22 delayed YES). `fd5035d`, `ec56fc9`, `936d137` (2026-09-20 stability audit, see below) **not verified at runtime**. Not merged to `main`. |
+| 1a | `worktree-codebase-audit` | In-place cleanup after the 2026-10-25 audit, on top of `afc97b3`. Static checks PASS, **not run**. Not merged into `fix/single-window-focus`: that branch is under runtime measurement and the shared checkout holds another chat's uncommitted `HoverClick.mm` change. |
 | 2 | `feature/menu-help-tooltips` | Not started. Replace the `Guide` submenu with hover tooltips. **Blocked on a decision — see below.** |
 
 ### Queued: Guide submenu → tooltips
@@ -71,6 +73,33 @@ global monitor, or a floating window — all forbidden by `CLAUDE.md`.
 
 Read `docs/DECISIONS.md`, entry "In-menu tooltips were tried twice and reverted twice",
 before planning this. The first step is a decision, not an implementation.
+
+---
+
+## Codebase audit cleanup, 2026-10-25: static PASS, runtime test pending
+
+Branch `worktree-codebase-audit`, 49 commits on `afc97b3`. What changed, why and what was
+deferred: `docs/DECISIONS.md`, entry 2026-10-25. In short: a stricter safety gate, the menu
+refresh off the tap callback, a monotonic budget clock, a window search that stops at its first
+timeout, honest verification for sibling-window clicks, the frontmost app's own panels passing
+through again and about 200 lines of dead or duplicated code removed. `HoverClick.mm` is still
+one file.
+
+**Verified (static):** `clang++ -Wall -Wextra` 0 warnings (was 6), static analyzer 0,
+`scripts/ci-safety-check.sh` and `scripts/source-only-check.sh` PASS in the worktree.
+
+**Not verified:** anything at runtime. Before merging, run on a build of this branch:
+
+1. The click test in the stability audit section below (steps 2 to 5). Its expected log lines
+   already match this branch: `passed=` on the immediate verify line, `clickedWindowFront=` on
+   the delayed line, `window search timed out stage=` for a blocked window search.
+2. A panel of the frontmost application: TextEdit's Fonts panel or the Preview Inspector in
+   front, click into the panel. Expected `ignored reason=already-frontmost` and no
+   `click-to-focus started` line.
+3. The menu in Light and Dark Mode: the submenu arrows are now dynamic colours and the row and
+   header layout code was merged, so compare every row with a screenshot of the old build.
+4. `Diagnostics > Copy Summary` after a Maccy or excluded-app click with Bypass Key set to Shift:
+   `Last bypass decision` keeps the bypass value through the menu click.
 
 ---
 
@@ -98,7 +127,7 @@ application's key window, and the key window stays whatever Chrome had in front 
 click, whatever the AX operations say. The sibling rose above the covering window within
 0.2 s in **6 of 8** clicks on a window that was not Chrome's topmost, and in **0 of 25**
 clicks on Chrome's topmost window. `focusTargetApp:` now activates the application only when
-the clicked window is already its topmost window (`isWindow:topmostWindowOfPid:outWindowID:`),
+the clicked window is already its topmost window (`isWindow:topmostWindowOfPid:outWindowID:outBounds:`),
 and when it does, `waitForWindowIDToReachFront:reachedFront:` blocks the callback until the
 clicked window is at the front of the CG window list, at most 150 ms, before the original
 event is returned unchanged. The log line `activation decision ... wait=NNms reachedFront=YES/NO`
@@ -199,10 +228,9 @@ within 2.5 s after a focus attempt: Chrome 1 of 22 (`#8828`/`#8829`, Docs, activ
 | `936d137` | No `imageWithSystemSymbolName:` call with a nil name (the last static-analyzer finding). |
 
 **Not changed, decided against or deferred:** the activation policy of `65c130f` (no Chrome
-evidence for the skipped-activation hypothesis: 1 skipped of 22, no repeat after it);
-`SetFrontProcessWithOptions(kSetFrontProcessFrontWindowOnly)` for skipped activations
-(deprecated public API, plausible, unmeasured; needs the click test first); the
-already-frontmost gate still reads `NSWorkspace.frontmostApplication` (`HoverClick.mm`,
+evidence for the skipped-activation hypothesis: 1 skipped of 22, no repeat after it; `afc97b3`
+later added `SetFrontProcessWithOptions(kSetFrontProcessFrontWindowOnly)` for a window that
+becomes the process's front window after the raise); the already-frontmost gate still reads `NSWorkspace.frontmostApplication` (`HoverClick.mm`,
 `handleResolvedElement:`), which can lag a fresh activation by one run-loop turn; window titles
 still logged as `%{public}`.
 
@@ -295,9 +323,6 @@ Keep each of these on its own branch.
   within 0.2 s.
 - Verify `fd5035d` at runtime (AX messaging timeout, callback budget, the new immediate
   verification): the click test in the stability audit section above.
-- Decide whether skipped activations should use `SetFrontProcessWithOptions` with
-  `kSetFrontProcessFrontWindowOnly` (public, deprecated) so that a non-topmost window's
-  application still becomes active before the click; measure the sibling first.
 - Notification Centre: the new skip rule fires for its window, which is not a layer-0 window,
   so activation is skipped. The `c700de2` build activated it and it became frontmost in 2 of 3
   sampled attempts; with `65c130f` BusyCal stayed frontmost in 2 of 2. Decide whether that

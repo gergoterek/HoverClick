@@ -17,6 +17,75 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-10-25: In-place cleanup after a full codebase audit, modularization deferred
+
+**Decision:** A full audit of `HoverClick.mm`, the scripts and the docs was followed by in-place
+fixes only, on branch `worktree-codebase-audit` (based on `afc97b3`, not merged). Thirteen
+reviewers produced 116 raw findings, 78 after duplicates were merged. Each one was checked by
+independent existence, relevance and fix-safety reviews: 53 confirmed and 25 rejected.
+`HoverClick.mm` stays one file. Splitting it waits until the runtime measurement of `afc97b3` is
+closed (CLAUDE.md working rules) and until the other chat's pending patch to
+`nonNormalTopWindowSkipReasonForWindowInfo:` has landed.
+
+Click-path behavior changes, each in its own commit so it can be reverted alone:
+
+- A click on the frontmost application's own non-layer-0 window (panel, palette, inspector)
+  under the cursor passes through as `already-frontmost` again. `afc97b3` had sent it into the
+  full focus attempt with four AX writes aimed at the panel.
+- The window search stops at the first AX read that returns `kAXErrorCannotComplete` (role,
+  window, parent and the sibling test's bounds read) and logs `window search abandoned ...
+  reason=ax-timeout`. The click passes through as `Window Search Timed Out` (`window search timed
+  out stage=sibling-test|window-resolution`). Before, the walk kept reading until the budget ran
+  out or the click was reported as `Already Frontmost` or `No Target Window`.
+- `setLastClickResult:` no longer refreshes the menu. It ran an `SMAppService` status query, a
+  second `AXIsProcessTrusted` and about ten row syncs inside the callback on every click although
+  no row shows the result; `menuWillOpen:` refreshes the menu.
+- The callback budget and the three bounded waits use `CLOCK_UPTIME_RAW`
+  (`HoverClickMonotonicSeconds`). The 20 ms mouse-down debounce no longer drops every click after
+  the wall clock steps backward. Caps and budget are unchanged.
+- The verbose window identity and focused-window readback respect the callback deadline.
+
+Diagnostics-only changes: for a click on a sibling window of the application already in front,
+the immediate verification passes only if the clicked window reached the front (`immediate verify
+... passed=`). The delayed check compares the window id or, when the id was not resolved, the AX
+bounds read before activation (`clickedWindowFront=YES(bounds)`). Before, the pid clause made both
+pass for every such click. A success is counted once per attempt. AX writes that were never
+attempted log `skipped` instead of `illegalArgument`. The last bypass decision is reset only after
+the own-app exit. `Right Click Disabled` no longer replaces the last non-menu result. Budget exits
+name their stage.
+
+Gate changes: `scripts/ci-safety-check.sh` allowlists the exact mask statement and requires one
+tap, one mask assignment and two mask bits with no reassignment and no address taken. The tap
+callback must return `event` on every path except one `return NULL` under the NULL-event guard
+and must not write to `event`. The forbidden API list grew from seven names to about twenty-five
+patterns and covers every tracked source file. A tracked Swift file fails the gate. Git errors fail
+closed. `scripts/source-only-check.sh` finds the Sparkle cache from a worktree and says when it
+skipped the compile.
+
+**Why:** The confirmed findings included a gate that could stay green with a broken tap mask, menu
+work inside the latency-critical callback, a verification that could not fail for the very branch
+under measurement, wall-clock budgets and about 200 lines of dead or duplicated code. Each fix was
+reviewed against its plan and the merged branch was reviewed again from four angles. That second
+review found the semantic conflicts that parallel edits produced (a monotonic deadline compared
+with the wall clock, a timeout reported as `Already Frontmost`).
+
+**Rejected:** Splitting `HoverClick.mm` now. Confirmed but deferred, with the reason in the audit
+report: window titles logged as `%{public}`; the topmost check after `AXRaise` (needs the
+`afc97b3` click test first); the double window resolution for sibling clicks; `AXDialog` compared
+as a role; the bypass key mapping in seven places; the permission reset helper; the overlay skip's
+global sequence; unreachable protected-role checks and window-info parsing duplication (both
+touch the pending patch); the Finder context-menu follow-up that ignores the click target (needs a
+Finder runtime test); Left Click Focus not persisted and the first-launch dialog stack (product
+decisions); the exclusion picker that cannot offer Finder (an enhancement); the old machine path
+in the committed `Makefile` and scripts (fixed by another chat's uncommitted work).
+
+**Evidence:** Static only. `clang++ -Wall -Wextra` warnings went from 6 to 0, the static analyzer
+reports 0, `scripts/ci-safety-check.sh` and `scripts/source-only-check.sh` pass in the worktree and
+the gate's mutant harnesses give the expected verdict in every case (13 mask, 5 reassignment, 36
+callback and API, 15 reviewer cases). Not verified at runtime.
+
+---
+
 ## 2026-09-20 — Bound every AX call in the callback and give the callback a time budget
 
 **Decision:** Every Accessibility element the tap callback touches carries a messaging timeout
