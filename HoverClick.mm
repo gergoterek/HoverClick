@@ -3612,9 +3612,10 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     return NO;
 }
 
-// Records a click that is skipped after its recent decision began, for the skip paths that also
-// record a click-through investigation. -passThroughUnresolvedClickForTopmostWindowInfo: records
-// no investigation and intentionally does not use it.
+// Records a click that is skipped after its recent decision began: decision, click-through
+// investigation, history, completion and last click result, in that order.
+// -passThroughUnresolvedClickForTopmostWindowInfo: makes the same five calls in its own body after
+// its overlay skip record and log line.
 - (void)finishSkippedClickWithSequenceID:(uint64_t)sequenceID
                                  trigger:(const char *)trigger
                                   detail:(NSString *)detail
