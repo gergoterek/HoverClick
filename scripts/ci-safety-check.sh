@@ -78,14 +78,34 @@ section "Stable Event Tap Mask Check"
 /usr/bin/grep -F "kCGEventLeftMouseDown" HoverClick.mm >/dev/null || fail "Missing kCGEventLeftMouseDown."
 /usr/bin/grep -F "kCGEventRightMouseDown" HoverClick.mm >/dev/null || fail "Missing kCGEventRightMouseDown."
 
-mask_block=$(/usr/bin/sed -n '/CGEventMask mask =/,/CGEventTapCreate/p' HoverClick.mm)
-echo "$mask_block" | /usr/bin/grep -F "CGEventMaskBit(kCGEventLeftMouseDown)" >/dev/null || fail "Event tap mask is missing left mouse down."
-echo "$mask_block" | /usr/bin/grep -F "CGEventMaskBit(kCGEventRightMouseDown)" >/dev/null || fail "Event tap mask is missing right mouse down."
-if echo "$mask_block" | /usr/bin/grep -E "MouseMoved|ScrollWheel" >/dev/null; then
-  echo "Event tap mask contains mouse-move or scroll entries:"
-  echo "$mask_block"
+tap_create_count=$(/usr/bin/grep -c -E 'CGEventTapCreate(ForPid|ForPSN)?[[:space:]]*\(' HoverClick.mm || true)
+[[ "$tap_create_count" == "1" ]] || fail "Expected exactly one CGEventTapCreate call, found ${tap_create_count}."
+
+if /usr/bin/grep -n -E 'CGEventTapCreateFor(Pid|PSN)|kCGEventMaskForAllEvents' HoverClick.mm; then
+  fail "Event tap uses a per-process tap or the all-events mask."
+fi
+
+mask_decl_count=$(/usr/bin/grep -c -E 'CGEventMask[[:space:]]+[[:alnum:]_]+[[:space:]]*=' HoverClick.mm || true)
+[[ "$mask_decl_count" == "1" ]] || fail "Expected exactly one CGEventMask assignment, found ${mask_decl_count}."
+
+# The braces keep pipefail from exiting silently when grep finds no match.
+mask_bit_count=$({ /usr/bin/grep -o -E 'CGEventMaskBit[[:space:]]*\(' HoverClick.mm || true; } | /usr/bin/wc -l | /usr/bin/tr -d '[:space:]')
+[[ "$mask_bit_count" == "2" ]] || fail "Expected exactly two CGEventMaskBit uses, found ${mask_bit_count}."
+
+if /usr/bin/grep -n -E '(^|[^[:alnum:]_.>])mask[[:space:]]*([|&^+-]|<<|>>)?=[^=]' HoverClick.mm | /usr/bin/grep -v -F 'CGEventMask mask ='; then
+  fail "The event tap mask is reassigned after its declaration."
+fi
+
+expected_mask='CGEventMaskmask=CGEventMaskBit(kCGEventLeftMouseDown)|CGEventMaskBit(kCGEventRightMouseDown);'
+mask_statement=$(/usr/bin/awk '/CGEventMask mask =/ { found = 1 } found { printf "%s", $0 } found && /;/ { exit }' HoverClick.mm | /usr/bin/tr -d '[:space:]')
+if [[ "$mask_statement" != "$expected_mask" ]]; then
+  echo "Event tap mask is not exactly left and right mouse down:"
+  echo "$mask_statement"
   exit 1
 fi
+
+tap_call=$(/usr/bin/awk '/CGEventTapCreate[[:space:]]*\(/ { found = 1 } found { printf "%s", $0 } found && /\);/ { exit }' HoverClick.mm | /usr/bin/tr -d '[:space:]')
+[[ "$tap_call" == *"CGEventTapCreate(kCGHIDEventTap,kCGHeadInsertEventTap,kCGEventTapOptionDefault,mask,HoverClickEventTapCallback,"* ]] || fail "CGEventTapCreate does not pass the checked mask: ${tap_call}"
 echo "Event tap mask remains left and right mouse down only."
 
 section "Bundle Identifier Check"
