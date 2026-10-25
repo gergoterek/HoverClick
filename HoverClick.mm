@@ -989,7 +989,6 @@ static pid_t HoverClickAXFocusedApplicationPid(void) {
 - (void)showInformationalAlertWithTitle:(NSString *)title message:(NSString *)message;
 - (BOOL)isChromeApplication:(NSRunningApplication *)app;
 - (BOOL)isBuiltInCompatibilityBypassApplication:(NSRunningApplication *)app;
-- (BOOL)isExcludedApplication:(NSRunningApplication *)app;
 - (NSString *)browserContentDiagnosticNoteForTargetApp:(NSRunningApplication *)targetApp
                                                appName:(NSString *)appName
                                                   role:(NSString *)role
@@ -1855,13 +1854,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return;
     }
 
-    if (_accessibilityOnboardingShownThisLaunch) {
-        if (self.accessibilityOnboardingAlert != nil) {
-            [self.accessibilityOnboardingAlert.window makeKeyAndOrderFront:nil];
-        }
-        return;
-    }
-
     _accessibilityOnboardingShownThisLaunch = YES;
     [self requestAccessibilityTrustPrompt];
 
@@ -1873,10 +1865,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     [self setLastClickResult:@"Permission Missing"];
-    if (self.accessibilityOnboardingAlert != nil) {
-        [self.accessibilityOnboardingAlert.window makeKeyAndOrderFront:nil];
-        return;
-    }
 
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"HoverClick Needs Accessibility Permission";
@@ -2342,7 +2330,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     }
 
     CFRunLoopAddSource(CFRunLoopGetCurrent(), _eventTapSource, kCFRunLoopCommonModes);
-    _eventTapInstalled = YES;
     CGEventTapEnable(_eventTap, true);
     [self updateEventTapLifecycleFlags];
     HoverClickLog("HoverClick: click listener activate after install result=%s", _eventTapEnabled ? "enabled" : "disabled");
@@ -2398,7 +2385,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
 
 - (void)handleEventTapDisabledWithReason:(NSString *)reason shouldReenable:(BOOL)shouldReenable {
     _lastEventTapRecoveryAttemptTime = CFAbsoluteTimeGetCurrent();
-    _eventTapEnabled = NO;
     [self updateEventTapLifecycleFlags];
     [self updateMenuTitles];
 
@@ -2445,28 +2431,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                   reason.UTF8String,
                   recovered ? "recreated" : "failed");
     [self updateMenuTitles];
-}
-
-- (void)toggleEventTap:(id)sender {
-    (void)sender;
-
-    [self updateEventTapLifecycleFlags];
-
-    if (_userWantsEventTap && (_eventTapInstalled || _eventTap != NULL || _eventTapSource != NULL)) {
-        _userWantsEventTap = NO;
-        [self removeEventTap];
-        [self setLastClickResult:@"Event Tap Disabled"];
-        return;
-    }
-
-    _userWantsEventTap = YES;
-    if (![self accessibilityTrusted]) {
-        HoverClickLog("HoverClick: click listener needs Accessibility permission; none granted.");
-        [self removeEventTapDueToMissingAccessibilityWithReason:@"toggle"];
-        return;
-    }
-
-    [self installEventTap];
 }
 
 - (void)toggleClickToFocus:(id)sender {
@@ -3497,18 +3461,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     } else {
         // Name fallback for apps that report an empty bundle ID at click time.
         if ([app.localizedName isEqualToString:@"Maccy"]) return YES;
-    }
-    return NO;
-}
-
-// Returns YES if the click target should bypass all HoverClick focus/raise/activate.
-// Covers both built-in entries (Maccy) and user-configured excluded bundle IDs.
-- (BOOL)isExcludedApplication:(NSRunningApplication *)app {
-    if ([self isBuiltInCompatibilityBypassApplication:app]) return YES;
-
-    NSString *bundleID = app.bundleIdentifier;
-    if (bundleID.length > 0) {
-        return [[self userExcludedBundleIDs] containsObject:bundleID];
     }
     return NO;
 }
