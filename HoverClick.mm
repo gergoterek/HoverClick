@@ -3076,26 +3076,30 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         return NO;
     }
 
-    NSSet<NSString *> *volatileMenuOrSetupResults = [NSSet setWithArray:@[
-        @"Permission Missing",
-        @"Permission Missing Pass Through",
-        @"Permission Granted",
-        @"Event Tap Create Failed",
-        @"Event Tap Source Failed",
-        @"Event Tap Enable Failed",
-        @"Event Tap Disabled",
-        @"Diagnostics Summary Copied",
-        @"Ignored Own App",
-        @"Ignored Menu/UI",
-        @"Ignored Non-Normal UI",
-        @"Ignored Transient UI",
-        @"Left Click Focus Enabled",
-        @"Left Click Focus Disabled",
-        @"Right Click Focus Enabled",
-        @"Right Click Focus Disabled",
-        @"Automatic Update Checks Enabled",
-        @"Automatic Update Checks Disabled"
-    ]];
+    static NSSet<NSString *> *volatileMenuOrSetupResults;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        volatileMenuOrSetupResults = [NSSet setWithArray:@[
+            @"Permission Missing",
+            @"Permission Missing Pass Through",
+            @"Permission Granted",
+            @"Event Tap Create Failed",
+            @"Event Tap Source Failed",
+            @"Event Tap Enable Failed",
+            @"Event Tap Disabled",
+            @"Diagnostics Summary Copied",
+            @"Ignored Own App",
+            @"Ignored Menu/UI",
+            @"Ignored Non-Normal UI",
+            @"Ignored Transient UI",
+            @"Left Click Focus Enabled",
+            @"Left Click Focus Disabled",
+            @"Right Click Focus Enabled",
+            @"Right Click Focus Disabled",
+            @"Automatic Update Checks Enabled",
+            @"Automatic Update Checks Disabled"
+        ]];
+    });
 
     return ![volatileMenuOrSetupResults containsObject:result];
 }
