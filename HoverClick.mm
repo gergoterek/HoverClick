@@ -1093,7 +1093,6 @@ static pid_t HoverClickAXFocusedApplicationPid(void) {
     CFAbsoluteTime _lastEventTapRecoveryAttemptTime;
     CFAbsoluteTime _lastBackgroundFocusAttemptTime;
     CFAbsoluteTime _lastSuccessfulBackgroundFocusTime;
-    CFAbsoluteTime _lastSuccessfulFocusTime;
     CFAbsoluteTime _lastRightClickFocusTime;
     pid_t _lastRightClickFocusPid;
     CFAbsoluteTime _lastFinderRightClickTime;
@@ -1130,7 +1129,6 @@ static pid_t HoverClickAXFocusedApplicationPid(void) {
     NSString *_lastBackgroundFocusVerification;
     NSString *_lastBackgroundFocusFailureReason;
     NSString *_lastSuccessfulBackgroundFocusDescription;
-    NSString *_lastSuccessfulFocusDescription;
     NSString *_lastClickResult;
     NSString *_lastNonMenuClickResult;
     NSString *_lastClickThroughInvestigationDescription;
@@ -1220,7 +1218,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastEventTapRecoveryAttemptTime = 0;
     _lastBackgroundFocusAttemptTime = 0;
     _lastSuccessfulBackgroundFocusTime = 0;
-    _lastSuccessfulFocusTime = 0;
     _lastRightClickFocusTime = 0;
     _lastRightClickFocusPid = 0;
     _lastFinderRightClickTime = 0;
@@ -1257,7 +1254,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     _lastBackgroundFocusVerification = @"not applicable";
     _lastBackgroundFocusFailureReason = @"none";
     _lastSuccessfulBackgroundFocusDescription = @"never";
-    _lastSuccessfulFocusDescription = @"never";
     _lastClickResult = @"None";
     _lastNonMenuClickResult = @"None";
     _lastClickThroughInvestigationDescription = @"none";
@@ -4871,8 +4867,6 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
                                     targetPid];
     _lastSuccessfulBackgroundFocusTime = focusTime;
     _lastSuccessfulBackgroundFocusDescription = successDescription;
-    _lastSuccessfulFocusTime = focusTime;
-    _lastSuccessfulFocusDescription = successDescription;
     _totalSuccessfulFocusVerifications++;
     if ([triggerLabel isEqualToString:@"right"]) {
         _lastRightClickFocusPid = targetPid;
