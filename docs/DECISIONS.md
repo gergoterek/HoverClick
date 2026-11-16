@@ -17,6 +17,93 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-11-16: Background Tab Hover, HoverClick shows the tab title itself
+
+**Decision:** New toggle `Background Tab Hover`, on by default. When the pointer rests on a tab
+of a browser window whose application is not frontmost, HoverClick shows its own small,
+click-through card with the tab's title, read through Accessibility. Nothing is focused,
+raised, activated or posted, so keyboard focus stays in the application being typed in.
+Chromium-family browsers only (Chrome, Chromium, Edge, Brave, Vivaldi, Opera), matched by
+bundle identifier prefix.
+
+**Why:** Gergő keeps a Chrome window with vertical tabs on one monitor and types in another
+application on the other. Hovering a tab of that background Chrome window shows nothing; with
+another Chrome window frontmost, the same hover shows Chrome's hover card. Cause, verified in
+Chromium source: `BridgedContentView` registers its mouse tracking area with
+`NSTrackingActiveInActiveApp` for every normal-level window, with the comment "Apple's
+documentation says that NSTrackingActiveAlways is incompatible with NSTrackingCursorUpdate"
+([bridged_content_view.mm](https://raw.githubusercontent.com/chromium/chromium/main/components/remote_cocoa/app_shim/bridged_content_view.mm),
+`-updateCursorTrackingArea`). AppKit therefore delivers no mouse-moved, entered or exited event
+to any Chrome window while Chrome is not the active application. The hover card controller
+(`chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.cc`), the tab view and the
+collapsed vertical strip's expand-on-hover (`vertical_tab_strip_region_view.cc`) have no
+activation check of their own: they never receive the events. No Chrome flag, switch or policy
+was found that changes this. Brave works around the same limit inside its own process with an
+application event monitor
+([brave-browser#56997](https://github.com/brave/brave-browser/issues/56997)); an outside tool
+cannot do that for Chrome.
+
+The two ways to get Chrome's own card both break something:
+
+- Activating the browser on hover moves keyboard focus away from the application being typed
+  in. Gergő rejected this explicitly, and it is AutoRaise behavior (invariant 5).
+- Posting mouse-moved events into the browser process breaks invariant 3 and the CI forbidden
+  list (`CGEventPost`, `CGEventCreate`). It most likely would not work either: a tracking
+  area's activation scope is evaluated by AppKit inside the target process (inferred from
+  Apple's tracking-area documentation, not tested).
+
+**How the feature stays inside the invariants:**
+
+- The tap mask is unchanged (left and right mouse-down). The pointer position comes from a
+  10 Hz `NSTimer` reading `[NSEvent mouseLocation]`. There is no event monitor and no event
+  creation. The timer runs only while a Chromium-family browser is running and is not the
+  frontmost application.
+- All window-list and Accessibility work of the feature runs on a private serial queue,
+  because the tap runs on the main run loop and a main-thread Accessibility wait would delay
+  every click. Accessibility is read-only with a 0.15 s messaging timeout.
+- Hit tests are kept to the browser's own UI wherever the code can tell: the band at the top of
+  the window, and a vertical tab strip that HoverClick learns per window from a probe in the
+  window's leftmost column. What was learned about a browser's windows is dropped when that
+  browser comes to the front, and a known strip that answers with page content is forgotten.
+  A window that shows no tab strip at the probe points gets at most one probe into its page
+  every 30 s. The aim is to keep Accessibility traffic off page content, where it may switch on
+  Chrome's renderer accessibility (inferred, not measured).
+- The card is a non-activating, click-through `NSPanel` at `NSFloatingWindowLevel`.
+  `topmostWindowInfoAtPoint:` skips its window number, and a mouse-down hides it. A visible
+  card is re-checked every 0.8 s and hides when another application becomes active.
+- Logs carry no titles and no coordinates.
+
+**Scope change against an earlier entry:** the 2026-08-03 tooltip entry calls a hover timer and
+a floating window "forbidden by `CLAUDE.md`". The hard invariants never named either; that
+reading came from the tooltip work. This entry allows one pointer-position timer and one
+click-through panel, for this feature only. The `Guide` submenu decision is unchanged;
+reopening it needs its own entry.
+
+**Rejected:**
+
+- An emulated expanded strip that lists every title of a collapsed vertical strip at once.
+  A click-through list would send clicks to the web page under it, and a clickable one would
+  need HoverClick to select tabs through Accessibility actions. Possible later, as its own
+  decision.
+- A 480 pt band along both side edges as the only gate (the first implementation, caught in
+  review before commit): almost every rest on a page would have run a hit test into web
+  content.
+- Safari and other non-Chromium browsers: their tab Accessibility shape was not checked.
+- The domain line of Chrome's own card: the tab's Accessibility node carries only its name.
+
+**Evidence:** Chromium main, 2026-11-16: `bridged_content_view.mm` lines 564–593;
+`ui/accessibility/platform/ax_platform_node_cocoa.mm` maps `kTab` to `AXRadioButton` with
+subrole `AXTabButton` and `kTabList` to `AXTabGroup`; a tab's name is its title plus suffixes
+such as ` - Pinned` (`tab_accessibility.cc`). This machine: Chrome 157.0.8103.78, vertical tabs
+collapsed in the last-used profile (`vertical_tabs.collapsed_state = true`). An Accessibility
+probe at 23:20 could not read tab geometry because the session was locked (frontmost
+`loginwindow`). Static, 2026-11-17: `scripts/source-only-check.sh` PASS, `clang++ -Wall -Wextra`
+0 warnings, `clang++ --analyze` 0 findings, signed build verified with `codesign --verify`.
+Two independent review rounds before the commit. Runtime behavior: **not verified** when this
+entry was written.
+
+---
+
 ## 2026-10-25: In-place cleanup after a full codebase audit, modularization deferred
 
 **Decision:** A full audit of `HoverClick.mm`, the scripts and the docs was followed by in-place

@@ -5,7 +5,7 @@ original click is delivered. Objective-C++ / AppKit / Accessibility API.
 
 - Bundle ID: `com.gergoterek.HoverClick`
 - Released: `v1.2.1` / build `43` (main @ `f24f506`)
-- Main source: `HoverClick.mm` (~4,900 lines, single file)
+- Main source: `HoverClick.mm` (~7,200 lines, single file)
 - Minimum macOS: 12.0
 
 Formerly named PreClickFocus. Some old branches and certificates still use that name.
@@ -42,6 +42,9 @@ not a style issue.
    `CGWarpMouseCursorPosition`, `CGAssociateMouseAndMouseCursorPosition`.
 4. **No cursor movement.** Ever.
 5. **No AutoRaise behavior.** Hovering must never focus anything. Focus only follows a click.
+   The one hover-driven feature, Background Tab Hover (`docs/DECISIONS.md`, 2026-11-16), only
+   reads: a pointer-position timer, read-only Accessibility on a background queue and a
+   click-through card. It never focuses, raises, activates or posts anything.
 6. **No event replay or delayed click delivery.**
 
 If a task appears to require breaking one of these, stop and report it instead.

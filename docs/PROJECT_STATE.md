@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-25
+Last updated: 2026-11-16
 
 Short, current source of truth. Update this file at the end of every work cycle.
 Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
@@ -13,8 +13,8 @@ Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
 |---|---|
 | Released version | `v1.2.1` / build `43` |
 | `main` commit | `f24f506b3247bafcf00bd1d9610870a299bebdf8` |
-| Branch tip in use | `fix/single-window-focus` @ `1d1450e` (`afc97b3` plus the four commits of 2026-10-25 that committed the shared checkout's pending work) |
-| Cleanup branch | `worktree-codebase-audit` (on top of `afc97b3`, `fix/single-window-focus` merged in at `d47e853`, not merged back; see "Codebase audit cleanup" below) |
+| Branch tip in use | `fix/single-window-focus`, fast-forwarded on 2026-11-17 to the Background Tab Hover commit. That commit sits on `worktree-codebase-audit` (`3dac94d`), so the branch now carries the audit cleanup too. |
+| Cleanup branch | `worktree-codebase-audit` (on top of `afc97b3`, `fix/single-window-focus` merged in at `d47e853`). Reached `fix/single-window-focus` on 2026-11-17 through the Background Tab Hover fast-forward, before its own click test; Gergő had run this build daily since 2026-11-11. See "Codebase audit cleanup" below. |
 | Bundle ID | `com.gergoterek.HoverClick` |
 | Project path | `/Users/terekgergo/Projects/HoverClick` |
 | Signing identity | `HoverClick Dev` (self-signed) is in the login keychain: `security find-identity -v -p codesigning` lists it (measured 2026-10-25). The `Makefile` and the build scripts name it since `92c2678`. |
@@ -60,7 +60,8 @@ Only one branch is worked on at a time. Finish or park the top item before start
 | # | Branch | State |
 |---|---|---|
 | 1 | `fix/single-window-focus` | **18 commits on the branch, nothing uncommitted** (the menu bar utility clause is `eae5588`, see below; the build chain and the release pipeline are `92c2678` and `9353eb9`). `93ae113` and `c700de2` verified at runtime. `65c130f` (conditional activation plus a bounded wait) measured on 2026-09-14 and again on 2026-09-20 (22 Chrome attempts, 22 delayed YES). `fd5035d`, `ec56fc9`, `936d137` (2026-09-20 stability audit, see below) **not verified at runtime**. Not merged to `main`. |
-| 1a | `worktree-codebase-audit` | In-place cleanup after the 2026-10-25 audit, on top of `afc97b3`, with `fix/single-window-focus` merged in (`d47e853`). Static checks PASS, **runtime test pending**. Fast-forwards `fix/single-window-focus` once the click test below passes. |
+| 1a | `worktree-codebase-audit` | In-place cleanup after the 2026-10-25 audit, on top of `afc97b3`, with `fix/single-window-focus` merged in (`d47e853`). Static checks PASS, **runtime test pending**. Reached `fix/single-window-focus` on 2026-11-17 with Background Tab Hover; the click test below now runs on the project root's build. |
+| 1b | `worktree-bg-tab-hover` | Background Tab Hover, on top of `worktree-codebase-audit` (`3dac94d`), fast-forwarded into `fix/single-window-focus` on 2026-11-17. Static checks PASS, **runtime test pending**. See "Background Tab Hover" below. |
 | 2 | `feature/menu-help-tooltips` | Not started. Replace the `Guide` submenu with hover tooltips. **Blocked on a decision — see below.** |
 
 ### Queued: Guide submenu → tooltips
@@ -75,6 +76,35 @@ global monitor, or a floating window — all forbidden by `CLAUDE.md`.
 
 Read `docs/DECISIONS.md`, entry "In-menu tooltips were tried twice and reverted twice",
 before planning this. The first step is a decision, not an implementation.
+
+---
+
+## Background Tab Hover, 2026-11-16: built, runtime test pending
+
+**Problem:** with another application frontmost, hovering a tab of a background Chrome window
+shows nothing (no hover card, no expand-on-hover of the collapsed vertical strip). Chrome's
+content view tracks the mouse only while Chrome is the active application. Cause, options and
+limits: `docs/DECISIONS.md`, entry 2026-11-16.
+
+**Change:** toggle `Background Tab Hover` (menu, first section, after Right Click Focus; on by
+default). A 10 Hz pointer-position timer (only while a Chromium-family browser runs in the
+background), Accessibility reads on a private queue, limited to the browser's tab strip zones,
+and a click-through card that shows the hovered tab's title next to the tab. Nothing is
+focused; keyboard focus stays in the frontmost application.
+
+**Runtime test** (Gergő, on the build in the project root):
+
+1. Claude (or any other application) frontmost on one monitor, typing in it; a Chrome window
+   with vertical tabs on the other monitor.
+2. Rest the pointer on a tab of that Chrome window for about 0.3 s, collapsed or expanded
+   strip. Expected: a small card next to the tab with its full title. Typing continues in the
+   frontmost application; Chrome does not come forward.
+3. Move along the strip: the card follows from tab to tab. Move off the strip or click: the
+   card disappears, and the click behaves as before.
+4. Make Chrome frontmost: no HoverClick card (Chrome's own card works there).
+5. Switch `Background Tab Hover` off in the menu: no card.
+6. `Diagnostics > Copy Summary`: the `Background Tab Hover` lines show cards shown, hit tests,
+   Accessibility timeouts and the slowest lookup.
 
 ---
 
@@ -320,6 +350,11 @@ Out of scope for this cycle:
 
 Keep each of these on its own branch.
 
+- Background Tab Hover shows one title at a time. An emulated expanded strip (every title of a
+  collapsed vertical strip at once) needs its own decision: a click-through list would send
+  clicks to the page under it (`docs/DECISIONS.md`, 2026-11-16, "Rejected").
+- Background Tab Hover covers Chromium-family browsers only. Safari's tab Accessibility shape
+  is unchecked.
 - `CLAUDE.md` invariant 6 does not say that a bounded in-callback wait is allowed; the reading
   lives in `docs/DECISIONS.md` (2026-09-14) and is restated in `docs/ARCHITECTURE.md`. Consider
   stating it in `CLAUDE.md` when that file is next edited.
