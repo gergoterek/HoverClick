@@ -77,7 +77,10 @@ that application, learned nothing and repeated on every rest. Changes:
 Still open, by design: an overlay that is opaque to the eye but passes clicks through (a
 dimmer, an annotation layer) does not stop the card. Harness after these changes: 32 of 32 on
 two windows, one under no overlay on the primary screen and one under the Vorssaint shielding
-overlay on the lower screen; a screenshot showed the card there as well.
+overlay on the lower screen; a screenshot showed the card there as well. The same harness with
+Chrome really in the background (13:03, Wispr Flow frontmost, no stand-in): 32 of 32, one
+window under the Floaty overlay and one under the Vorssaint overlay, slowest Accessibility
+part 121 ms.
 
 ---
 
