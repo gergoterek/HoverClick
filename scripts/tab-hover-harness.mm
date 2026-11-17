@@ -97,6 +97,7 @@ static NSString *TopWindowAt(CGPoint p) {
 }
 
 static int gPass = 0, gFail = 0;
+static int gSiteTabs = 0, gSiteExpected = 0, gSiteShown = 0;
 static void Expect(BOOL ok, NSString *what) {
     if (ok) gPass++; else gFail++;
     printf("    %s %s\n", ok ? "OK  " : "FAIL", what.UTF8String);
@@ -190,6 +191,20 @@ int main(int argc, const char **argv) {
                 Expect(visible && shown.length > 0 && [shown isEqualToString:HoverClickTabHoverNormalizedTitle(trimmed)],
                        [NSString stringWithFormat:@"card text equals the tab's title (length %lu)", (unsigned long)shown.length]);
                 if (visible) {
+                    // The site line: what the card shows against a fresh answer from the browser.
+                    pid_t tabPid = 0; AXUIElementGetPid(tab, &tabPid);
+                    OSStatus siteStatus = noErr;
+                    NSDictionary *hosts = HoverClickTabHoverCopyHostsByTitle(tabPid, &siteStatus);
+                    NSString *wantSite = HoverClickTabHoverHostForTitle(hosts, shown);
+                    NSString *shownSite = [[hover valueForKey:@"cardView"] valueForKey:@"detail"];
+                    gSiteTabs++; if (wantSite.length > 0) gSiteExpected++; if (shownSite.length > 0) gSiteShown++;
+                    Expect(wantSite == shownSite || [wantSite isEqualToString:shownSite],
+                           [NSString stringWithFormat:@"site line equals the browser's answer for this title (browser status %d, expected length %lu, shown length %lu)",
+                            (int)siteStatus, (unsigned long)wantSite.length, (unsigned long)shownSite.length]);
+                    CGFloat wantHeight = HoverClickTabHoverCardHeight(HoverClickTabHoverCardTitleLines(shown).count, shownSite.length > 0);
+                    Expect([[hover valueForKey:@"cardFrame"] rectValue].size.height == wantHeight, @"card height fits its lines");
+                }
+                if (visible) {
                     NSRect pf = [[hover valueForKey:@"cardFrame"] rectValue]; NSRect tabCocoa = HoverClickTabHoverCocoaRectFromQuartz(tf, NSMaxY(NSScreen.screens.firstObject.frame));
                     BOOL onAScreen = NO; for (NSScreen *s in NSScreen.screens) if (NSContainsRect(s.frame, pf)) onAScreen = YES;
                     printf("    card frame (cocoa)=%s, left edge %.0f pt from the tab's right edge, top %.0f pt above the tab's, cards shown +%llu\n",
@@ -224,6 +239,7 @@ int main(int argc, const char **argv) {
                hover.axTimeouts, hover.slowestAXDuration * 1000.0);
         [hover stopWithReason:@"harness"];
         Spin(0.2);
+        printf("site line: the browser names a site for %d of %d tabs, the card showed one on %d\n", gSiteExpected, gSiteTabs, gSiteShown);
         printf("RESULT pass=%d fail=%d\n", gPass, gFail);
         return gFail == 0 ? 0 : 3;
     }

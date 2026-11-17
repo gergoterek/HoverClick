@@ -17,6 +17,40 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-11-17: The tab hover card's site line comes from the browser by Apple Event
+
+**Decision:** The card's second line, the site the tab shows, is read from the browser with two
+read-only Apple Events (`title of every tab of every window` and `URL of every tab of every
+window`), sent from a queue of their own, and matched to the hovered tab by title. HoverClick
+gains `NSAppleEventsUsageDescription`; macOS asks the user once per browser. Refused, or with a
+browser that does not answer, the card shows the title alone.
+
+**Why:** Gergő chose it on 2026-11-17 ("Igen, legyen webcím") after reading the cost: a new
+permission prompt, addresses of all tabs passing through HoverClick's memory, and no line for
+two tabs that share a title on different sites.
+
+**Limits kept:** the events only read (`get`); nothing is activated, raised or changed, so the
+hover invariant holds. Addresses are held in memory for at most 30 seconds, shown only as a host
+(`www.` dropped, scheme and host for the browser's own pages, nothing for files), and never
+logged or stored. The log carries only the browser's status code. The hit test waits at most
+0.15 s for the answer; a later one lays the visible card out again.
+
+**Rejected:** a `whose title is` request that would return only the matching tab: the title
+Accessibility reports can carry a state suffix the scripting title lacks, so the match is done
+locally by longest prefix. Matching the window by bounds to read one window's tabs: a third
+event and a race, for a gain only when two windows hold same-titled tabs on different sites.
+
+**Open:** there is no switch for the site line alone; a user who does not want the prompt
+answers it with Don't Allow. The host is shown as `NSURLComponents` gives it, so an
+internationalised name appears in its ASCII form.
+
+**Evidence:** probe on Chrome with 253 tabs in 3 windows: 27 to 34 ms for both events after the
+first (145 ms). Harness (`scripts/tab-hover-harness.sh`, which now also compares the card's site
+line with a fresh answer from the browser and checks the card's height): 22 of 22, a site on 3
+of 3 tabs; the screenshot shows "Meet ..." over `meet.google.com`.
+
+---
+
 ## 2026-11-17: The Background Tab Hover card copies Chrome's own hover card
 
 **Decision:** The card is drawn to the measurements of Chrome's own tab hover card: 257 pt wide,
@@ -28,7 +62,7 @@ lit tab, the card and its shadow in one transparent window.
 **Why:** Gergő's third runtime test: the card appears, but it does not look like the card he
 gets between two Chrome windows, and he wants the two to look the same.
 
-**Not done, waiting for a decision:** the second line of Chrome's card, the site's host. The
+**Not done then, decided later the same day (entry above):** the second line of Chrome's card, the site's host. The
 tab's Accessibility element has no URL (`AXURL` returns no value, measured). The only source
 found is an Apple Event to the browser (`URL of tabs`), which needs the Automation permission
 for HoverClick, reads the address of every tab of the window and has to be matched to the

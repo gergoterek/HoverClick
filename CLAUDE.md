@@ -43,8 +43,8 @@ not a style issue.
 4. **No cursor movement.** Ever.
 5. **No AutoRaise behavior.** Hovering must never focus anything. Focus only follows a click.
    The one hover-driven feature, Background Tab Hover (`docs/DECISIONS.md`, 2026-11-16), only
-   reads: a pointer-position timer, read-only Accessibility on a background queue and a
-   click-through card. It never focuses, raises, activates or posts anything.
+   reads: a pointer-position timer, read-only Accessibility on a background queue, a read-only
+   Apple Event to the browser for the card's site line and a click-through card. It never focuses, raises, activates or posts anything.
 6. **No event replay or delayed click delivery.**
 
 If a task appears to require breaking one of these, stop and report it instead.

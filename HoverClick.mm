@@ -1450,6 +1450,8 @@ typedef NS_ENUM(NSInteger, HoverClickTabHoverStripKind) {
 // mouse), not the browser.
 @property(nonatomic) BOOL covered;
 @property(nonatomic, copy) NSString *title;
+// The site line under the title, nil when the browser gave none.
+@property(nonatomic, copy) NSString *detail;
 - (void)takeTabFromRead:(HoverClickTabHoverHit *)read;
 @end
 
@@ -2517,6 +2519,301 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
 
 @end
 
+// The second line of Chrome's own card: the site the tab shows. A tab's Accessibility element
+// carries no address (AXURL has no value, measured 2026-11-17), so the browser is asked with two
+// read-only Apple Events for the titles and addresses of its tabs (27 to 34 ms for 253 tabs,
+// measured). They are matched to the hovered tab by title; when two tabs with that title show
+// different sites, the line is left out. macOS asks the user once per browser whether HoverClick
+// may do this; without the permission the card shows the title alone. Addresses stay in memory
+// for HoverClickTabHoverHostKeep seconds and are never logged or stored.
+static const NSTimeInterval HoverClickTabHoverHostFresh = 1.0;
+static const NSTimeInterval HoverClickTabHoverHostKeep = 30.0;
+static const NSTimeInterval HoverClickTabHoverHostWait = 0.15;
+static const NSTimeInterval HoverClickTabHoverHostEventTimeout = 1.0;
+static const NSTimeInterval HoverClickTabHoverHostRetryInterval = 5.0;
+static const NSTimeInterval HoverClickTabHoverHostRetryIntervalDenied = 60.0;
+static const NSUInteger HoverClickTabHoverHostMaxLength = 120;
+static const NSInteger HoverClickTabHoverHostMaxTabs = 4000;
+static const DescType HoverClickTabHoverScriptingTabClass = 'CrTb';
+static const DescType HoverClickTabHoverScriptingTitleProperty = 'pnam';
+static const DescType HoverClickTabHoverScriptingURLProperty = 'URL ';
+
+// What Chrome's card shows for an address: the host without "www." for web pages, scheme and host
+// for the browser's own pages, nothing for the rest.
+static NSString *HoverClickTabHoverHostFromURL(NSString *urlString) {
+    if (urlString.length == 0) {
+        return nil;
+    }
+    NSURLComponents *components = [NSURLComponents componentsWithString:urlString];
+    NSString *scheme = components.scheme.lowercaseString;
+    NSString *host = components.host.lowercaseString;
+    if (scheme.length == 0 || host.length == 0) {
+        return nil;
+    }
+    NSString *text = nil;
+    if ([scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"]) {
+        if ([host hasPrefix:@"www."] && [[host substringFromIndex:4] containsString:@"."]) {
+            host = [host substringFromIndex:4];
+        }
+        text = components.port != nil ? [NSString stringWithFormat:@"%@:%@", host, components.port] : host;
+    } else if ([scheme isEqualToString:@"file"]) {
+        return nil;
+    } else {
+        text = [NSString stringWithFormat:@"%@://%@", scheme, host];
+    }
+    return HoverClickSafePrefix(text, HoverClickTabHoverHostMaxLength);
+}
+
+static NSAppleEventDescriptor *HoverClickTabHoverObjectSpecifier(DescType desiredClass,
+                                                                 NSAppleEventDescriptor *container,
+                                                                 DescType keyForm,
+                                                                 NSAppleEventDescriptor *keyData) {
+    NSAppleEventDescriptor *record = [NSAppleEventDescriptor recordDescriptor];
+    [record setDescriptor:[NSAppleEventDescriptor descriptorWithTypeCode:desiredClass] forKeyword:keyAEDesiredClass];
+    [record setDescriptor:container forKeyword:keyAEContainer];
+    [record setDescriptor:[NSAppleEventDescriptor descriptorWithEnumCode:keyForm] forKeyword:keyAEKeyForm];
+    [record setDescriptor:keyData forKeyword:keyAEKeyData];
+    return [record coerceToDescriptorType:typeObjectSpecifier];
+}
+
+// "get <property> of every tab of every window": a list of lists, one per window. A read: the
+// browser is not activated and nothing in it changes.
+static NSAppleEventDescriptor *HoverClickTabHoverCopyTabProperty(pid_t pid, DescType property, OSStatus *outStatus) {
+    DescType every = kAEAll;
+    NSAppleEventDescriptor *all = [NSAppleEventDescriptor descriptorWithDescriptorType:typeAbsoluteOrdinal
+                                                                                 bytes:&every
+                                                                                length:sizeof(every)];
+    NSAppleEventDescriptor *windows = HoverClickTabHoverObjectSpecifier(cWindow, [NSAppleEventDescriptor nullDescriptor],
+                                                                        formAbsolutePosition, all);
+    NSAppleEventDescriptor *tabs = HoverClickTabHoverObjectSpecifier(HoverClickTabHoverScriptingTabClass, windows,
+                                                                     formAbsolutePosition, all);
+    NSAppleEventDescriptor *value = HoverClickTabHoverObjectSpecifier(typeProperty, tabs, formPropertyID,
+                                                                      [NSAppleEventDescriptor descriptorWithTypeCode:property]);
+    if (value == nil) {
+        *outStatus = errAECoercionFail;
+        return nil;
+    }
+    NSAppleEventDescriptor *event = [NSAppleEventDescriptor appleEventWithEventClass:kAECoreSuite
+                                                                             eventID:kAEGetData
+                                                                    targetDescriptor:[NSAppleEventDescriptor descriptorWithProcessIdentifier:pid]
+                                                                            returnID:kAutoGenerateReturnID
+                                                                       transactionID:kAnyTransactionID];
+    [event setParamDescriptor:value forKeyword:keyDirectObject];
+    NSError *error = nil;
+    NSAppleEventDescriptor *reply = [event sendEventWithOptions:(NSAppleEventSendWaitForReply | NSAppleEventSendNeverInteract)
+                                                        timeout:HoverClickTabHoverHostEventTimeout
+                                                          error:&error];
+    if (reply == nil) {
+        *outStatus = error != nil && error.code != 0 ? (OSStatus)error.code : errAEEventFailed;
+        return nil;
+    }
+    NSAppleEventDescriptor *errorNumber = [reply paramDescriptorForKeyword:keyErrorNumber];
+    if (errorNumber != nil && errorNumber.int32Value != 0) {
+        *outStatus = (OSStatus)errorNumber.int32Value;
+        return nil;
+    }
+    NSAppleEventDescriptor *result = [reply paramDescriptorForKeyword:keyDirectObject];
+    *outStatus = result != nil ? noErr : errAEEventFailed;
+    return result;
+}
+
+// Title to site for every tab of one browser. A title whose tabs show different sites, or no
+// site, maps to NSNull. nil when the browser did not answer; *outStatus says why.
+static NSDictionary<NSString *, id> *HoverClickTabHoverCopyHostsByTitle(pid_t pid, OSStatus *outStatus) {
+    NSAppleEventDescriptor *titles = HoverClickTabHoverCopyTabProperty(pid, HoverClickTabHoverScriptingTitleProperty, outStatus);
+    if (titles == nil) {
+        return nil;
+    }
+    NSAppleEventDescriptor *addresses = HoverClickTabHoverCopyTabProperty(pid, HoverClickTabHoverScriptingURLProperty, outStatus);
+    if (addresses == nil) {
+        return nil;
+    }
+
+    NSMutableDictionary<NSString *, id> *hosts = [NSMutableDictionary dictionary];
+    NSInteger windowCount = titles.numberOfItems;
+    if (windowCount != addresses.numberOfItems) {
+        // A window opened or closed between the two answers: no pairing can be trusted.
+        return hosts;
+    }
+    NSInteger tabsRead = 0;
+    for (NSInteger windowIndex = 1; windowIndex <= windowCount; windowIndex++) {
+        NSAppleEventDescriptor *windowTitles = [titles descriptorAtIndex:windowIndex];
+        NSAppleEventDescriptor *windowAddresses = [addresses descriptorAtIndex:windowIndex];
+        NSInteger tabCount = windowTitles.numberOfItems;
+        if (tabCount != windowAddresses.numberOfItems) {
+            continue;
+        }
+        for (NSInteger tabIndex = 1; tabIndex <= tabCount && tabsRead < HoverClickTabHoverHostMaxTabs; tabIndex++, tabsRead++) {
+            NSString *title = HoverClickTabHoverNormalizedTitle([windowTitles descriptorAtIndex:tabIndex].stringValue);
+            if (title == nil) {
+                continue;
+            }
+            id host = HoverClickTabHoverHostFromURL([windowAddresses descriptorAtIndex:tabIndex].stringValue) ?: (id)NSNull.null;
+            id known = hosts[title];
+            hosts[title] = (known == nil || [known isEqual:host]) ? host : (id)NSNull.null;
+        }
+    }
+    return hosts;
+}
+
+// The site for a tab title as Accessibility reports it. Chromium may append a state to that
+// title ("... - Audio playing"), so when no tab has exactly this title the longest tab title it
+// starts with is taken.
+static NSString *HoverClickTabHoverHostForTitle(NSDictionary<NSString *, id> *hosts, NSString *title) {
+    if (hosts.count == 0 || title.length == 0) {
+        return nil;
+    }
+    id host = hosts[title];
+    if (host == nil) {
+        NSUInteger bestLength = 0;
+        for (NSString *candidate in hosts) {
+            if (candidate.length > bestLength && candidate.length < title.length &&
+                [title hasPrefix:candidate] && [title characterAtIndex:candidate.length] == ' ') {
+                bestLength = candidate.length;
+                host = hosts[candidate];
+            }
+        }
+    }
+    return [host isKindOfClass:[NSString class]] ? host : nil;
+}
+
+@interface HoverClickTabHoverHostEntry : NSObject
+@property(nonatomic, copy) NSDictionary<NSString *, id> *hosts;
+@property(nonatomic) NSTimeInterval fetchedAt;
+@property(nonatomic) NSTimeInterval failedAt;
+@property(nonatomic) OSStatus status;
+@property(nonatomic) BOOL inFlight;
+@end
+
+@implementation HoverClickTabHoverHostEntry
+@end
+
+// Asks browsers for their tabs' sites on its own queue and remembers the answers. Safe from any
+// thread.
+@interface HoverClickTabHoverHostLookup : NSObject
+// Called on the main thread after a browser answered or refused.
+@property(nonatomic, copy) void (^onUpdate)(pid_t pid, OSStatus status);
+// The site for the tab, waiting up to wait seconds for the browser's answer when nothing fresh is
+// known. Not for the main thread.
+- (NSString *)hostForPid:(pid_t)pid title:(NSString *)title wait:(NSTimeInterval)wait;
+// The site as last answered; never asks and never waits.
+- (NSString *)knownHostForPid:(pid_t)pid title:(NSString *)title;
+- (void)forgetPid:(pid_t)pid;
+- (void)forgetAll;
+@end
+
+@implementation HoverClickTabHoverHostLookup {
+    dispatch_queue_t _queue;
+    NSCondition *_condition;
+    NSMutableDictionary<NSNumber *, HoverClickTabHoverHostEntry *> *_entries;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self != nil) {
+        dispatch_queue_attr_t attributes = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,
+                                                                                  QOS_CLASS_USER_INITIATED,
+                                                                                  0);
+        _queue = dispatch_queue_create("com.gergoterek.HoverClick.background-tab-hover-sites", attributes);
+        _condition = [[NSCondition alloc] init];
+        _entries = [NSMutableDictionary dictionary];
+    }
+    return self;
+}
+
+- (NSString *)hostForPid:(pid_t)pid title:(NSString *)title wait:(NSTimeInterval)wait {
+    if (pid <= 0 || title.length == 0) {
+        return nil;
+    }
+    [_condition lock];
+    NSTimeInterval now = HoverClickMonotonicSeconds();
+    HoverClickTabHoverHostEntry *entry = _entries[@(pid)];
+    if (entry == nil) {
+        entry = [[HoverClickTabHoverHostEntry alloc] init];
+        _entries[@(pid)] = entry;
+    }
+    BOOL fresh = entry.hosts != nil && now - entry.fetchedAt < HoverClickTabHoverHostFresh;
+    if (!fresh && !entry.inFlight) {
+        NSTimeInterval retryInterval = entry.status == errAEEventNotPermitted ? HoverClickTabHoverHostRetryIntervalDenied
+                                                                              : HoverClickTabHoverHostRetryInterval;
+        if (entry.failedAt <= 0.0 || now - entry.failedAt >= retryInterval) {
+            entry.inFlight = YES;
+            dispatch_async(_queue, ^{
+                [self fetchForPid:pid entry:entry];
+            });
+        }
+    }
+    if (!fresh && entry.inFlight && wait > 0.0) {
+        NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:wait];
+        while (entry.inFlight) {
+            if (![_condition waitUntilDate:deadline]) {
+                break;
+            }
+        }
+    }
+    NSString *host = [self lockedHostInEntry:entry title:title];
+    [_condition unlock];
+    return host;
+}
+
+- (NSString *)knownHostForPid:(pid_t)pid title:(NSString *)title {
+    [_condition lock];
+    NSString *host = [self lockedHostInEntry:_entries[@(pid)] title:title];
+    [_condition unlock];
+    return host;
+}
+
+- (NSString *)lockedHostInEntry:(HoverClickTabHoverHostEntry *)entry title:(NSString *)title {
+    if (entry.hosts == nil || HoverClickMonotonicSeconds() - entry.fetchedAt >= HoverClickTabHoverHostKeep) {
+        return nil;
+    }
+    return HoverClickTabHoverHostForTitle(entry.hosts, title);
+}
+
+- (void)fetchForPid:(pid_t)pid entry:(HoverClickTabHoverHostEntry *)entry {
+    OSStatus status = noErr;
+    NSDictionary<NSString *, id> *hosts = nil;
+    @autoreleasepool {
+        hosts = HoverClickTabHoverCopyHostsByTitle(pid, &status);
+    }
+    NSTimeInterval now = HoverClickMonotonicSeconds();
+    [_condition lock];
+    entry.inFlight = NO;
+    entry.status = status;
+    if (hosts != nil) {
+        entry.hosts = hosts;
+        entry.fetchedAt = now;
+        entry.failedAt = 0.0;
+    } else {
+        entry.hosts = nil;
+        entry.failedAt = now;
+    }
+    [_condition broadcast];
+    [_condition unlock];
+
+    void (^onUpdate)(pid_t, OSStatus) = self.onUpdate;
+    if (onUpdate != nil) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            onUpdate(pid, status);
+        });
+    }
+}
+
+- (void)forgetPid:(pid_t)pid {
+    [_condition lock];
+    [_entries removeObjectForKey:@(pid)];
+    [_condition unlock];
+}
+
+- (void)forgetAll {
+    [_condition lock];
+    [_entries removeAllObjects];
+    [_condition unlock];
+}
+
+@end
+
+
 @interface HoverClickBackgroundTabHover : NSObject
 @property(nonatomic, weak) HoverClickAppDelegate *host;
 @property(nonatomic, readonly, getter=isRunning) BOOL running;
@@ -2525,6 +2822,10 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
 @property(nonatomic, readonly) uint64_t hitTestsFoundTab;
 // Hit tests where the pointer reached another application above the browser window.
 @property(nonatomic, readonly) uint64_t hitTestsCovered;
+// Cards shown with the site line, and the browser's last answer to the request for it (0: fine,
+// -1743: the user did not allow HoverClick to ask the browser).
+@property(nonatomic, readonly) uint64_t cardsWithSite;
+@property(nonatomic, readonly) OSStatus siteStatus;
 @property(nonatomic, readonly) uint64_t axTimeouts;
 @property(nonatomic, readonly) NSTimeInterval slowestAXDuration;
 - (void)startWithReason:(NSString *)reason;
@@ -2548,6 +2849,10 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
     BOOL _backgroundBrowserRunning;
     HoverClickTabHoverPanel *_panel;
     HoverClickTabHoverCardView *_cardView;
+    HoverClickTabHoverHostLookup *_hostLookup;
+    // The hit the visible card was laid out for.
+    HoverClickTabHoverHit *_cardHit;
+    BOOL _siteStatusLogged;
     // The card's own frame on screen (Cocoa coordinates); the panel is larger, it also holds the
     // lit tab and room for the shadow.
     NSRect _cardFrame;
@@ -2579,6 +2884,11 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
                                                                                   0);
         _queue = dispatch_queue_create("com.gergoterek.HoverClick.background-tab-hover", attributes);
         _windowEntries = [NSMutableDictionary dictionary];
+        _hostLookup = [[HoverClickTabHoverHostLookup alloc] init];
+        __weak HoverClickBackgroundTabHover *weakSelf = self;
+        _hostLookup.onUpdate = ^(pid_t pid, OSStatus status) {
+            [weakSelf siteLookupDidUpdateForPid:pid status:status];
+        };
         _screensAsleep = CGDisplayIsAsleep(CGMainDisplayID()) ? YES : NO;
 
         [NSNotificationCenter.defaultCenter addObserver:self
@@ -2653,6 +2963,7 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
     dispatch_async(_queue, ^{
         [windowEntries removeAllObjects];
     });
+    [_hostLookup forgetAll];
     HoverClickLog("HoverClick: background tab hover stopped reason=%s", (reason.length > 0 ? reason : @"unknown").UTF8String);
 }
 
@@ -2745,6 +3056,7 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
     }
     [_panel orderOut:nil];
     _cardVisible = NO;
+    _cardHit = nil;
     if (quickReshow) {
         _lastCardHiddenTime = HoverClickMonotonicSeconds();
     }
@@ -2856,6 +3168,7 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
     CGWindowID cardWindowID = cardWindowNumber > 0 ? (CGWindowID)cardWindowNumber : kCGNullWindowID;
     NSSet<NSString *> *excludedBundleIDs = [NSSet setWithArray:[self.host userExcludedBundleIDs] ?: @[]];
     NSMutableDictionary<NSNumber *, HoverClickTabHoverWindowEntry *> *windowEntries = _windowEntries;
+    HoverClickTabHoverHostLookup *hostLookup = _hostLookup;
     __weak HoverClickBackgroundTabHover *weakSelf = self;
 
     dispatch_async(_queue, ^{
@@ -2863,6 +3176,9 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
         @autoreleasepool {
             hit = HoverClickTabHoverRunHitTest(point, frontmostPid, ownPid, cardWindowID, excludedBundleIDs,
                                                windowEntries);
+            if (hit.outcome == HoverClickTabHoverOutcomeTab) {
+                hit.detail = [hostLookup hostForPid:hit.pid title:hit.title wait:HoverClickTabHoverHostWait];
+            }
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             [weakSelf finishHitTest:hit atPoint:point generation:generation];
@@ -2916,6 +3232,30 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
     }
     [self hideCardQuickReshow:YES];
     [self markTestedAtPoint:requestPoint now:now];
+}
+
+// The browser answered after the card went up, or its answer changed: lay the card out again.
+- (void)siteLookupDidUpdateForPid:(pid_t)pid status:(OSStatus)status {
+    if (status != _siteStatus || !_siteStatusLogged) {
+        _siteStatusLogged = YES;
+        [self.host diagnosticLog:"HoverClick: background tab hover site line status=%d", (int)status];
+    }
+    _siteStatus = status;
+    HoverClickTabHoverHit *hit = _cardHit;
+    if (!_running || !_cardVisible || hit == nil || hit.pid != pid) {
+        return;
+    }
+    NSString *host = [_hostLookup knownHostForPid:pid title:hit.title];
+    if (host == hit.detail || [host isEqualToString:hit.detail]) {
+        return;
+    }
+    hit.detail = host;
+    NSTimeInterval checkedTime = _cardCheckedTime;
+    if (![self showCardForHit:hit]) {
+        [self hideCardQuickReshow:NO];
+        return;
+    }
+    _cardCheckedTime = checkedTime;
 }
 
 - (void)recordAXTimeout {
@@ -2976,7 +3316,8 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
         return NO;
     }
     CGFloat width = HoverClickTabHoverCardWidth;
-    CGFloat height = HoverClickTabHoverCardHeight(titleLineCount, NO);
+    BOOL hasDetail = hit.detail.length > 0;
+    CGFloat height = HoverClickTabHoverCardHeight(titleLineCount, hasDetail);
 
     NSRect tab = HoverClickTabHoverCocoaRectFromQuartz(hit.tabRect, NSMaxY(primaryScreen.frame));
     // The screen under the pointer, else the one holding the tab's centre, else the primary one.
@@ -3029,7 +3370,7 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
                                      -HoverClickTabHoverCardShadowMargin, -HoverClickTabHoverCardShadowMargin);
     HoverClickTabHoverCardView *cardView = _cardView;
     cardView.title = hit.title;
-    cardView.detail = nil;
+    cardView.detail = hasDetail ? hit.detail : nil;
     cardView.dark = [[NSApp.effectiveAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]]
                         isEqualToString:NSAppearanceNameDarkAqua];
     cardView.cardRect = NSMakeRect(NSMinX(cardFrame) - NSMinX(windowFrame), NSMaxY(windowFrame) - NSMaxY(cardFrame),
@@ -3051,9 +3392,13 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
             panel.animator.alphaValue = 1.0;
         } completionHandler:nil];
         _cardsShown++;
+        if (hasDetail) {
+            _cardsWithSite++;
+        }
     }
 
     _cardVisible = YES;
+    _cardHit = hit;
     _cardFrame = cardFrame;
     _cardPid = hit.pid;
     _cardTabRect = hit.tabRect;
@@ -3136,6 +3481,9 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
         return;
     }
     NSRunningApplication *terminated = notification.userInfo[NSWorkspaceApplicationKey];
+    if (terminated != nil) {
+        [_hostLookup forgetPid:terminated.processIdentifier];
+    }
     [self updateBrowserPresenceWithFrontmostPid:NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier
                                   terminatedPid:terminated != nil ? terminated.processIdentifier : 0];
 }
@@ -5036,7 +5384,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Left Click Focus: %@\n"
              "Right Click Focus: %@\n"
              "Background Tab Hover: %@\n"
-             "Background Tab Hover counters: running=%@ cards shown=%llu hit tests started=%llu hit tests found tab=%llu other app under pointer=%llu AX timeouts=%llu slowest AX part=%.0fms\n"
+             "Background Tab Hover counters: running=%@ cards shown=%llu hit tests started=%llu hit tests found tab=%llu other app under pointer=%llu cards with site=%llu site status=%d AX timeouts=%llu slowest AX part=%.0fms\n"
              "Bypass Key: %@\n"
              "Last bypass decision: %@\n"
              "Excluded Apps (built-in compatibility): %@\n"
@@ -5128,6 +5476,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             self.backgroundTabHover.hitTestsStarted,
             self.backgroundTabHover.hitTestsFoundTab,
             self.backgroundTabHover.hitTestsCovered,
+            self.backgroundTabHover.cardsWithSite,
+            (int)self.backgroundTabHover.siteStatus,
             self.backgroundTabHover.axTimeouts,
             self.backgroundTabHover.slowestAXDuration * 1000.0,
             _bypassKey == HoverClickBypassKeyShift ? @"shift" : _bypassKey == HoverClickBypassKeyFn ? @"fn" : @"off",

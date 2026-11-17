@@ -20,6 +20,8 @@
 	<string>12.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>HoverClick asks the browser which site a background tab shows, to put it under the tab's title in the hover card. It only reads; it never controls the browser.</string>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>HoverClick needs Accessibility access to focus windows before click delivery.</string>
 	<key>SUAllowsAutomaticUpdates</key>
