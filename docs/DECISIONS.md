@@ -59,6 +59,26 @@ Accessibility part 27 ms. A screenshot showed the card on screen. Both runs had 
 frontmost, so the harness stood Finder in as the frontmost application. Static:
 `scripts/source-only-check.sh` PASS, `clang++ -Wall -Wextra` 0 warnings.
 
+**After an independent review, the same day** (on top of `6101afd`): the review found no
+reference-counting error, no main-thread Accessibility call and no deadlock. Its real finding:
+the two probe points were not checked against the window list, so with another application's
+normal window over the Chrome window's left edge or top left corner the probe would have asked
+that application, learned nothing and repeated on every rest. Changes:
+
+- The window list is read once per hit test. A probe point is used only where the list shows
+  the same window as the normal-level window. The top probe tries four points along the top
+  band; with none free, a window known as horizontal stays horizontal. The left probe moves
+  right past a window covering the leftmost column and ends at the pointer itself.
+- A higher window of the browser's own process over the point (picture in picture, a floating
+  bar) ends the test: the hit test's process check could not tell it from the tab strip.
+- The special case for higher windows of the frontmost application is gone; the system-wide
+  hit test decides there too, so a frontmost overlay tool does not switch the card off.
+
+Still open, by design: an overlay that is opaque to the eye but passes clicks through (a
+dimmer, an annotation layer) does not stop the card. Harness after these changes: 32 of 32 on
+two windows, one under no overlay on the primary screen and one under the Vorssaint shielding
+overlay on the lower screen; a screenshot showed the card there as well.
+
 ---
 
 ## 2026-11-17: Background Tab Hover finds the tab in Chrome's vertical strip by its frame

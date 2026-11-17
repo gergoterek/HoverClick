@@ -1219,15 +1219,22 @@ static BOOL HoverClickTabHoverIsPointerSurface(NSDictionary *windowInfo, CGRect 
 // overlays there (measured 2026-11-17: Floaty at layer 3 over a whole Chrome window, Vorssaint at
 // the shielding level over half a screen) and the window list cannot tell such an overlay from a
 // menu. What the pointer really reaches is settled afterwards by the system-wide Accessibility
-// hit test, which follows event routing. A higher window of HoverClick itself (its menu) ends the
-// search with nil, so the feature never sends an Accessibility request to its own process.
-static NSDictionary *HoverClickTabHoverWindowAtPoint(CGPoint point,
-                                                     CGWindowID cardWindowID,
-                                                     pid_t ownPid,
-                                                     CGRect *outBounds) {
-    NSArray *windowList = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly |
-                                                                       kCGWindowListExcludeDesktopElements,
-                                                                       kCGNullWindowID));
+// hit test, which follows event routing. Two cases end the search with nil. A higher window of
+// HoverClick itself (its menu): the feature never sends an Accessibility request to its own
+// process. A higher window of the same process as the window found (the browser's own floating
+// window, such as picture in picture): the hit test's process check could not tell the two apart.
+static NSArray *HoverClickTabHoverCopyWindowList(void) {
+    return CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly |
+                                                        kCGWindowListExcludeDesktopElements,
+                                                        kCGNullWindowID));
+}
+
+static NSDictionary *HoverClickTabHoverWindowInList(NSArray *windowList,
+                                                    CGPoint point,
+                                                    CGWindowID cardWindowID,
+                                                    pid_t ownPid,
+                                                    CGRect *outBounds) {
+    NSMutableSet<NSNumber *> *higherOwners = nil;
     for (NSDictionary *windowInfo in windowList) {
         NSNumber *alphaNumber = windowInfo[(__bridge NSString *)kCGWindowAlpha];
         if (alphaNumber != nil && alphaNumber.doubleValue <= 0.0) {
@@ -1250,11 +1257,21 @@ static NSDictionary *HoverClickTabHoverWindowAtPoint(CGPoint point,
         if (HoverClickTabHoverIsPointerSurface(windowInfo, bounds)) {
             continue;
         }
+        NSNumber *owner = windowInfo[(__bridge NSString *)kCGWindowOwnerPID];
         if ([windowInfo[(__bridge NSString *)kCGWindowLayer] integerValue] != 0) {
-            if ([windowInfo[(__bridge NSString *)kCGWindowOwnerPID] intValue] == ownPid) {
+            if (owner.intValue == ownPid) {
                 return nil;
             }
+            if (owner != nil) {
+                if (higherOwners == nil) {
+                    higherOwners = [NSMutableSet set];
+                }
+                [higherOwners addObject:owner];
+            }
             continue;
+        }
+        if (owner != nil && [higherOwners containsObject:owner]) {
+            return nil;
         }
 
         *outBounds = bounds;
@@ -2036,6 +2053,26 @@ static BOOL HoverClickTabHoverReadShowsVerticalStrip(HoverClickTabHoverHit *read
     return NO;
 }
 
+// YES when the window list shows the window with windowKey as the normal-level window at point.
+// Otherwise *outOtherBounds (optional) gets the bounds of the window found there, or CGRectNull.
+static BOOL HoverClickTabHoverListShowsWindow(NSArray *windowList,
+                                              CGPoint point,
+                                              CGWindowID cardWindowID,
+                                              pid_t ownPid,
+                                              NSNumber *windowKey,
+                                              CGRect *outOtherBounds) {
+    CGRect bounds = CGRectNull;
+    NSDictionary *windowInfo = HoverClickTabHoverWindowInList(windowList, point, cardWindowID, ownPid, &bounds);
+    if (windowInfo != nil &&
+        [windowInfo[(__bridge NSString *)kCGWindowNumber] unsignedIntValue] == windowKey.unsignedIntValue) {
+        return YES;
+    }
+    if (outOtherBounds != NULL) {
+        *outOtherBounds = windowInfo != nil ? bounds : CGRectNull;
+    }
+    return NO;
+}
+
 typedef NS_ENUM(NSInteger, HoverClickTabHoverProbeResult) {
     HoverClickTabHoverProbeResultNoCard = 0,
     HoverClickTabHoverProbeResultTestPoint = 1,
@@ -2046,13 +2083,22 @@ typedef NS_ENUM(NSInteger, HoverClickTabHoverProbeResult) {
 // strip. A window of unknown kind first gets a top probe; a horizontal strip there means no card.
 // Then a left probe in the window's leftmost column at the point's height: a vertical strip
 // there is stored, and the point is tested only when it lies inside that strip. A top probe that
-// another application covers settles nothing and the left probe follows; a covered left probe
-// leaves the window's entry alone, so the next rest probes again.
+//
+// A probe point is used only where the window list shows this window as the normal-level window,
+// so a probe does not send its hit test to another application's window lying over that spot. The
+// top probe tries a few points along the top band; with none free, a window known as horizontal
+// stays horizontal and any other goes on to the left probe. The left probe moves right, past a
+// window that covers the leftmost column, and ends at the pointer itself, which the caller has
+// already matched to this window. A left probe that still answers from another application leaves
+// the window's entry alone.
 static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRef systemWide,
                                                                    pid_t pid,
                                                                    CGPoint point,
                                                                    CGRect windowBounds,
                                                                    NSNumber *windowKey,
+                                                                   NSArray *windowList,
+                                                                   CGWindowID cardWindowID,
+                                                                   pid_t ownPid,
                                                                    NSMutableDictionary<NSNumber *, HoverClickTabHoverWindowEntry *> *windowEntries,
                                                                    NSTimeInterval now,
                                                                    HoverClickTabHoverHit *hit) {
@@ -2060,24 +2106,39 @@ static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRe
     // Any kind but vertical re-checks the top band first: a horizontal strip found there settles
     // the window without a left probe, which in such a window would land on page content.
     if (entry == nil || entry.kind != HoverClickTabHoverStripKindVertical) {
-        CGPoint topPoint = HoverClickTabHoverPointInside(CGPointMake(CGRectGetMinX(windowBounds) + HoverClickTabHoverTopProbeX,
-                                                                     CGRectGetMinY(windowBounds) + HoverClickTabHoverTopProbeY),
-                                                         windowBounds);
-        HoverClickTabHoverHit *top = [[HoverClickTabHoverHit alloc] init];
-        HoverClickTabHoverReadTab(systemWide, pid, topPoint, windowBounds, HoverClickTabHoverStripKindUnknown, NO, top);
-        if (top.timedOut) {
+        CGFloat width = windowBounds.size.width;
+        const CGFloat offsets[4] = {HoverClickTabHoverTopProbeX, HoverClickTabHoverProbeBand, width * 0.5,
+                                    width - HoverClickTabHoverTopProbeX};
+        HoverClickTabHoverHit *top = nil;
+        for (int index = 0; index < 4 && top == nil; index++) {
+            CGPoint topPoint = HoverClickTabHoverPointInside(CGPointMake(CGRectGetMinX(windowBounds) + offsets[index],
+                                                                         CGRectGetMinY(windowBounds) + HoverClickTabHoverTopProbeY),
+                                                             windowBounds);
+            if (!HoverClickTabHoverListShowsWindow(windowList, topPoint, cardWindowID, ownPid, windowKey, NULL)) {
+                continue;
+            }
+            top = [[HoverClickTabHoverHit alloc] init];
+            HoverClickTabHoverReadTab(systemWide, pid, topPoint, windowBounds, HoverClickTabHoverStripKindUnknown, NO, top);
+        }
+        if (top != nil && top.timedOut) {
             hit.timedOut = YES;
             HoverClickTabHoverEntryForWindow(windowEntries, windowKey, windowBounds).checkedAt = now;
             return HoverClickTabHoverProbeResultNoCard;
         }
-        // A tab of a horizontal strip, or the empty part of a strip that is wider than tall (the
-        // point missed the tabs, e.g. a window with few tabs), settles the window as horizontal.
-        BOOL topStripIsHorizontal = !CGRectIsNull(top.tabGroupRect) &&
-                                    top.tabGroupRect.size.width > top.tabGroupRect.size.height;
-        if ((top.outcome == HoverClickTabHoverOutcomeTab && !top.vertical) ||
-            (top.outcome != HoverClickTabHoverOutcomeTab && topStripIsHorizontal)) {
-            entry = HoverClickTabHoverEntryForWindow(windowEntries, windowKey, windowBounds);
-            entry.kind = HoverClickTabHoverStripKindHorizontal;
+        if (top != nil && !top.covered) {
+            // A tab of a horizontal strip, or the empty part of a strip that is wider than tall (the
+            // point missed the tabs, e.g. a window with few tabs), settles the window as horizontal.
+            BOOL topStripIsHorizontal = !CGRectIsNull(top.tabGroupRect) &&
+                                        top.tabGroupRect.size.width > top.tabGroupRect.size.height;
+            if ((top.outcome == HoverClickTabHoverOutcomeTab && !top.vertical) ||
+                (top.outcome != HoverClickTabHoverOutcomeTab && topStripIsHorizontal)) {
+                entry = HoverClickTabHoverEntryForWindow(windowEntries, windowKey, windowBounds);
+                entry.kind = HoverClickTabHoverStripKindHorizontal;
+                entry.checkedAt = now;
+                return HoverClickTabHoverProbeResultNoCard;
+            }
+        } else if (entry != nil && entry.kind == HoverClickTabHoverStripKindHorizontal) {
+            // The top band cannot be read now: keep what is known instead of probing the page.
             entry.checkedAt = now;
             return HoverClickTabHoverProbeResultNoCard;
         }
@@ -2086,8 +2147,23 @@ static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRe
     CGPoint leftPoint = HoverClickTabHoverPointInside(CGPointMake(CGRectGetMinX(windowBounds) + HoverClickTabHoverLeftProbeX,
                                                                   point.y),
                                                       windowBounds);
+    for (int attempt = 0; attempt < 4 && leftPoint.x < point.x; attempt++) {
+        CGRect coveringBounds = CGRectNull;
+        if (HoverClickTabHoverListShowsWindow(windowList, leftPoint, cardWindowID, ownPid, windowKey, &coveringBounds)) {
+            break;
+        }
+        CGFloat next = CGRectIsNull(coveringBounds) ? point.x : CGRectGetMaxX(coveringBounds) + HoverClickTabHoverStripSlack;
+        leftPoint.x = (attempt == 3 || next <= leftPoint.x) ? point.x : MIN(next, point.x);
+    }
+    if (leftPoint.x > point.x) {
+        leftPoint.x = point.x;
+    }
     HoverClickTabHoverHit *left = [[HoverClickTabHoverHit alloc] init];
     HoverClickTabHoverReadTab(systemWide, pid, leftPoint, windowBounds, HoverClickTabHoverStripKindUnknown, NO, left);
+    if (left.covered && leftPoint.x != point.x) {
+        left = [[HoverClickTabHoverHit alloc] init];
+        HoverClickTabHoverReadTab(systemWide, pid, point, windowBounds, HoverClickTabHoverStripKindUnknown, NO, left);
+    }
     if (left.covered) {
         hit.covered = YES;
         return HoverClickTabHoverProbeResultNoCard;
@@ -2162,7 +2238,8 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     HoverClickTabHoverHit *hit = [[HoverClickTabHoverHit alloc] init];
 
     CGRect windowBounds = CGRectNull;
-    NSDictionary *windowInfo = HoverClickTabHoverWindowAtPoint(point, cardWindowID, ownPid, &windowBounds);
+    NSArray *windowList = HoverClickTabHoverCopyWindowList();
+    NSDictionary *windowInfo = HoverClickTabHoverWindowInList(windowList, point, cardWindowID, ownPid, &windowBounds);
     if (windowInfo == nil) {
         return hit;
     }
@@ -2206,7 +2283,8 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     NSTimeInterval axStart = HoverClickMonotonicSeconds();
     HoverClickTabHoverProbeResult probe = HoverClickTabHoverProbeResultTestPoint;
     if (!direct) {
-        probe = HoverClickTabHoverProbeWindow(systemWide, pid, point, windowBounds, windowKey, windowEntries, now, hit);
+        probe = HoverClickTabHoverProbeWindow(systemWide, pid, point, windowBounds, windowKey, windowList, cardWindowID, ownPid,
+                                              windowEntries, now, hit);
     }
     if (probe == HoverClickTabHoverProbeResultTestPoint) {
         HoverClickTabHoverWindowEntry *current = windowEntries[windowKey];
