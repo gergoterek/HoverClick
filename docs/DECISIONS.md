@@ -76,7 +76,10 @@ found no reference-counting error, no unbounded loop and nothing that blocks the
 
 Probe after the change, Chrome frontmost: 122 of 122 checks pass in a second run, and all 122
 strip walks were recognised as browser UI. The first run had one failure, an Accessibility
-messaging timeout while Gergő was working in Chrome; it did not repeat.
+messaging timeout while Gergő was working in Chrome; it did not repeat. The same probe with
+Chrome in the background (Claude frontmost, 12:33): 60 of 60 checks pass, all 60 strips
+recognised as browser UI, slowest 55 ms, so the strip shape is the same while Chrome is
+inactive. The card itself had not been seen at runtime yet.
 
 ---
 
