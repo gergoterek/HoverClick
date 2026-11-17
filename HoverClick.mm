@@ -1451,16 +1451,270 @@ typedef NS_ENUM(NSInteger, HoverClickTabHoverStripKind) {
 @implementation HoverClickTabHoverWindowEntry
 @end
 
+// Chromium lays two empty groups the size of the whole strip over a vertical tab strip, so an AX
+// hit test over a tab answers with one of those groups, never with the tab (measured on Chrome,
+// 2026-11-17). The tab under the point is then found by frame, down from the strip through the
+// children that hold the point. Chromium lists tab views in creation order, so a tab opened later
+// can sit at the end of the list but in the middle of the strip: a long list is binary searched
+// first and checked child by child when that misses. The search stays inside the strip, which
+// holds browser UI only, and is bounded in depth, messages and time.
+static const int HoverClickTabHoverStripSearchMaxDepth = 10;
+static const int HoverClickTabHoverStripSearchMaxMessages = 256;
+static const NSTimeInterval HoverClickTabHoverStripSearchMaxSeconds = 0.25;
+static const CFIndex HoverClickTabHoverStripSearchLinearLimit = 12;
+// How far outside its frame a point still counts as on a tab: Chromium leaves 2 pt between tabs.
+static const CGFloat HoverClickTabHoverTabSlack = 2.0;
+
+typedef struct {
+    CGPoint point;
+    BOOL vertical;
+    int messages;
+    NSTimeInterval deadline;
+    BOOL timedOut;
+    BOOL stopped;
+} HoverClickTabHoverStripSearch;
+
+typedef NS_ENUM(NSInteger, HoverClickTabHoverNodeKind) {
+    HoverClickTabHoverNodeKindOther = 0,
+    HoverClickTabHoverNodeKindTab = 1,
+    HoverClickTabHoverNodeKindContainer = 2
+};
+
+// Where a child lies along the strip, seen from the point.
+typedef NS_ENUM(NSInteger, HoverClickTabHoverAxisOrder) {
+    HoverClickTabHoverAxisOrderUnknown = 0,
+    HoverClickTabHoverAxisOrderBefore = 1,
+    HoverClickTabHoverAxisOrderHolds = 2,
+    HoverClickTabHoverAxisOrderAfter = 3
+};
+
+// Counts one more AX message. NO, and the search stops, once a limit is reached; running out of
+// time counts as a timeout.
+static BOOL HoverClickTabHoverStripSearchSpend(HoverClickTabHoverStripSearch *search) {
+    if (search->stopped) {
+        return NO;
+    }
+    if (HoverClickMonotonicSeconds() >= search->deadline) {
+        search->timedOut = YES;
+        search->stopped = YES;
+        return NO;
+    }
+    if (search->messages >= HoverClickTabHoverStripSearchMaxMessages) {
+        search->stopped = YES;
+        return NO;
+    }
+    search->messages++;
+    return YES;
+}
+
+// Chromium's tab group header is an AXTabGroup without children; it is entered like any group.
+static BOOL HoverClickTabHoverIsContainerRole(CFTypeRef role) {
+    return HoverClickTabHoverValueEquals(role, kAXGroupRole) ||
+           HoverClickTabHoverValueEquals(role, kAXScrollAreaRole) ||
+           HoverClickTabHoverValueEquals(role, kAXTabGroupRole) ||
+           HoverClickTabHoverValueEquals(role, kAXListRole);
+}
+
+// Kind and frame of one node. The frame stays CGRectNull when the node has no position; a node
+// without area keeps its position for ordering but is neither a tab nor a container.
+static void HoverClickTabHoverReadNode(AXUIElementRef node,
+                                       HoverClickTabHoverStripSearch *search,
+                                       HoverClickTabHoverNodeKind *outKind,
+                                       CGRect *outFrame) {
+    static NSArray<NSString *> *nodeNames;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        nodeNames = @[(__bridge NSString *)kAXRoleAttribute,
+                      (__bridge NSString *)kAXSubroleAttribute,
+                      (__bridge NSString *)kAXPositionAttribute,
+                      (__bridge NSString *)kAXSizeAttribute];
+    });
+
+    *outKind = HoverClickTabHoverNodeKindOther;
+    *outFrame = CGRectNull;
+    if (!HoverClickTabHoverStripSearchSpend(search)) {
+        return;
+    }
+
+    CFTypeRef values[4];
+    AXError error = HoverClickTabHoverCopyAttributes(node, nodeNames, values);
+    if (error == kAXErrorCannotComplete) {
+        search->timedOut = YES;
+        search->stopped = YES;
+        HoverClickTabHoverReleaseValues(values, 4);
+        return;
+    }
+
+    CGRect frame = CGRectNull;
+    if (error == kAXErrorSuccess && HoverClickTabHoverRectValue(values[2], values[3], &frame)) {
+        *outFrame = frame;
+        if (frame.size.width > 0.0 && frame.size.height > 0.0) {
+            if (HoverClickTabHoverValueEquals(values[0], kAXRadioButtonRole) &&
+                HoverClickTabHoverValueEquals(values[1], CFSTR("AXTabButton"))) {
+                *outKind = HoverClickTabHoverNodeKindTab;
+            } else if (HoverClickTabHoverIsContainerRole(values[0])) {
+                *outKind = HoverClickTabHoverNodeKindContainer;
+            }
+        }
+    }
+    HoverClickTabHoverReleaseValues(values, 4);
+}
+
+static AXUIElementRef HoverClickTabHoverCopyTabInChildren(AXUIElementRef node,
+                                                          int depth,
+                                                          HoverClickTabHoverStripSearch *search);
+
+// One child: the child itself when it is the tab under the point, else the search inside it when it
+// is a container holding the point. *outOrder tells where the child lies along the strip.
+static AXUIElementRef HoverClickTabHoverCopyTabAtChild(CFArrayRef children,
+                                                       CFIndex index,
+                                                       int depth,
+                                                       HoverClickTabHoverStripSearch *search,
+                                                       HoverClickTabHoverAxisOrder *outOrder) {
+    *outOrder = HoverClickTabHoverAxisOrderUnknown;
+    CFTypeRef child = CFArrayGetValueAtIndex(children, index);
+    if (child == NULL || CFGetTypeID(child) != AXUIElementGetTypeID()) {
+        return NULL;
+    }
+
+    HoverClickTabHoverNodeKind kind = HoverClickTabHoverNodeKindOther;
+    CGRect frame = CGRectNull;
+    HoverClickTabHoverReadNode((AXUIElementRef)child, search, &kind, &frame);
+    if (search->stopped || CGRectIsNull(frame)) {
+        return NULL;
+    }
+
+    CGFloat position = search->vertical ? search->point.y : search->point.x;
+    CGFloat start = search->vertical ? CGRectGetMinY(frame) : CGRectGetMinX(frame);
+    CGFloat end = search->vertical ? CGRectGetMaxY(frame) : CGRectGetMaxX(frame);
+    if (position < start - HoverClickTabHoverTabSlack) {
+        *outOrder = HoverClickTabHoverAxisOrderAfter;
+    } else if (position > end + HoverClickTabHoverTabSlack) {
+        *outOrder = HoverClickTabHoverAxisOrderBefore;
+    } else {
+        *outOrder = HoverClickTabHoverAxisOrderHolds;
+    }
+
+    if (!CGRectContainsPoint(CGRectInset(frame, -HoverClickTabHoverTabSlack, -HoverClickTabHoverTabSlack), search->point)) {
+        return NULL;
+    }
+    if (kind == HoverClickTabHoverNodeKindTab) {
+        return (AXUIElementRef)CFRetain(child);
+    }
+    if (kind == HoverClickTabHoverNodeKindContainer) {
+        return HoverClickTabHoverCopyTabInChildren((AXUIElementRef)child, depth + 1, search);
+    }
+    return NULL;
+}
+
+// Binary search along the strip for a child at the point's position. A child without a position is
+// stepped over towards the end of the range. NULL also when the list turns out not to be in order.
+static AXUIElementRef HoverClickTabHoverCopyTabInOrderedChildren(CFArrayRef children,
+                                                                 CFIndex count,
+                                                                 int depth,
+                                                                 HoverClickTabHoverStripSearch *search) {
+    CFIndex low = 0;
+    CFIndex high = count - 1;
+    while (low <= high) {
+        CFIndex middle = low + (high - low) / 2;
+        CFIndex index = middle;
+        HoverClickTabHoverAxisOrder order = HoverClickTabHoverAxisOrderUnknown;
+        for (; index <= high; index++) {
+            AXUIElementRef tab = HoverClickTabHoverCopyTabAtChild(children, index, depth, search, &order);
+            if (tab != NULL || search->stopped) {
+                return tab;
+            }
+            if (order != HoverClickTabHoverAxisOrderUnknown) {
+                break;
+            }
+        }
+
+        if (order == HoverClickTabHoverAxisOrderBefore) {
+            low = index + 1;
+        } else if (order == HoverClickTabHoverAxisOrderAfter || order == HoverClickTabHoverAxisOrderUnknown) {
+            high = middle - 1;
+        } else {
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
+static AXUIElementRef HoverClickTabHoverCopyTabInChildren(AXUIElementRef node,
+                                                          int depth,
+                                                          HoverClickTabHoverStripSearch *search) {
+    if (depth >= HoverClickTabHoverStripSearchMaxDepth || !HoverClickTabHoverStripSearchSpend(search)) {
+        return NULL;
+    }
+
+    AXUIElementSetMessagingTimeout(node, HoverClickTabHoverAXTimeoutSeconds);
+    CFTypeRef value = NULL;
+    AXError error = AXUIElementCopyAttributeValue(node, kAXChildrenAttribute, &value);
+    if (error == kAXErrorCannotComplete) {
+        search->timedOut = YES;
+        search->stopped = YES;
+    }
+    if (error != kAXErrorSuccess || value == NULL || CFGetTypeID(value) != CFArrayGetTypeID()) {
+        if (value != NULL) {
+            CFRelease(value);
+        }
+        return NULL;
+    }
+
+    CFArrayRef children = (CFArrayRef)value;
+    CFIndex count = CFArrayGetCount(children);
+    AXUIElementRef tab = NULL;
+    if (count > HoverClickTabHoverStripSearchLinearLimit) {
+        tab = HoverClickTabHoverCopyTabInOrderedChildren(children, count, depth, search);
+    }
+    for (CFIndex index = 0; index < count && tab == NULL && !search->stopped; index++) {
+        HoverClickTabHoverAxisOrder order = HoverClickTabHoverAxisOrderUnknown;
+        tab = HoverClickTabHoverCopyTabAtChild(children, index, depth, search, &order);
+    }
+    CFRelease(children);
+    return tab;
+}
+
+// The tab under point inside the strip, retained, or NULL. *outTimedOut is set when a read hit the
+// messaging timeout or the search ran out of time. outMessages may be NULL.
+static AXUIElementRef HoverClickTabHoverCopyTabInStrip(AXUIElementRef strip,
+                                                       CGRect stripRect,
+                                                       CGPoint point,
+                                                       int *outMessages,
+                                                       BOOL *outTimedOut) {
+    HoverClickTabHoverStripSearch search = {};
+    search.point = point;
+    search.vertical = stripRect.size.height > stripRect.size.width;
+    search.deadline = HoverClickMonotonicSeconds() + HoverClickTabHoverStripSearchMaxSeconds;
+    AXUIElementRef tab = HoverClickTabHoverCopyTabInChildren(strip, 0, &search);
+    if (outMessages != NULL) {
+        *outMessages = search.messages;
+    }
+    *outTimedOut = search.timedOut;
+    return tab;
+}
+
+// A tab further below the window top than a horizontal strip reaches is in a vertical strip, and so
+// is a tab whose strip is taller than wide.
+static BOOL HoverClickTabHoverTabIsVertical(CGRect tabRect, CGRect stripRect, CGRect windowBounds) {
+    if (CGRectGetMinY(tabRect) - CGRectGetMinY(windowBounds) > HoverClickTabHoverHorizontalStripDepth) {
+        return YES;
+    }
+    return !CGRectIsNull(stripRect) && stripRect.size.height > stripRect.size.width;
+}
+
 // The Accessibility part of a hit test: the element under the point, the tab button above it, its
 // title and frame, and the tab strip's orientation. Chromium maps a tab to AXRadioButton with the
 // AXTabButton subrole and the tab strip to AXTabGroup. With knownKind vertical or horizontal the
-// walk up to the tab strip is skipped. When the point holds the strip itself and no tab, the
-// strip's frame is still read, so a probe into an empty part of a vertical strip recognises it.
-// A read that hits the messaging timeout ends the walk and marks the answer timed out.
+// walk up to the tab strip is skipped. When the walk ends on the strip without a tab, the strip's
+// frame is read, so a probe into a vertical strip recognises it, and with searchStrip the strip is
+// searched for the tab under the point (HoverClickTabHoverCopyTabInStrip). A read that hits the
+// messaging timeout ends the walk and marks the answer timed out.
 static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
                                       CGPoint point,
                                       CGRect windowBounds,
                                       HoverClickTabHoverStripKind knownKind,
+                                      BOOL searchStrip,
                                       HoverClickTabHoverHit *hit,
                                       BOOL *outAppElementInvalid) {
     static NSArray<NSString *> *walkNames;
@@ -1543,23 +1797,35 @@ static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
         CFRelease(element);
     }
 
+    BOOL foundInStrip = NO;
     if (tab == NULL) {
-        if (strip != NULL) {
-            if (!hit.timedOut) {
-                CFTypeRef frameValues[2];
-                error = HoverClickTabHoverCopyAttributes(strip, frameNames, frameValues);
-                CGRect stripRect = CGRectNull;
-                if (error == kAXErrorCannotComplete) {
-                    hit.timedOut = YES;
-                } else if (HoverClickTabHoverRectValue(frameValues[0], frameValues[1], &stripRect) &&
-                           stripRect.size.width > 0.0 && stripRect.size.height > 0.0) {
-                    hit.tabGroupRect = stripRect;
-                }
-                HoverClickTabHoverReleaseValues(frameValues, 2);
-            }
-            CFRelease(strip);
+        if (strip == NULL) {
+            return;
         }
-        return;
+        if (!hit.timedOut) {
+            CFTypeRef frameValues[2];
+            error = HoverClickTabHoverCopyAttributes(strip, frameNames, frameValues);
+            CGRect stripRect = CGRectNull;
+            if (error == kAXErrorCannotComplete) {
+                hit.timedOut = YES;
+            } else if (HoverClickTabHoverRectValue(frameValues[0], frameValues[1], &stripRect) &&
+                       stripRect.size.width > 0.0 && stripRect.size.height > 0.0) {
+                hit.tabGroupRect = stripRect;
+            }
+            HoverClickTabHoverReleaseValues(frameValues, 2);
+
+            if (searchStrip && !hit.timedOut && !CGRectIsNull(hit.tabGroupRect) &&
+                CGRectContainsPoint(hit.tabGroupRect, point)) {
+                BOOL searchTimedOut = NO;
+                tab = HoverClickTabHoverCopyTabInStrip(strip, hit.tabGroupRect, point, NULL, &searchTimedOut);
+                hit.timedOut = hit.timedOut || searchTimedOut;
+                foundInStrip = (tab != NULL);
+            }
+        }
+        CFRelease(strip);
+        if (tab == NULL) {
+            return;
+        }
     }
 
     CFTypeRef tabValues[4];
@@ -1581,7 +1847,7 @@ static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
                   tabRect.size.height >= HoverClickTabHoverMinTabSide &&
                   tabRect.size.width <= HoverClickTabHoverMaxTabSide &&
                   tabRect.size.height <= HoverClickTabHoverMaxTabSide &&
-                  CGRectContainsPoint(CGRectInset(tabRect, -2.0, -2.0), point);
+                  CGRectContainsPoint(CGRectInset(tabRect, -HoverClickTabHoverTabSlack, -HoverClickTabHoverTabSlack), point);
     if (!usable) {
         if (tabParent != NULL) {
             CFRelease(tabParent);
@@ -1590,15 +1856,16 @@ static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
     }
 
     BOOL vertical = NO;
-    if (knownKind == HoverClickTabHoverStripKindVertical || knownKind == HoverClickTabHoverStripKindHorizontal) {
+    if (foundInStrip) {
+        vertical = HoverClickTabHoverTabIsVertical(tabRect, hit.tabGroupRect, windowBounds);
+    } else if (knownKind == HoverClickTabHoverStripKindVertical || knownKind == HoverClickTabHoverStripKindHorizontal) {
         vertical = (knownKind == HoverClickTabHoverStripKindVertical);
         if (tabParent != NULL) {
             CFRelease(tabParent);
         }
     } else {
-        // Orientation from the enclosing tab strip; without one, a tab further down than a
-        // horizontal strip reaches belongs to a vertical strip.
-        vertical = (CGRectGetMinY(tabRect) - CGRectGetMinY(windowBounds)) > HoverClickTabHoverHorizontalStripDepth;
+        // Orientation from the enclosing tab strip and the tab's depth in the window.
+        CGRect groupRect = CGRectNull;
         AXUIElementRef ancestor = tabParent;
         for (int step = 0; ancestor != NULL && step < HoverClickTabHoverMaxTabGroupSteps; step++) {
             CFTypeRef groupValues[4];
@@ -1610,11 +1877,11 @@ static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
             }
 
             if (HoverClickTabHoverValueEquals(groupValues[0], kAXTabGroupRole)) {
-                CGRect groupRect = CGRectNull;
-                if (HoverClickTabHoverRectValue(groupValues[2], groupValues[3], &groupRect) &&
-                    groupRect.size.width > 0.0 && groupRect.size.height > 0.0) {
-                    vertical = groupRect.size.height > groupRect.size.width;
-                    hit.tabGroupRect = groupRect;
+                CGRect rect = CGRectNull;
+                if (HoverClickTabHoverRectValue(groupValues[2], groupValues[3], &rect) &&
+                    rect.size.width > 0.0 && rect.size.height > 0.0) {
+                    groupRect = rect;
+                    hit.tabGroupRect = rect;
                 }
                 HoverClickTabHoverReleaseValues(groupValues, 4);
                 break;
@@ -1630,6 +1897,7 @@ static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
         if (ancestor != NULL) {
             CFRelease(ancestor);
         }
+        vertical = HoverClickTabHoverTabIsVertical(tabRect, groupRect, windowBounds);
     }
 
     hit.outcome = HoverClickTabHoverOutcomeTab;
@@ -1713,7 +1981,8 @@ static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRe
                                                                      CGRectGetMinY(windowBounds) + HoverClickTabHoverTopProbeY),
                                                          windowBounds);
         HoverClickTabHoverHit *top = [[HoverClickTabHoverHit alloc] init];
-        HoverClickTabHoverReadTab(appElement, topPoint, windowBounds, HoverClickTabHoverStripKindUnknown, top, outAppElementInvalid);
+        HoverClickTabHoverReadTab(appElement, topPoint, windowBounds, HoverClickTabHoverStripKindUnknown, NO, top,
+                                  outAppElementInvalid);
         if (top.timedOut || *outAppElementInvalid) {
             hit.timedOut = hit.timedOut || top.timedOut;
             HoverClickTabHoverEntryForWindow(windowEntries, windowKey, windowBounds).checkedAt = now;
@@ -1736,7 +2005,8 @@ static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRe
                                                                   point.y),
                                                       windowBounds);
     HoverClickTabHoverHit *left = [[HoverClickTabHoverHit alloc] init];
-    HoverClickTabHoverReadTab(appElement, leftPoint, windowBounds, HoverClickTabHoverStripKindUnknown, left, outAppElementInvalid);
+    HoverClickTabHoverReadTab(appElement, leftPoint, windowBounds, HoverClickTabHoverStripKindUnknown, NO, left,
+                              outAppElementInvalid);
     entry = HoverClickTabHoverEntryForWindow(windowEntries, windowKey, windowBounds);
     entry.checkedAt = now;
     if (left.timedOut || *outAppElementInvalid) {
@@ -1754,7 +2024,8 @@ static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRe
     if (point.x - CGRectGetMinX(windowBounds) > entry.stripMaxXOffset + HoverClickTabHoverStripSlack) {
         return HoverClickTabHoverProbeResultNoCard;
     }
-    if (left.outcome == HoverClickTabHoverOutcomeTab && CGRectContainsPoint(CGRectInset(left.tabRect, -2.0, -2.0), point)) {
+    if (left.outcome == HoverClickTabHoverOutcomeTab &&
+        CGRectContainsPoint(CGRectInset(left.tabRect, -HoverClickTabHoverTabSlack, -HoverClickTabHoverTabSlack), point)) {
         [hit takeTabFromRead:left];
         return HoverClickTabHoverProbeResultUsedProbe;
     }
@@ -1873,7 +2144,7 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
                                 now - current.checkedAt < HoverClickTabHoverOrientationReuse;
         HoverClickTabHoverStripKind knownKind = orientationFresh ? current.kind : HoverClickTabHoverStripKindUnknown;
         HoverClickTabHoverHit *read = [[HoverClickTabHoverHit alloc] init];
-        HoverClickTabHoverReadTab(appElement, point, windowBounds, knownKind, read, &appElementInvalid);
+        HoverClickTabHoverReadTab(appElement, point, windowBounds, knownKind, YES, read, &appElementInvalid);
         hit.timedOut = hit.timedOut || read.timedOut;
         [hit takeTabFromRead:read];
         HoverClickTabHoverLearnFromDirectRead(windowEntries, windowKey, windowBounds, read, knownKind, now);
@@ -2294,7 +2565,7 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
                     [NSEvent pressedMouseButtons] == 0 &&
                     NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier != hit.pid &&
                     HoverClickTabHoverCursorPoint(&point) &&
-                    CGRectContainsPoint(CGRectInset(hit.tabRect, -2.0, -2.0), point);
+                    CGRectContainsPoint(CGRectInset(hit.tabRect, -HoverClickTabHoverTabSlack, -HoverClickTabHoverTabSlack), point);
     if (accepted) {
         if ([self showCardForHit:hit]) {
             _retargetPending = NO;
@@ -2425,8 +2696,18 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
 
     NSRect candidates[2];
     if (hit.vertical) {
-        NSRect right = NSMakeRect(NSMaxX(tab) + HoverClickTabHoverCardSideGap, NSMaxY(tab) - height, width, height);
-        NSRect left = NSMakeRect(NSMinX(tab) - HoverClickTabHoverCardSideGap - width, NSMaxY(tab) - height, width, height);
+        // Beside the whole strip, not just the tab, so the card does not cover the strip's edge.
+        CGFloat rightEdge = NSMaxX(tab);
+        CGFloat leftEdge = NSMinX(tab);
+        if (!CGRectIsNull(hit.tabGroupRect)) {
+            NSRect strip = HoverClickTabHoverCocoaRectFromQuartz(hit.tabGroupRect, NSMaxY(primaryScreen.frame));
+            if (NSMidX(tab) >= NSMinX(strip) && NSMidX(tab) <= NSMaxX(strip)) {
+                rightEdge = MAX(rightEdge, NSMaxX(strip));
+                leftEdge = MIN(leftEdge, NSMinX(strip));
+            }
+        }
+        NSRect right = NSMakeRect(rightEdge + HoverClickTabHoverCardSideGap, NSMaxY(tab) - height, width, height);
+        NSRect left = NSMakeRect(leftEdge - HoverClickTabHoverCardSideGap - width, NSMaxY(tab) - height, width, height);
         BOOL rightFits = NSMinX(right) >= NSMinX(visible) && NSMaxX(right) <= NSMaxX(visible);
         candidates[0] = rightFits ? right : left;
         candidates[1] = rightFits ? left : right;

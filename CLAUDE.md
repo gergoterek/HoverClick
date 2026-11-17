@@ -5,7 +5,7 @@ original click is delivered. Objective-C++ / AppKit / Accessibility API.
 
 - Bundle ID: `com.gergoterek.HoverClick`
 - Released: `v1.2.1` / build `43` (main @ `f24f506`)
-- Main source: `HoverClick.mm` (~7,200 lines, single file)
+- Main source: `HoverClick.mm` (~7,500 lines, single file)
 - Minimum macOS: 12.0
 
 Formerly named PreClickFocus. Some old branches and certificates still use that name.

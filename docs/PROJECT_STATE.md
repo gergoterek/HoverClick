@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-11-16
+Last updated: 2026-11-17
 
 Short, current source of truth. Update this file at the end of every work cycle.
 Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
@@ -61,7 +61,7 @@ Only one branch is worked on at a time. Finish or park the top item before start
 |---|---|---|
 | 1 | `fix/single-window-focus` | **18 commits on the branch, nothing uncommitted** (the menu bar utility clause is `eae5588`, see below; the build chain and the release pipeline are `92c2678` and `9353eb9`). `93ae113` and `c700de2` verified at runtime. `65c130f` (conditional activation plus a bounded wait) measured on 2026-09-14 and again on 2026-09-20 (22 Chrome attempts, 22 delayed YES). `fd5035d`, `ec56fc9`, `936d137` (2026-09-20 stability audit, see below) **not verified at runtime**. Not merged to `main`. |
 | 1a | `worktree-codebase-audit` | In-place cleanup after the 2026-10-25 audit, on top of `afc97b3`, with `fix/single-window-focus` merged in (`d47e853`). Static checks PASS, **runtime test pending**. Reached `fix/single-window-focus` on 2026-11-17 with Background Tab Hover; the click test below now runs on the project root's build. |
-| 1b | `worktree-bg-tab-hover` | Background Tab Hover, on top of `worktree-codebase-audit` (`3dac94d`), fast-forwarded into `fix/single-window-focus` on 2026-11-17. Static checks PASS, **runtime test pending**. See "Background Tab Hover" below. |
+| 1b | `worktree-bg-tab-hover` | Background Tab Hover, on top of `worktree-codebase-audit` (`3dac94d`), fast-forwarded into `fix/single-window-focus` on 2026-11-17. First runtime test on 2026-11-17: no card. Fixed the same day (the strip search); static checks PASS, the search passed a live probe, **runtime retest pending**. See "Background Tab Hover" below. |
 | 2 | `feature/menu-help-tooltips` | Not started. Replace the `Guide` submenu with hover tooltips. **Blocked on a decision — see below.** |
 
 ### Queued: Guide submenu → tooltips
@@ -79,12 +79,18 @@ before planning this. The first step is a decision, not an implementation.
 
 ---
 
-## Background Tab Hover, 2026-11-16: built, runtime test pending
+## Background Tab Hover, 2026-11-17: first runtime test failed, fixed, retest pending
 
 **Problem:** with another application frontmost, hovering a tab of a background Chrome window
 shows nothing (no hover card, no expand-on-hover of the collapsed vertical strip). Chrome's
 content view tracks the mouse only while Chrome is the active application. Cause, options and
 limits: `docs/DECISIONS.md`, entry 2026-11-16.
+
+**First runtime test, 2026-11-17:** Gergő saw no card. Cause, measured with read-only probes:
+Chrome answers an Accessibility hit test over a vertical tab with an empty group the size of
+the whole strip, so the read never reached a tab. Fix: the direct test searches the strip for
+the tab under the pointer by frame; the card sits beside the strip. Details and probe results:
+`docs/DECISIONS.md`, entry 2026-11-17. The runtime test below is still the one to run.
 
 **Change:** toggle `Background Tab Hover` (menu, first section, after Right Click Focus; on by
 default). A 10 Hz pointer-position timer (only while a Chromium-family browser runs in the

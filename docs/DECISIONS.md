@@ -17,6 +17,50 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-11-17: Background Tab Hover finds the tab in Chrome's vertical strip by its frame
+
+**Decision:** When the Accessibility walk from the hit-test element ends on the tab strip
+(`AXTabGroup`) without passing a tab, the direct test searches the strip for the tab under the
+pointer: down from the strip through the children whose frame holds the point (groups, scroll
+areas, tab groups, lists), a binary search along the strip in a list of more than 12 children,
+and a child-by-child pass when that misses. The search is bounded to 10 levels, 256 messages
+and 0.25 s; running out of time counts as an Accessibility timeout. The two probe reads do not
+search, they only learn the strip. The card now sits beside the whole strip, not 8 pt right of
+the tab, which left it 4 pt over the strip.
+
+**Why:** Gergő's first runtime test of the 2026-11-16 build showed no card at all. Measured on
+his three Chrome windows: an Accessibility hit test over a vertical tab returns an empty
+`AXGroup` with the frame of the whole strip, the last of the strip's four children, and a
+second empty group of the same size sits before it. The walk went from that group to the strip
+and stopped there, so no read ever reached a tab, in any window. The tab list's children are
+in creation order, not in screen order: two of the three windows had tabs at the end of the
+list that are shown in the middle of the strip, so the first prototype, a binary search alone,
+missed them.
+
+**Rejected:**
+
+- Binary search only: misses the tabs opened later (measured, above).
+- Walking the whole window for tabs: hundreds of messages per read, and the walk would enter
+  page content.
+- Caching every tab frame per window: fewer messages per read, but stale after a scroll, a new
+  tab or a closed one. The bounded search took at most 38 ms in the probe, so the cache is not
+  needed yet.
+
+**Evidence:** read-only probes against Chrome 157.0.8103.78 on this machine, 2026-11-17, with
+Chrome frontmost, printing roles, frames and counts but no titles. A hit test over a tab
+returned the empty `AXGroup` (child 3 of 4 of the strip's `AXTabGroup`) in all three windows.
+Tab group headers are `AXTabGroup` elements without children, grouped tabs sit in an `AXGroup`
+wrapper, and the 74-child tab list of one window ended with 16 tabs out of screen order. The
+search code, copied verbatim into a probe, passed 118 of 118 checks: the centre of every
+visible tab in the three windows (57 tabs), tab edges, the 2 pt gaps, the left probe column,
+and the strip margin and strip top, where no tab is expected. A typical tab took 16 to 27
+messages, an out-of-order tab 88, a miss 102; the slowest check took 38 ms. Static:
+`scripts/source-only-check.sh` PASS, `clang++ -Wall -Wextra` 0 warnings, `clang++ --analyze`
+0 findings, signed build verified with `scripts/verify-app.sh`. Runtime with Chrome in the
+background: **not verified** when this entry was written.
+
+---
+
 ## 2026-11-16: Background Tab Hover, HoverClick shows the tab title itself
 
 **Decision:** New toggle `Background Tab Hover`, on by default. When the pointer rests on a tab
