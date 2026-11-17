@@ -92,6 +92,14 @@ the whole strip, so the read never reached a tab. Fix: the direct test searches 
 the tab under the pointer by frame; the card sits beside the strip. Details and probe results:
 `docs/DECISIONS.md`, entry 2026-11-17. The runtime test below is still the one to run.
 
+**Second runtime test, 2026-11-17:** still no card with Claude frontmost. Cause, measured:
+other applications' click-through overlays (Floaty, Vorssaint, MonitorNotch) sit above the
+normal level over the Chrome windows, and the window list step stopped at them before any
+Accessibility read. Fix: overlays are passed over and the system-wide Accessibility hit test
+decides what the pointer reaches. `scripts/tab-hover-harness.sh` now checks the whole chain on
+live tabs: the tested build fails it, the fix passes 16 of 16 and the card was seen on screen.
+Details: `docs/DECISIONS.md`, the newest 2026-11-17 entry.
+
 **Change:** toggle `Background Tab Hover` (menu, first section, after Right Click Focus; on by
 default). A 10 Hz pointer-position timer (only while a Chromium-family browser runs in the
 background), Accessibility reads on a private queue, limited to the browser's tab strip zones,

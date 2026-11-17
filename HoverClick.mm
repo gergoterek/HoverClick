@@ -1130,7 +1130,6 @@ static const int HoverClickTabHoverMaxParentSteps = 6;
 static const int HoverClickTabHoverMaxTabGroupSteps = 4;
 static const CGFloat HoverClickTabHoverMinTabSide = 4.0;
 static const CGFloat HoverClickTabHoverMaxTabSide = 3000.0;
-static const NSUInteger HoverClickTabHoverAppElementCacheLimit = 16;
 static const CGFloat HoverClickTabHoverCardMaxTextWidth = 320.0;
 static const CGFloat HoverClickTabHoverCardHorizontalPadding = 12.0;
 static const CGFloat HoverClickTabHoverCardVerticalPadding = 8.0;
@@ -1214,10 +1213,18 @@ static BOOL HoverClickTabHoverIsPointerSurface(NSDictionary *windowInfo, CGRect 
            bounds.size.width * bounds.size.height <= 12000.0;
 }
 
-// Front to back, the first on-screen window that contains the point, leaving out the card itself
-// and fully transparent windows. Any other HoverClick window (an alert, the menu) is returned and
-// stops the hit test.
-static NSDictionary *HoverClickTabHoverWindowAtPoint(CGPoint point, CGWindowID cardWindowID, CGRect *outBounds) {
+// Front to back, the first normal-level (layer 0) on-screen window that contains the point. The
+// card itself, fully transparent windows and the Window Server pointer surface are left out.
+// Windows above the normal level are passed over, because other applications keep click-through
+// overlays there (measured 2026-11-17: Floaty at layer 3 over a whole Chrome window, Vorssaint at
+// the shielding level over half a screen) and the window list cannot tell such an overlay from a
+// menu. What the pointer really reaches is settled afterwards by the system-wide Accessibility
+// hit test, which follows event routing. A higher window of HoverClick itself (its menu) ends the
+// search with nil, so the feature never sends an Accessibility request to its own process.
+static NSDictionary *HoverClickTabHoverWindowAtPoint(CGPoint point,
+                                                     CGWindowID cardWindowID,
+                                                     pid_t ownPid,
+                                                     CGRect *outBounds) {
     NSArray *windowList = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly |
                                                                        kCGWindowListExcludeDesktopElements,
                                                                        kCGNullWindowID));
@@ -1241,6 +1248,12 @@ static NSDictionary *HoverClickTabHoverWindowAtPoint(CGPoint point, CGWindowID c
             continue;
         }
         if (HoverClickTabHoverIsPointerSurface(windowInfo, bounds)) {
+            continue;
+        }
+        if ([windowInfo[(__bridge NSString *)kCGWindowLayer] integerValue] != 0) {
+            if ([windowInfo[(__bridge NSString *)kCGWindowOwnerPID] intValue] == ownPid) {
+                return nil;
+            }
             continue;
         }
 
@@ -1406,6 +1419,9 @@ typedef NS_ENUM(NSInteger, HoverClickTabHoverStripKind) {
 @property(nonatomic) CGRect tabGroupRect;
 // The walk met an AXWebArea: the point lies on page content, not on the browser's own UI.
 @property(nonatomic) BOOL reachedWebArea;
+// The pointer reaches another application there (a window above the browser's that takes the
+// mouse), not the browser.
+@property(nonatomic) BOOL covered;
 @property(nonatomic, copy) NSString *title;
 - (void)takeTabFromRead:(HoverClickTabHoverHit *)read;
 @end
@@ -1757,13 +1773,18 @@ static BOOL HoverClickTabHoverTabIsVertical(CGRect tabRect, CGRect stripRect, CG
 // so a probe into a vertical strip recognises it, and with searchStrip the strip is searched for
 // the tab under the point (HoverClickTabHoverCopyTabInStrip). A read that hits the messaging
 // timeout ends the walk and marks the answer timed out.
-static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
+//
+// The hit test goes through the system-wide element, which answers with the element the pointer
+// really reaches: it passes through other applications' click-through overlays and stops at a
+// window that takes the mouse. An element of another process than pid marks the answer as
+// covered. The system-wide element uses the process-wide messaging timeout set at launch.
+static void HoverClickTabHoverReadTab(AXUIElementRef systemWide,
+                                      pid_t pid,
                                       CGPoint point,
                                       CGRect windowBounds,
                                       HoverClickTabHoverStripKind knownKind,
                                       BOOL searchStrip,
-                                      HoverClickTabHoverHit *hit,
-                                      BOOL *outAppElementInvalid) {
+                                      HoverClickTabHoverHit *hit) {
     static NSArray<NSString *> *walkNames;
     static NSArray<NSString *> *tabNames;
     static NSArray<NSString *> *groupNames;
@@ -1786,13 +1807,18 @@ static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
     });
 
     AXUIElementRef element = NULL;
-    AXError error = AXUIElementCopyElementAtPosition(appElement, (float)point.x, (float)point.y, &element);
+    AXError error = AXUIElementCopyElementAtPosition(systemWide, (float)point.x, (float)point.y, &element);
     if (error != kAXErrorSuccess || element == NULL) {
         if (element != NULL) {
             CFRelease(element);
         }
         hit.timedOut = (error == kAXErrorCannotComplete);
-        *outAppElementInvalid = (error == kAXErrorInvalidUIElement);
+        return;
+    }
+    pid_t elementPid = 0;
+    if (AXUIElementGetPid(element, &elementPid) != kAXErrorSuccess || elementPid != pid) {
+        CFRelease(element);
+        hit.covered = YES;
         return;
     }
 
@@ -2019,15 +2045,17 @@ typedef NS_ENUM(NSInteger, HoverClickTabHoverProbeResult) {
 // Learns the window's tab strip for a point below the top band and outside any known vertical
 // strip. A window of unknown kind first gets a top probe; a horizontal strip there means no card.
 // Then a left probe in the window's leftmost column at the point's height: a vertical strip
-// there is stored, and the point is tested only when it lies inside that strip.
-static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRef appElement,
+// there is stored, and the point is tested only when it lies inside that strip. A top probe that
+// another application covers settles nothing and the left probe follows; a covered left probe
+// leaves the window's entry alone, so the next rest probes again.
+static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRef systemWide,
+                                                                   pid_t pid,
                                                                    CGPoint point,
                                                                    CGRect windowBounds,
                                                                    NSNumber *windowKey,
                                                                    NSMutableDictionary<NSNumber *, HoverClickTabHoverWindowEntry *> *windowEntries,
                                                                    NSTimeInterval now,
-                                                                   HoverClickTabHoverHit *hit,
-                                                                   BOOL *outAppElementInvalid) {
+                                                                   HoverClickTabHoverHit *hit) {
     HoverClickTabHoverWindowEntry *entry = windowEntries[windowKey];
     // Any kind but vertical re-checks the top band first: a horizontal strip found there settles
     // the window without a left probe, which in such a window would land on page content.
@@ -2036,10 +2064,9 @@ static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRe
                                                                      CGRectGetMinY(windowBounds) + HoverClickTabHoverTopProbeY),
                                                          windowBounds);
         HoverClickTabHoverHit *top = [[HoverClickTabHoverHit alloc] init];
-        HoverClickTabHoverReadTab(appElement, topPoint, windowBounds, HoverClickTabHoverStripKindUnknown, NO, top,
-                                  outAppElementInvalid);
-        if (top.timedOut || *outAppElementInvalid) {
-            hit.timedOut = hit.timedOut || top.timedOut;
+        HoverClickTabHoverReadTab(systemWide, pid, topPoint, windowBounds, HoverClickTabHoverStripKindUnknown, NO, top);
+        if (top.timedOut) {
+            hit.timedOut = YES;
             HoverClickTabHoverEntryForWindow(windowEntries, windowKey, windowBounds).checkedAt = now;
             return HoverClickTabHoverProbeResultNoCard;
         }
@@ -2060,12 +2087,15 @@ static HoverClickTabHoverProbeResult HoverClickTabHoverProbeWindow(AXUIElementRe
                                                                   point.y),
                                                       windowBounds);
     HoverClickTabHoverHit *left = [[HoverClickTabHoverHit alloc] init];
-    HoverClickTabHoverReadTab(appElement, leftPoint, windowBounds, HoverClickTabHoverStripKindUnknown, NO, left,
-                              outAppElementInvalid);
+    HoverClickTabHoverReadTab(systemWide, pid, leftPoint, windowBounds, HoverClickTabHoverStripKindUnknown, NO, left);
+    if (left.covered) {
+        hit.covered = YES;
+        return HoverClickTabHoverProbeResultNoCard;
+    }
     entry = HoverClickTabHoverEntryForWindow(windowEntries, windowKey, windowBounds);
     entry.checkedAt = now;
-    if (left.timedOut || *outAppElementInvalid) {
-        hit.timedOut = hit.timedOut || left.timedOut;
+    if (left.timedOut) {
+        hit.timedOut = YES;
         return HoverClickTabHoverProbeResultNoCard;
     }
 
@@ -2096,7 +2126,7 @@ static void HoverClickTabHoverLearnFromDirectRead(NSMutableDictionary<NSNumber *
                                                   HoverClickTabHoverHit *read,
                                                   HoverClickTabHoverStripKind knownKind,
                                                   NSTimeInterval now) {
-    if (read.timedOut) {
+    if (read.timedOut || read.covered) {
         return;
     }
 
@@ -2122,19 +2152,18 @@ static void HoverClickTabHoverLearnFromDirectRead(NSMutableDictionary<NSNumber *
     }
 }
 
-// Runs on the private queue only. appElements and windowEntries are owned by that queue.
+// Runs on the private queue only. windowEntries is owned by that queue.
 static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
                                                            pid_t frontmostPid,
                                                            pid_t ownPid,
                                                            CGWindowID cardWindowID,
                                                            NSSet<NSString *> *excludedBundleIDs,
-                                                           NSMutableDictionary<NSNumber *, id> *appElements,
                                                            NSMutableDictionary<NSNumber *, HoverClickTabHoverWindowEntry *> *windowEntries) {
     HoverClickTabHoverHit *hit = [[HoverClickTabHoverHit alloc] init];
 
     CGRect windowBounds = CGRectNull;
-    NSDictionary *windowInfo = HoverClickTabHoverWindowAtPoint(point, cardWindowID, &windowBounds);
-    if (windowInfo == nil || [windowInfo[(__bridge NSString *)kCGWindowLayer] integerValue] != 0) {
+    NSDictionary *windowInfo = HoverClickTabHoverWindowAtPoint(point, cardWindowID, ownPid, &windowBounds);
+    if (windowInfo == nil) {
         return hit;
     }
     pid_t pid = [windowInfo[(__bridge NSString *)kCGWindowOwnerPID] intValue];
@@ -2168,30 +2197,18 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
         return hit;
     }
 
-    NSNumber *pidKey = @(pid);
-    id appObject = appElements[pidKey];
-    if (appObject == nil) {
-        if (appElements.count >= HoverClickTabHoverAppElementCacheLimit) {
-            [appElements removeAllObjects];
-        }
-        AXUIElementRef created = AXUIElementCreateApplication(pid);
-        if (created == NULL) {
-            return hit;
-        }
-        AXUIElementSetMessagingTimeout(created, HoverClickTabHoverAXTimeoutSeconds);
-        appObject = CFBridgingRelease(created);
-        appElements[pidKey] = appObject;
+    AXUIElementRef systemWide = AXUIElementCreateSystemWide();
+    if (systemWide == NULL) {
+        return hit;
     }
-    AXUIElementRef appElement = (__bridge AXUIElementRef)appObject;
 
     hit.axAttempted = YES;
     NSTimeInterval axStart = HoverClickMonotonicSeconds();
-    BOOL appElementInvalid = NO;
     HoverClickTabHoverProbeResult probe = HoverClickTabHoverProbeResultTestPoint;
     if (!direct) {
-        probe = HoverClickTabHoverProbeWindow(appElement, point, windowBounds, windowKey, windowEntries, now, hit, &appElementInvalid);
+        probe = HoverClickTabHoverProbeWindow(systemWide, pid, point, windowBounds, windowKey, windowEntries, now, hit);
     }
-    if (probe == HoverClickTabHoverProbeResultTestPoint && !appElementInvalid) {
+    if (probe == HoverClickTabHoverProbeResultTestPoint) {
         HoverClickTabHoverWindowEntry *current = windowEntries[windowKey];
         BOOL orientationFresh = current != nil &&
                                 (current.kind == HoverClickTabHoverStripKindVertical ||
@@ -2199,8 +2216,9 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
                                 now - current.checkedAt < HoverClickTabHoverOrientationReuse;
         HoverClickTabHoverStripKind knownKind = orientationFresh ? current.kind : HoverClickTabHoverStripKindUnknown;
         HoverClickTabHoverHit *read = [[HoverClickTabHoverHit alloc] init];
-        HoverClickTabHoverReadTab(appElement, point, windowBounds, knownKind, YES, read, &appElementInvalid);
+        HoverClickTabHoverReadTab(systemWide, pid, point, windowBounds, knownKind, YES, read);
         hit.timedOut = hit.timedOut || read.timedOut;
+        hit.covered = hit.covered || read.covered;
         [hit takeTabFromRead:read];
         HoverClickTabHoverLearnFromDirectRead(windowEntries, windowKey, windowBounds, read, knownKind, now);
         if (read.outcome != HoverClickTabHoverOutcomeTab && read.reachedWebArea && !read.timedOut) {
@@ -2223,9 +2241,7 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
         ownerEntry.pid = pid;
     }
     hit.axDuration = HoverClickMonotonicSeconds() - axStart;
-    if (appElementInvalid) {
-        [appElements removeObjectForKey:pidKey];
-    }
+    CFRelease(systemWide);
     return hit;
 }
 
@@ -2251,6 +2267,8 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
 @property(nonatomic, readonly) uint64_t cardsShown;
 @property(nonatomic, readonly) uint64_t hitTestsStarted;
 @property(nonatomic, readonly) uint64_t hitTestsFoundTab;
+// Hit tests where the pointer reached another application above the browser window.
+@property(nonatomic, readonly) uint64_t hitTestsCovered;
 @property(nonatomic, readonly) uint64_t axTimeouts;
 @property(nonatomic, readonly) NSTimeInterval slowestAXDuration;
 - (void)startWithReason:(NSString *)reason;
@@ -2263,11 +2281,10 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
 - (NSInteger)cardWindowNumber;
 @end
 
-// All state below is touched on the main thread only, except _appElements and _windowEntries,
-// which belong to _queue.
+// All state below is touched on the main thread only, except _windowEntries, which belongs to
+// _queue.
 @implementation HoverClickBackgroundTabHover {
     dispatch_queue_t _queue;
-    NSMutableDictionary<NSNumber *, id> *_appElements;
     NSMutableDictionary<NSNumber *, HoverClickTabHoverWindowEntry *> *_windowEntries;
     NSTimer *_timer;
     BOOL _sessionInactive;
@@ -2303,7 +2320,6 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
                                                                                   QOS_CLASS_USER_INITIATED,
                                                                                   0);
         _queue = dispatch_queue_create("com.gergoterek.HoverClick.background-tab-hover", attributes);
-        _appElements = [NSMutableDictionary dictionary];
         _windowEntries = [NSMutableDictionary dictionary];
         _screensAsleep = CGDisplayIsAsleep(CGMainDisplayID()) ? YES : NO;
 
@@ -2375,10 +2391,8 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     [self hideCardQuickReshow:NO];
     [self updateTimer];
 
-    NSMutableDictionary<NSNumber *, id> *appElements = _appElements;
     NSMutableDictionary<NSNumber *, HoverClickTabHoverWindowEntry *> *windowEntries = _windowEntries;
     dispatch_async(_queue, ^{
-        [appElements removeAllObjects];
         [windowEntries removeAllObjects];
     });
     HoverClickLog("HoverClick: background tab hover stopped reason=%s", (reason.length > 0 ? reason : @"unknown").UTF8String);
@@ -2583,7 +2597,6 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     NSInteger cardWindowNumber = [self cardWindowNumber];
     CGWindowID cardWindowID = cardWindowNumber > 0 ? (CGWindowID)cardWindowNumber : kCGNullWindowID;
     NSSet<NSString *> *excludedBundleIDs = [NSSet setWithArray:[self.host userExcludedBundleIDs] ?: @[]];
-    NSMutableDictionary<NSNumber *, id> *appElements = _appElements;
     NSMutableDictionary<NSNumber *, HoverClickTabHoverWindowEntry *> *windowEntries = _windowEntries;
     __weak HoverClickBackgroundTabHover *weakSelf = self;
 
@@ -2591,7 +2604,7 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
         HoverClickTabHoverHit *hit = nil;
         @autoreleasepool {
             hit = HoverClickTabHoverRunHitTest(point, frontmostPid, ownPid, cardWindowID, excludedBundleIDs,
-                                               appElements, windowEntries);
+                                               windowEntries);
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             [weakSelf finishHitTest:hit atPoint:point generation:generation];
@@ -2606,6 +2619,9 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     }
     if (hit.outcome == HoverClickTabHoverOutcomeTab) {
         _hitTestsFoundTab++;
+    }
+    if (hit.covered) {
+        _hitTestsCovered++;
     }
     if (hit.timedOut) {
         [self recordAXTimeout];
@@ -4787,7 +4803,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Left Click Focus: %@\n"
              "Right Click Focus: %@\n"
              "Background Tab Hover: %@\n"
-             "Background Tab Hover counters: running=%@ cards shown=%llu hit tests started=%llu hit tests found tab=%llu AX timeouts=%llu slowest AX part=%.0fms\n"
+             "Background Tab Hover counters: running=%@ cards shown=%llu hit tests started=%llu hit tests found tab=%llu other app under pointer=%llu AX timeouts=%llu slowest AX part=%.0fms\n"
              "Bypass Key: %@\n"
              "Last bypass decision: %@\n"
              "Excluded Apps (built-in compatibility): %@\n"
@@ -4878,6 +4894,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             self.backgroundTabHover.cardsShown,
             self.backgroundTabHover.hitTestsStarted,
             self.backgroundTabHover.hitTestsFoundTab,
+            self.backgroundTabHover.hitTestsCovered,
             self.backgroundTabHover.axTimeouts,
             self.backgroundTabHover.slowestAXDuration * 1000.0,
             _bypassKey == HoverClickBypassKeyShift ? @"shift" : _bypassKey == HoverClickBypassKeyFn ? @"fn" : @"off",

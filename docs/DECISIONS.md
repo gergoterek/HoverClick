@@ -17,6 +17,50 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-11-17: Background Tab Hover looks through other applications' overlays, and gets an end-to-end harness
+
+**Decision:** The window under the pointer is the first normal-level (layer 0) window in the
+on-screen list; windows above the normal level are passed over, except one of HoverClick itself
+(its menu), which ends the test so the feature never queries its own process. What the
+pointer really reaches is then settled by Accessibility: every hit test of the feature goes
+through the system-wide element, and an answer from another process than the browser counts as
+covered (no card, nothing learned, counted as `other app under pointer`). The per-application
+element cache is gone. `scripts/tab-hover-harness.sh` is the runtime check for this feature
+from now on.
+
+**Why:** Gergő's second runtime test, after the strip search: still no card with Claude
+frontmost. Measured: on this machine other applications keep click-through overlay windows
+above the normal level, all with alpha 1.0. Floaty has one at layer 3 with exactly the bounds
+of a Chrome window; Vorssaint covers the whole lower screen at the shielding level
+(2147483628) in two halves; MonitorNotch covers the third screen one level higher. The old
+code took the first window in the list at the pointer and stopped when its layer was not 0, so
+for a Chrome window under such an overlay no Accessibility read ever started. The earlier
+probes could not see this: they called Accessibility directly and never ran the window list
+step. The window list cannot tell a click-through overlay from a menu; the system-wide
+Accessibility hit test can, because it follows event routing.
+
+**Rejected:**
+
+- A list of overlay applications to skip: the next overlay tool breaks it again.
+- Skipping every window above the normal level without the Accessibility check: a card could
+  appear for a tab hidden under a menu or a floating panel.
+- The application-level hit test on the browser: it ignores other applications' windows, so it
+  cannot tell whether the browser is really under the pointer.
+
+**Evidence:** `scripts/tab-hover-harness.sh` runs the feature's own code, cut from
+`HoverClick.mm`, with two inputs swapped (the pointer position and the frontmost application)
+against the live windows. Control, the build Gergő tested (`19a72e7`): 9 of 10 checks fail,
+`hit tests started=4 found tab=0 slowest AX part=0 ms`, with `Floaty layer=3` on top of the
+list at every tab; the same build passes 16 of 16 on a window with no overlay over it, so the
+strip search itself worked and the overlay was the remaining cause. This change: 16 of 16 pass with the Floaty overlay over the window and 16
+of 16 again without it; the card shows the title of the tab under the pointer, follows to the
+next tabs, sits 20 pt right of the tab beside the strip and hides over the page; slowest
+Accessibility part 27 ms. A screenshot showed the card on screen. Both runs had Chrome
+frontmost, so the harness stood Finder in as the frontmost application. Static:
+`scripts/source-only-check.sh` PASS, `clang++ -Wall -Wextra` 0 warnings.
+
+---
+
 ## 2026-11-17: Background Tab Hover finds the tab in Chrome's vertical strip by its frame
 
 **Decision:** When the Accessibility walk from the hit-test element ends on the tab strip

@@ -58,6 +58,7 @@ scripts/source-only-check.sh      # static gate: whitespace, safety suite, shell
 scripts/build-app.sh              # compile + codesign into HoverClick.app
 scripts/verify-app.sh             # codesign verification
 scripts/run-app.sh                # launch the signed app
+scripts/tab-hover-harness.sh      # runtime check of Background Tab Hover on live browser tabs
 scripts/setup-signing.sh          # one-time: signing certificate + Sparkle key (asks for the login password)
 scripts/release.sh                # build | prepare | publish, see docs/RELEASE.md
 ```
