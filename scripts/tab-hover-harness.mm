@@ -182,27 +182,27 @@ int main(int argc, const char **argv) {
                 Spin(i == 0 ? 1.2 : 0.7);
                 BOOL visible = [[hover valueForKey:@"cardVisible"] boolValue];
                 NSPanel *panel = [hover valueForKey:@"panel"];
-                NSTextField *label = [hover valueForKey:@"label"];
                 CGRect cardTab = NSRectToCGRect([[hover valueForKey:@"cardTabRect"] rectValue]);
                 Expect(visible && panel.isVisible, [NSString stringWithFormat:@"card visible (cardVisible=%d panel.isVisible=%d alpha=%.2f)", visible, panel.isVisible, panel.alphaValue]);
                 Expect(visible && CGRectEqualToRect(cardTab, tf), @"card belongs to the tab under the pointer");
-                NSString *shown = label.stringValue ?: @"";
+                NSString *shown = [[hover valueForKey:@"cardView"] valueForKey:@"title"] ?: @"";
                 NSString *trimmed = [expected stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
                 Expect(visible && shown.length > 0 && [shown isEqualToString:HoverClickTabHoverNormalizedTitle(trimmed)],
                        [NSString stringWithFormat:@"card text equals the tab's title (length %lu)", (unsigned long)shown.length]);
                 if (visible) {
-                    NSRect pf = panel.frame; NSRect tabCocoa = HoverClickTabHoverCocoaRectFromQuartz(tf, NSMaxY(NSScreen.screens.firstObject.frame));
+                    NSRect pf = [[hover valueForKey:@"cardFrame"] rectValue]; NSRect tabCocoa = HoverClickTabHoverCocoaRectFromQuartz(tf, NSMaxY(NSScreen.screens.firstObject.frame));
                     BOOL onAScreen = NO; for (NSScreen *s in NSScreen.screens) if (NSContainsRect(s.frame, pf)) onAScreen = YES;
-                    printf("    card frame (cocoa)=%s, %.0f pt right of the tab, cards shown +%llu\n",
-                           NSStringFromRect(pf).UTF8String, NSMinX(pf) - NSMaxX(tabCocoa), hover.cardsShown - cardsBefore);
-                    Expect(onAScreen && !NSIntersectsRect(pf, tabCocoa) && NSMinX(pf) > NSMaxX(tabCocoa), @"card sits right of the tab, fully on a screen");
+                    printf("    card frame (cocoa)=%s, left edge %.0f pt from the tab's right edge, top %.0f pt above the tab's, cards shown +%llu\n",
+                           NSStringFromRect(pf).UTF8String, NSMinX(pf) - NSMaxX(tabCocoa), NSMaxY(pf) - NSMaxY(tabCocoa), hover.cardsShown - cardsBefore);
+                    Expect(onAScreen && !NSIntersectsRect(pf, tabCocoa) && NSMinX(pf) == NSMaxX(tabCocoa) && NSMaxY(pf) - NSMaxY(tabCocoa) == 1.0,
+                           @"card sits where Chrome puts its own: against the tab's right edge, top 1 pt above the tab's, fully on a screen");
                     NSArray *list = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID));
                     BOOL listed = NO; for (NSDictionary *w in list) if ([w[(id)kCGWindowNumber] integerValue] == panel.windowNumber) listed = YES;
                     Expect(listed, @"card window is in the on-screen window list");
                     if (shotDir && i == 0) {
                         Spin(0.25);
                         CGFloat primaryMaxY = NSMaxY(NSScreen.screens.firstObject.frame);
-                        CGRect region = CGRectMake(tf.origin.x - 20, primaryMaxY - NSMaxY(pf) - 30, NSMaxX(pf) - tf.origin.x + 60, pf.size.height + 80);
+                        CGRect region = CGRectMake(tf.origin.x - 12, primaryMaxY - NSMaxY(pf) - 40, NSMaxX(pf) - tf.origin.x + 60, pf.size.height + 90);
                         NSTask *task = [[NSTask alloc] init];
                         task.executableURL = [NSURL fileURLWithPath:@"/usr/sbin/screencapture"];
                         task.arguments = @[@"-x", @"-R", [NSString stringWithFormat:@"%.0f,%.0f,%.0f,%.0f", region.origin.x, region.origin.y, region.size.width, region.size.height],

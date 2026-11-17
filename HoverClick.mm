@@ -1130,15 +1130,25 @@ static const int HoverClickTabHoverMaxParentSteps = 6;
 static const int HoverClickTabHoverMaxTabGroupSteps = 4;
 static const CGFloat HoverClickTabHoverMinTabSide = 4.0;
 static const CGFloat HoverClickTabHoverMaxTabSide = 3000.0;
-static const CGFloat HoverClickTabHoverCardMaxTextWidth = 320.0;
-static const CGFloat HoverClickTabHoverCardHorizontalPadding = 12.0;
-static const CGFloat HoverClickTabHoverCardVerticalPadding = 8.0;
-static const CGFloat HoverClickTabHoverCardMinWidth = 120.0;
-static const CGFloat HoverClickTabHoverCardSideGap = 8.0;
-static const CGFloat HoverClickTabHoverCardBelowGap = 6.0;
+// The card copies Chrome's own tab hover card, measured on a screenshot of Chrome 157 with
+// vertical tabs (2026-11-17): 257 pt wide with a 1 pt border and 8 pt corners, its left edge on the
+// tab's right edge and its top 1 pt above the tab's, text 13 pt in from the card's edge, a 13 pt
+// semibold title on at most two lines 20 pt apart with the first baseline 28 pt below the card's
+// top, and a 12 pt detail line 21 pt lower when there is one. The tab under the pointer is lit the
+// way Chrome lights a hovered tab. The colours are those of Chrome's dark and light cards.
+static const CGFloat HoverClickTabHoverCardWidth = 257.0;
+static const CGFloat HoverClickTabHoverCardTextInset = 13.0;
 static const CGFloat HoverClickTabHoverCardCornerRadius = 8.0;
-static const CGFloat HoverClickTabHoverCardFontSize = 13.0;
-static const NSInteger HoverClickTabHoverCardMaxLines = 3;
+static const CGFloat HoverClickTabHoverCardTitleFontSize = 13.0;
+static const CGFloat HoverClickTabHoverCardDetailFontSize = 12.0;
+static const CGFloat HoverClickTabHoverCardFirstBaseline = 28.0;
+static const CGFloat HoverClickTabHoverCardLineSpacing = 20.0;
+static const CGFloat HoverClickTabHoverCardDetailSpacing = 21.0;
+static const CGFloat HoverClickTabHoverCardBottomAfterDetail = 19.0;
+static const CGFloat HoverClickTabHoverCardBottomAfterTitle = 19.0;
+static const CGFloat HoverClickTabHoverCardTopAboveTab = 1.0;
+static const CGFloat HoverClickTabHoverCardShadowMargin = 16.0;
+static const CFIndex HoverClickTabHoverCardMaxTitleLines = 2;
 
 // A Chromium-based browser with a tab strip. Installed web apps run in app shims whose bundle IDs
 // continue with ".app." (com.google.Chrome.app.<id>, com.google.Chrome.canary.app.<id>); they
@@ -2323,6 +2333,174 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     return hit;
 }
 
+// One line of text cut to the card's text width, with an ellipsis when it does not fit. The
+// colour comes from the drawing context. Returns a retained CTLine as an object.
+static id HoverClickTabHoverCardLine(NSAttributedString *text, CGFloat width) {
+    CTLineRef line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)text);
+    if (line == NULL) {
+        return nil;
+    }
+    if (CTLineGetTypographicBounds(line, NULL, NULL, NULL) <= width || text.length == 0) {
+        return CFBridgingRelease(line);
+    }
+    NSAttributedString *ellipsis = [[NSAttributedString alloc] initWithString:@"\u2026"
+                                                                  attributes:[text attributesAtIndex:0 effectiveRange:NULL]];
+    CTLineRef token = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)ellipsis);
+    CTLineRef truncated = token != NULL ? CTLineCreateTruncatedLine(line, width, kCTLineTruncationEnd, token) : NULL;
+    if (token != NULL) {
+        CFRelease(token);
+    }
+    if (truncated == NULL) {
+        return CFBridgingRelease(line);
+    }
+    CFRelease(line);
+    return CFBridgingRelease(truncated);
+}
+
+static NSDictionary *HoverClickTabHoverCardTextAttributes(CGFloat fontSize, NSFontWeight weight) {
+    return @{NSFontAttributeName: [NSFont systemFontOfSize:fontSize weight:weight],
+             (__bridge NSString *)kCTForegroundColorFromContextAttributeName: @YES};
+}
+
+// The title broken into at most HoverClickTabHoverCardMaxTitleLines lines; the last one ends in an
+// ellipsis when text is left over.
+static NSArray *HoverClickTabHoverCardTitleLines(NSString *title) {
+    NSMutableArray *lines = [NSMutableArray array];
+    if (title.length == 0) {
+        return lines;
+    }
+    NSDictionary *attributes = HoverClickTabHoverCardTextAttributes(HoverClickTabHoverCardTitleFontSize, NSFontWeightSemibold);
+    NSAttributedString *text = [[NSAttributedString alloc] initWithString:title attributes:attributes];
+    CGFloat width = HoverClickTabHoverCardWidth - 2.0 * HoverClickTabHoverCardTextInset;
+    CTTypesetterRef typesetter = CTTypesetterCreateWithAttributedString((__bridge CFAttributedStringRef)text);
+    if (typesetter == NULL) {
+        return lines;
+    }
+
+    CFIndex length = (CFIndex)text.length;
+    CFIndex start = 0;
+    while (start < length && (CFIndex)lines.count < HoverClickTabHoverCardMaxTitleLines) {
+        BOOL lastLine = (CFIndex)lines.count == HoverClickTabHoverCardMaxTitleLines - 1;
+        CFIndex count = CTTypesetterSuggestLineBreak(typesetter, start, width);
+        if (count <= 0) {
+            break;
+        }
+        if (lastLine && start + count < length) {
+            NSAttributedString *rest = [text attributedSubstringFromRange:NSMakeRange((NSUInteger)start, (NSUInteger)(length - start))];
+            id line = HoverClickTabHoverCardLine(rest, width);
+            if (line != nil) {
+                [lines addObject:line];
+            }
+            break;
+        }
+        CTLineRef line = CTTypesetterCreateLine(typesetter, CFRangeMake(start, count));
+        if (line == NULL) {
+            break;
+        }
+        [lines addObject:CFBridgingRelease(line)];
+        start += count;
+    }
+    CFRelease(typesetter);
+    return lines;
+}
+
+static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasDetail) {
+    CGFloat lastBaseline = HoverClickTabHoverCardFirstBaseline +
+                           HoverClickTabHoverCardLineSpacing * (CGFloat)(MAX(titleLineCount, (NSUInteger)1) - 1);
+    return hasDetail ? lastBaseline + HoverClickTabHoverCardDetailSpacing + HoverClickTabHoverCardBottomAfterDetail
+                     : lastBaseline + HoverClickTabHoverCardBottomAfterTitle;
+}
+
+// Draws the lit tab and the card into one transparent, click-through window. Flipped: y runs down
+// from the window's top, like the measurements above.
+@interface HoverClickTabHoverCardView : NSView
+@property(nonatomic, copy) NSString *title;
+@property(nonatomic, copy) NSString *detail;
+@property(nonatomic) NSRect cardRect;
+@property(nonatomic) NSRect highlightRect;
+@property(nonatomic) BOOL dark;
+@end
+
+@implementation HoverClickTabHoverCardView
+
+- (BOOL)isFlipped {
+    return YES;
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+    (void)dirtyRect;
+    BOOL dark = self.dark;
+    NSColor *background = dark ? [NSColor colorWithSRGBRed:39.0 / 255.0 green:36.0 / 255.0 blue:43.0 / 255.0 alpha:1.0]
+                               : [NSColor colorWithSRGBRed:1.0 green:1.0 blue:1.0 alpha:1.0];
+    NSColor *border = dark ? [NSColor colorWithSRGBRed:91.0 / 255.0 green:87.0 / 255.0 blue:97.0 / 255.0 alpha:1.0]
+                           : [NSColor colorWithSRGBRed:218.0 / 255.0 green:220.0 / 255.0 blue:224.0 / 255.0 alpha:1.0];
+    NSColor *titleColor = dark ? [NSColor colorWithSRGBRed:236.0 / 255.0 green:230.0 / 255.0 blue:236.0 / 255.0 alpha:1.0]
+                               : [NSColor colorWithSRGBRed:31.0 / 255.0 green:31.0 / 255.0 blue:31.0 / 255.0 alpha:1.0];
+    NSColor *detailColor = dark ? [NSColor colorWithSRGBRed:199.0 / 255.0 green:195.0 / 255.0 blue:201.0 / 255.0 alpha:1.0]
+                                : [NSColor colorWithSRGBRed:71.0 / 255.0 green:71.0 / 255.0 blue:71.0 / 255.0 alpha:1.0];
+    NSColor *highlight = dark ? [NSColor colorWithSRGBRed:1.0 green:1.0 blue:1.0 alpha:0.127]
+                              : [NSColor colorWithSRGBRed:0.0 green:0.0 blue:0.0 alpha:0.06];
+
+    if (!NSIsEmptyRect(self.highlightRect)) {
+        [highlight setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:self.highlightRect
+                                         xRadius:HoverClickTabHoverCardCornerRadius
+                                         yRadius:HoverClickTabHoverCardCornerRadius] fill];
+    }
+
+    NSRect card = self.cardRect;
+    NSBezierPath *cardPath = [NSBezierPath bezierPathWithRoundedRect:card
+                                                             xRadius:HoverClickTabHoverCardCornerRadius
+                                                             yRadius:HoverClickTabHoverCardCornerRadius];
+    [NSGraphicsContext saveGraphicsState];
+    NSShadow *shadow = [[NSShadow alloc] init];
+    shadow.shadowColor = [NSColor colorWithSRGBRed:0.0 green:0.0 blue:0.0 alpha:0.3];
+    shadow.shadowBlurRadius = 8.0;
+    shadow.shadowOffset = NSMakeSize(0.0, -2.0);
+    [shadow set];
+    [background setFill];
+    [cardPath fill];
+    [NSGraphicsContext restoreGraphicsState];
+
+    [border setStroke];
+    NSBezierPath *borderPath = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(card, 0.5, 0.5)
+                                                               xRadius:HoverClickTabHoverCardCornerRadius - 0.5
+                                                               yRadius:HoverClickTabHoverCardCornerRadius - 0.5];
+    borderPath.lineWidth = 1.0;
+    [borderPath stroke];
+
+    CGContextRef context = NSGraphicsContext.currentContext.CGContext;
+    if (context == NULL) {
+        return;
+    }
+    CGContextSaveGState(context);
+    CGContextSetTextMatrix(context, CGAffineTransformMakeScale(1.0, -1.0));
+    CGFloat textX = NSMinX(card) + HoverClickTabHoverCardTextInset;
+    CGFloat baseline = NSMinY(card) + HoverClickTabHoverCardFirstBaseline;
+    NSArray *lines = HoverClickTabHoverCardTitleLines(self.title);
+    CGContextSetFillColorWithColor(context, titleColor.CGColor);
+    for (NSUInteger index = 0; index < lines.count; index++) {
+        if (index > 0) {
+            baseline += HoverClickTabHoverCardLineSpacing;
+        }
+        CGContextSetTextPosition(context, textX, baseline);
+        CTLineDraw((__bridge CTLineRef)lines[index], context);
+    }
+    if (self.detail.length > 0) {
+        NSDictionary *attributes = HoverClickTabHoverCardTextAttributes(HoverClickTabHoverCardDetailFontSize, NSFontWeightRegular);
+        NSAttributedString *text = [[NSAttributedString alloc] initWithString:self.detail attributes:attributes];
+        id line = HoverClickTabHoverCardLine(text, HoverClickTabHoverCardWidth - 2.0 * HoverClickTabHoverCardTextInset);
+        if (line != nil) {
+            CGContextSetFillColorWithColor(context, detailColor.CGColor);
+            CGContextSetTextPosition(context, textX, baseline + HoverClickTabHoverCardDetailSpacing);
+            CTLineDraw((__bridge CTLineRef)line, context);
+        }
+    }
+    CGContextRestoreGState(context);
+}
+
+@end
+
 // Never key, never main: showing the card cannot take keyboard focus from anyone.
 @interface HoverClickTabHoverPanel : NSPanel
 @end
@@ -2369,8 +2547,10 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     BOOL _screensAsleep;
     BOOL _backgroundBrowserRunning;
     HoverClickTabHoverPanel *_panel;
-    NSTextField *_label;
-    CGFloat _lineHeight;
+    HoverClickTabHoverCardView *_cardView;
+    // The card's own frame on screen (Cocoa coordinates); the panel is larger, it also holds the
+    // lit tab and room for the shadow.
+    NSRect _cardFrame;
     BOOL _cardVisible;
     pid_t _cardPid;
     CGRect _cardTabRect;
@@ -2753,7 +2933,7 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
         return;
     }
 
-    NSRect initialFrame = NSMakeRect(0.0, 0.0, HoverClickTabHoverCardMinWidth, 32.0);
+    NSRect initialFrame = NSMakeRect(0.0, 0.0, HoverClickTabHoverCardWidth, 64.0);
     HoverClickTabHoverPanel *panel = [[HoverClickTabHoverPanel alloc] initWithContentRect:initialFrame
                                                                                styleMask:(NSWindowStyleMaskBorderless |
                                                                                           NSWindowStyleMaskNonactivatingPanel)
@@ -2762,7 +2942,8 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     panel.ignoresMouseEvents = YES;
     panel.opaque = NO;
     panel.backgroundColor = NSColor.clearColor;
-    panel.hasShadow = YES;
+    // The view draws the card's shadow itself: a window shadow would also outline the lit tab.
+    panel.hasShadow = NO;
     panel.level = NSFloatingWindowLevel;
     panel.hidesOnDeactivate = NO;
     panel.releasedWhenClosed = NO;
@@ -2773,43 +2954,12 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
                                NSWindowCollectionBehaviorIgnoresCycle;
     panel.animationBehavior = NSWindowAnimationBehaviorNone;
 
-    NSVisualEffectView *effectView = [[NSVisualEffectView alloc] initWithFrame:initialFrame];
-    effectView.material = NSVisualEffectMaterialPopover;
-    effectView.state = NSVisualEffectStateActive;
-    effectView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    effectView.wantsLayer = YES;
-    effectView.layer.cornerRadius = HoverClickTabHoverCardCornerRadius;
-    effectView.layer.masksToBounds = YES;
-    effectView.accessibilityElement = NO;
-
-    NSFont *font = [NSFont systemFontOfSize:HoverClickTabHoverCardFontSize weight:NSFontWeightSemibold];
-    NSTextField *label = [NSTextField wrappingLabelWithString:@""];
-    label.editable = NO;
-    label.selectable = NO;
-    label.font = font;
-    label.textColor = NSColor.labelColor;
-    label.maximumNumberOfLines = HoverClickTabHoverCardMaxLines;
-    label.cell.truncatesLastVisibleLine = YES;
-    label.preferredMaxLayoutWidth = HoverClickTabHoverCardMaxTextWidth;
-    label.accessibilityElement = NO;
-    [effectView addSubview:label];
-    panel.contentView = effectView;
+    HoverClickTabHoverCardView *cardView = [[HoverClickTabHoverCardView alloc] initWithFrame:initialFrame];
+    cardView.accessibilityElement = NO;
+    panel.contentView = cardView;
 
     _panel = panel;
-    _label = label;
-    _lineHeight = [[[NSLayoutManager alloc] init] defaultLineHeightForFont:font];
-}
-
-// Text size for the current label string: one line up to the maximum text width, wrapped beyond
-// it, at most HoverClickTabHoverCardMaxLines lines (the label truncates the last one).
-- (NSSize)cardTextSize {
-    NSCell *cell = _label.cell;
-    NSSize singleLine = [cell cellSizeForBounds:NSMakeRect(0.0, 0.0, 10000.0, 10000.0)];
-    CGFloat textWidth = MIN(ceil(singleLine.width), HoverClickTabHoverCardMaxTextWidth);
-    NSSize wrapped = [cell cellSizeForBounds:NSMakeRect(0.0, 0.0, textWidth, 10000.0)];
-    // +2 guards against a one-pixel difference between this measurement and the label's own layout.
-    CGFloat maxHeight = ceil(_lineHeight * HoverClickTabHoverCardMaxLines) + 2.0;
-    return NSMakeSize(textWidth, MIN(ceil(wrapped.height), maxHeight));
+    _cardView = cardView;
 }
 
 // Shows the card for hit, or moves an already visible card to it without a fade. NO when no
@@ -2821,10 +2971,12 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     }
 
     [self ensurePanel];
-    _label.stringValue = hit.title;
-    NSSize textSize = [self cardTextSize];
-    CGFloat width = MAX(textSize.width + 2.0 * HoverClickTabHoverCardHorizontalPadding, HoverClickTabHoverCardMinWidth);
-    CGFloat height = textSize.height + 2.0 * HoverClickTabHoverCardVerticalPadding;
+    NSUInteger titleLineCount = HoverClickTabHoverCardTitleLines(hit.title).count;
+    if (titleLineCount == 0) {
+        return NO;
+    }
+    CGFloat width = HoverClickTabHoverCardWidth;
+    CGFloat height = HoverClickTabHoverCardHeight(titleLineCount, NO);
 
     NSRect tab = HoverClickTabHoverCocoaRectFromQuartz(hit.tabRect, NSMaxY(primaryScreen.frame));
     // The screen under the pointer, else the one holding the tab's centre, else the primary one.
@@ -2843,34 +2995,27 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     NSScreen *screen = pointerScreen ?: (tabScreen ?: primaryScreen);
     NSRect visible = screen.visibleFrame;
 
+    // Where Chrome puts its own card: for a vertical strip against the tab's right edge with the
+    // top 1 pt above the tab's, for a horizontal strip right below the tab.
     NSRect candidates[2];
     if (hit.vertical) {
-        // Beside the whole strip, not just the tab, so the card does not cover the strip's edge.
-        CGFloat rightEdge = NSMaxX(tab);
-        CGFloat leftEdge = NSMinX(tab);
-        if (!CGRectIsNull(hit.tabGroupRect)) {
-            NSRect strip = HoverClickTabHoverCocoaRectFromQuartz(hit.tabGroupRect, NSMaxY(primaryScreen.frame));
-            if (NSMidX(tab) >= NSMinX(strip) && NSMidX(tab) <= NSMaxX(strip)) {
-                rightEdge = MAX(rightEdge, NSMaxX(strip));
-                leftEdge = MIN(leftEdge, NSMinX(strip));
-            }
-        }
-        NSRect right = NSMakeRect(rightEdge + HoverClickTabHoverCardSideGap, NSMaxY(tab) - height, width, height);
-        NSRect left = NSMakeRect(leftEdge - HoverClickTabHoverCardSideGap - width, NSMaxY(tab) - height, width, height);
+        CGFloat y = NSMaxY(tab) + HoverClickTabHoverCardTopAboveTab - height;
+        NSRect right = NSMakeRect(NSMaxX(tab), y, width, height);
+        NSRect left = NSMakeRect(NSMinX(tab) - width, y, width, height);
         BOOL rightFits = NSMinX(right) >= NSMinX(visible) && NSMaxX(right) <= NSMaxX(visible);
         candidates[0] = rightFits ? right : left;
         candidates[1] = rightFits ? left : right;
     } else {
-        candidates[0] = NSMakeRect(NSMinX(tab), NSMinY(tab) - HoverClickTabHoverCardBelowGap - height, width, height);
-        candidates[1] = NSMakeRect(NSMinX(tab), NSMaxY(tab) + HoverClickTabHoverCardBelowGap, width, height);
+        candidates[0] = NSMakeRect(NSMinX(tab), NSMinY(tab) - height, width, height);
+        candidates[1] = NSMakeRect(NSMinX(tab), NSMaxY(tab), width, height);
     }
 
-    NSRect frame = NSZeroRect;
+    NSRect cardFrame = NSZeroRect;
     BOOL placed = NO;
     for (NSUInteger index = 0; index < 2; index++) {
         NSRect clamped = HoverClickTabHoverClampedRect(candidates[index], visible);
         if (!NSIntersectsRect(clamped, tab)) {
-            frame = clamped;
+            cardFrame = clamped;
             placed = YES;
             break;
         }
@@ -2879,17 +3024,27 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
         return NO;
     }
 
-    _label.frame = NSMakeRect(HoverClickTabHoverCardHorizontalPadding,
-                              HoverClickTabHoverCardVerticalPadding,
-                              width - 2.0 * HoverClickTabHoverCardHorizontalPadding,
-                              textSize.height);
+    // One window for the lit tab, the card and the card's shadow.
+    NSRect windowFrame = NSInsetRect(NSUnionRect(cardFrame, tab),
+                                     -HoverClickTabHoverCardShadowMargin, -HoverClickTabHoverCardShadowMargin);
+    HoverClickTabHoverCardView *cardView = _cardView;
+    cardView.title = hit.title;
+    cardView.detail = nil;
+    cardView.dark = [[NSApp.effectiveAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]]
+                        isEqualToString:NSAppearanceNameDarkAqua];
+    cardView.cardRect = NSMakeRect(NSMinX(cardFrame) - NSMinX(windowFrame), NSMaxY(windowFrame) - NSMaxY(cardFrame),
+                                   cardFrame.size.width, cardFrame.size.height);
+    cardView.highlightRect = NSMakeRect(NSMinX(tab) - NSMinX(windowFrame), NSMaxY(windowFrame) - NSMaxY(tab),
+                                        tab.size.width, tab.size.height);
+    cardView.needsDisplay = YES;
+
     HoverClickTabHoverPanel *panel = _panel;
     if (_cardVisible) {
-        [panel setFrame:frame display:YES];
+        [panel setFrame:windowFrame display:YES];
         [panel orderFrontRegardless];
     } else {
         panel.alphaValue = 0.0;
-        [panel setFrame:frame display:YES];
+        [panel setFrame:windowFrame display:YES];
         [panel orderFrontRegardless];
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
             context.duration = HoverClickTabHoverFadeInDuration;
@@ -2897,9 +3052,9 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
         } completionHandler:nil];
         _cardsShown++;
     }
-    [panel invalidateShadow];
 
     _cardVisible = YES;
+    _cardFrame = cardFrame;
     _cardPid = hit.pid;
     _cardTabRect = hit.tabRect;
     _cardCheckedTime = HoverClickMonotonicSeconds();

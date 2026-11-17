@@ -17,6 +17,36 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-11-17: The Background Tab Hover card copies Chrome's own hover card
+
+**Decision:** The card is drawn to the measurements of Chrome's own tab hover card: 257 pt wide,
+1 pt border, 8 pt corners, a 13 pt semibold title on at most two lines, Chrome's dark or light
+card colours after the system appearance, the card's left edge on the tab's right edge and its
+top 1 pt above the tab's, and the hovered tab lit the way Chrome lights it. One view draws the
+lit tab, the card and its shadow in one transparent window.
+
+**Why:** Gergő's third runtime test: the card appears, but it does not look like the card he
+gets between two Chrome windows, and he wants the two to look the same.
+
+**Not done, waiting for a decision:** the second line of Chrome's card, the site's host. The
+tab's Accessibility element has no URL (`AXURL` returns no value, measured). The only source
+found is an Apple Event to the browser (`URL of tabs`), which needs the Automation permission
+for HoverClick, reads the address of every tab of the window and has to be matched to the
+hovered tab by title. The view already draws a detail line when given one.
+
+**Rejected:** the preview image and the memory line of Chrome's card: neither is exposed to
+other processes.
+
+**Evidence:** measured on Gergő's two screenshots (Chrome's card and the earlier HoverClick
+card): card 257 x 88 pt with two title lines and the host line, background (39,36,43), border
+(91,87,97), title (236,230,236), text from 13 pt in, title lines at 169 and 223 pt wide, which
+match the system font at 13 pt semibold (170.0 and 223.9), host line 138 pt wide, matching
+12 pt regular (139.0), hovered tab (84,80,93) on a strip of (59,54,70). Harness with Claude
+frontmost: 16 of 16, the card's left edge 0 pt from the tab's right edge and its top 1 pt above
+the tab's; a screenshot showed the dark card and the lit tab.
+
+---
+
 ## 2026-11-17: Background Tab Hover looks through other applications' overlays, and gets an end-to-end harness
 
 **Decision:** The window under the pointer is the first normal-level (layer 0) window in the
