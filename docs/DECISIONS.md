@@ -59,6 +59,25 @@ messages, an out-of-order tab 88, a miss 102; the slowest check took 38 ms. Stat
 0 findings, signed build verified with `scripts/verify-app.sh`. Runtime with Chrome in the
 background: **not verified** when this entry was written.
 
+**After an independent review, the same day:** three changes on top of `57ad994`. The review
+found no reference-counting error, no unbounded loop and nothing that blocks the main thread.
+
+- The strip's shape decides the orientation again, as before this entry; the 90 pt depth rule
+  applies only when no strip was read. With the depth rule first, a horizontal strip lower than
+  90 pt (a bottom tab bar) would have been learned as a vertical strip as wide as the window, and
+  every rest on its page would have run a hit test.
+- A search that runs out of messages or time ends without a tab and no longer counts as an
+  Accessibility timeout; only a messaging timeout does.
+- A strip is used, for learning and for the search, only when the walk up from it reaches the
+  window or the application before any web area (at most 12 elements; Chrome's vertical strip
+  needs 5). A page's own ARIA tab list is an `AXTabGroup` too, and the search would otherwise
+  read up to 256 page elements. A browser whose tab strip is itself web content therefore gets
+  no strip search; none of the supported browsers was checked for that.
+
+Probe after the change, Chrome frontmost: 122 of 122 checks pass in a second run, and all 122
+strip walks were recognised as browser UI. The first run had one failure, an Accessibility
+messaging timeout while Gergő was working in Chrome; it did not repeat.
+
 ---
 
 ## 2026-11-16: Background Tab Hover, HoverClick shows the tab title itself

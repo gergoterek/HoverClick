@@ -1488,14 +1488,14 @@ typedef NS_ENUM(NSInteger, HoverClickTabHoverAxisOrder) {
     HoverClickTabHoverAxisOrderAfter = 3
 };
 
-// Counts one more AX message. NO, and the search stops, once a limit is reached; running out of
-// time counts as a timeout.
+// Counts one more AX message. NO, and the search stops, once a limit is reached. Only a read that
+// hits the messaging timeout counts as a timeout; a search that runs out of messages or time just
+// ends without a tab.
 static BOOL HoverClickTabHoverStripSearchSpend(HoverClickTabHoverStripSearch *search) {
     if (search->stopped) {
         return NO;
     }
     if (HoverClickMonotonicSeconds() >= search->deadline) {
-        search->timedOut = YES;
         search->stopped = YES;
         return NO;
     }
@@ -1676,7 +1676,7 @@ static AXUIElementRef HoverClickTabHoverCopyTabInChildren(AXUIElementRef node,
 }
 
 // The tab under point inside the strip, retained, or NULL. *outTimedOut is set when a read hit the
-// messaging timeout or the search ran out of time. outMessages may be NULL.
+// messaging timeout. outMessages may be NULL.
 static AXUIElementRef HoverClickTabHoverCopyTabInStrip(AXUIElementRef strip,
                                                        CGRect stripRect,
                                                        CGPoint point,
@@ -1694,22 +1694,69 @@ static AXUIElementRef HoverClickTabHoverCopyTabInStrip(AXUIElementRef strip,
     return tab;
 }
 
-// A tab further below the window top than a horizontal strip reaches is in a vertical strip, and so
-// is a tab whose strip is taller than wide.
-static BOOL HoverClickTabHoverTabIsVertical(CGRect tabRect, CGRect stripRect, CGRect windowBounds) {
-    if (CGRectGetMinY(tabRect) - CGRectGetMinY(windowBounds) > HoverClickTabHoverHorizontalStripDepth) {
-        return YES;
+// A page's own ARIA tab list is an AXTabGroup as well. A strip counts only when the walk up from it
+// reaches the window or the application before any web area, at most
+// HoverClickTabHoverStripAncestorSteps elements up (Chrome's vertical strip: 5). *outInPage is set
+// when a web area was met, *outTimedOut when a read hit the messaging timeout.
+static const int HoverClickTabHoverStripAncestorSteps = 12;
+
+static BOOL HoverClickTabHoverStripIsBrowserUI(AXUIElementRef strip, BOOL *outTimedOut, BOOL *outInPage) {
+    static NSArray<NSString *> *ancestorNames;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        ancestorNames = @[(__bridge NSString *)kAXRoleAttribute,
+                          (__bridge NSString *)kAXParentAttribute];
+    });
+
+    BOOL browserUI = NO;
+    AXUIElementRef element = (AXUIElementRef)CFRetain(strip);
+    for (int step = 0; element != NULL && step <= HoverClickTabHoverStripAncestorSteps; step++) {
+        CFTypeRef values[2];
+        AXError error = HoverClickTabHoverCopyAttributes(element, ancestorNames, values);
+        if (error == kAXErrorCannotComplete) {
+            *outTimedOut = YES;
+            HoverClickTabHoverReleaseValues(values, 2);
+            break;
+        }
+        if (HoverClickTabHoverValueEquals(values[0], CFSTR("AXWebArea"))) {
+            *outInPage = YES;
+            HoverClickTabHoverReleaseValues(values, 2);
+            break;
+        }
+        if (HoverClickTabHoverValueEquals(values[0], kAXWindowRole) ||
+            HoverClickTabHoverValueEquals(values[0], kAXApplicationRole)) {
+            browserUI = YES;
+            HoverClickTabHoverReleaseValues(values, 2);
+            break;
+        }
+        AXUIElementRef parent = HoverClickTabHoverCopyElementValue(values[1]);
+        HoverClickTabHoverReleaseValues(values, 2);
+        CFRelease(element);
+        element = parent;
     }
-    return !CGRectIsNull(stripRect) && stripRect.size.height > stripRect.size.width;
+    if (element != NULL) {
+        CFRelease(element);
+    }
+    return browserUI;
+}
+
+// The strip's shape decides: taller than wide is vertical. Without a strip, a tab further below the
+// window top than a horizontal strip reaches is in a vertical strip.
+static BOOL HoverClickTabHoverTabIsVertical(CGRect tabRect, CGRect stripRect, CGRect windowBounds) {
+    if (!CGRectIsNull(stripRect)) {
+        return stripRect.size.height > stripRect.size.width;
+    }
+    return CGRectGetMinY(tabRect) - CGRectGetMinY(windowBounds) > HoverClickTabHoverHorizontalStripDepth;
 }
 
 // The Accessibility part of a hit test: the element under the point, the tab button above it, its
 // title and frame, and the tab strip's orientation. Chromium maps a tab to AXRadioButton with the
 // AXTabButton subrole and the tab strip to AXTabGroup. With knownKind vertical or horizontal the
-// walk up to the tab strip is skipped. When the walk ends on the strip without a tab, the strip's
-// frame is read, so a probe into a vertical strip recognises it, and with searchStrip the strip is
-// searched for the tab under the point (HoverClickTabHoverCopyTabInStrip). A read that hits the
-// messaging timeout ends the walk and marks the answer timed out.
+// walk up to the tab strip is skipped. When the walk ends on the strip without a tab and the strip
+// belongs to the browser's own UI (HoverClickTabHoverStripIsBrowserUI), the strip's frame is read,
+// so a probe into a vertical strip recognises it, and with searchStrip the strip is searched for
+// the tab under the point (HoverClickTabHoverCopyTabInStrip). A read that hits the messaging
+// timeout ends the walk and marks the answer timed out.
 static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
                                       CGPoint point,
                                       CGRect windowBounds,
@@ -1802,7 +1849,15 @@ static void HoverClickTabHoverReadTab(AXUIElementRef appElement,
         if (strip == NULL) {
             return;
         }
+        BOOL browserStrip = NO;
         if (!hit.timedOut) {
+            BOOL ancestorTimedOut = NO;
+            BOOL stripInPage = NO;
+            browserStrip = HoverClickTabHoverStripIsBrowserUI(strip, &ancestorTimedOut, &stripInPage);
+            hit.timedOut = hit.timedOut || ancestorTimedOut;
+            hit.reachedWebArea = hit.reachedWebArea || stripInPage;
+        }
+        if (browserStrip) {
             CFTypeRef frameValues[2];
             error = HoverClickTabHoverCopyAttributes(strip, frameNames, frameValues);
             CGRect stripRect = CGRectNull;
