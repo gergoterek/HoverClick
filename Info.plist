@@ -13,17 +13,17 @@
 	<key>CFBundleName</key>
 	<string>HoverClick</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.2.1</string>
+	<string>1.3.0</string>
 	<key>CFBundleVersion</key>
-	<string>43</string>
+	<string>45</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>HoverClick asks the browser which site a background tab shows, to put it under the tab's title in the hover card. It only reads; it never controls the browser.</string>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>HoverClick needs Accessibility access to focus windows before click delivery.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>HoverClick asks the browser which site a background tab shows, to put it under the tab's title in the hover card. It only reads; it never controls the browser.</string>
 	<key>SUAllowsAutomaticUpdates</key>
 	<false/>
 	<key>SUAutomaticallyUpdate</key>
@@ -33,6 +33,6 @@
 	<key>SUFeedURL</key>
 	<string>https://github.com/gergoterek/HoverClick/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>093ZOOvjGmr8WkI31IzBnjGwM3GXZU1q/qgDgADWm9o=</string>
+	<string>1a0E/pPU2Iw2Q/xKKQkhwjIfX9q5PKYVRdXByd1cJNQ=</string>
 </dict>
 </plist>
