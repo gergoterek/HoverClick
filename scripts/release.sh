@@ -238,7 +238,9 @@ PY
 do_publish() {
   check_tools
   cd "$PROJECT_DIR"
-  /usr/bin/gh auth status >/dev/null 2>&1 || die "gh is not logged in"
+  GH=$(command -v gh || true)
+  [[ -x "$GH" ]] || die "gh (GitHub CLI) not found on PATH"
+  "$GH" auth status >/dev/null 2>&1 || die "gh is not logged in"
   [[ -s "$DMG_PATH" ]] || die "missing $DMG_PATH; run prepare first"
 
   step "checking the release commit"
@@ -261,7 +263,7 @@ do_publish() {
   [[ "$head" == "$remote_head" ]] || die "HEAD $head is not pushed (origin/$branch is $remote_head)"
   echo "branch = $branch @ $head (pushed)"
   ! /usr/bin/git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || die "tag $TAG already exists locally"
-  ! /usr/bin/gh release view "$TAG" >/dev/null 2>&1 || die "GitHub Release $TAG already exists"
+  ! "$GH" release view "$TAG" >/dev/null 2>&1 || die "GitHub Release $TAG already exists"
 
   step "checking appcast.xml against the DMG"
   local signature length appcast_length appcast_url
@@ -283,7 +285,7 @@ do_publish() {
   echo "appcast item for build $build verifies against $DMG_NAME"
 
   step "creating GitHub Release $TAG on $head"
-  /usr/bin/gh release create "$TAG" "$DMG_PATH" "$APPCAST" \
+  "$GH" release create "$TAG" "$DMG_PATH" "$APPCAST" \
     --target "$head" \
     --title "$APP_NAME $TAG" \
     --notes-file "$notes" \
