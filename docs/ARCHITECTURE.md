@@ -176,7 +176,9 @@ The earlier `NSOpenPanel`-based `Choose Application...`, the manual `Add by Bund
 
 **Safety constraints (unchanged):** Event tap mask remains `kCGEventLeftMouseDown | kCGEventRightMouseDown` only. All bypass paths return the original event unchanged. NULL is never returned for normal user events. No synthetic clicks, event replay, delayed delivery, cursor movement, CGEventPost, or CGEventCreateMouseEvent in any new code path. The bounded waits inside the callback (click path steps 9 and 10) are not delayed delivery under the reading recorded in `docs/DECISIONS.md` 2026-09-14 ("Invariant 6").
 
-## Background Tab Hover
+## Background Hover
+
+Since 2026-11-19 the feature covers every application: outside a browser's tab zones the named control, link or image under the pointer gets the same card (`HoverClickTabHoverReadElement`; `docs/DECISIONS.md`, 2026-11-19). The menu title is `Background Hover`; the text below describes the browser tab path, which is unchanged, under the feature's earlier name.
 
 Chromium-based browsers register the mouse tracking area of their content view for the active application only. While another application is frontmost, a browser window therefore gets no mouse-moved or mouse-entered events: no tab hover card, no hover highlight and no expand-on-hover of a collapsed vertical tab strip. Background Tab Hover shows the title of the tab under a resting pointer in a small card of HoverClick's own, so keyboard focus never leaves the app the user is typing in.
 

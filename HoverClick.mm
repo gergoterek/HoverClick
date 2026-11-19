@@ -28,7 +28,7 @@ static NSString * const HoverClickLaunchAtLoginOnboardingPromptShownDefaultsKey 
 static NSString * const HoverClickStableHelp = @"HoverClick - Windows-like click focus for macOS.";
 static NSString * const HoverClickLeftClickFocusHelp = @"Activates a background window before passing through your original left click.";
 static NSString * const HoverClickRightClickFocusHelp = @"Activates a background window before opening its normal right-click menu.";
-static NSString * const HoverClickBackgroundTabHoverHelp = @"Shows the title of a browser tab when the pointer rests on it in a window that is not in front. Nothing is focused.";
+static NSString * const HoverClickBackgroundTabHoverHelp = @"Shows the name of the tab, button, link or image the pointer rests on in a window that is not in front. Nothing is focused.";
 static NSString * const HoverClickAccessibilityStatusHelp = @"Shows whether macOS currently allows HoverClick to inspect and focus windows.";
 static NSString * const HoverClickRefreshAccessibilityHelp = @"Checks whether Accessibility permission is now granted and starts click focus when possible.";
 static NSString * const HoverClickOpenAccessibilitySettingsHelp = @"Opens the macOS Accessibility privacy pane so you can review HoverClick access.";
@@ -1452,6 +1452,10 @@ typedef NS_ENUM(NSInteger, HoverClickTabHoverStripKind) {
 @property(nonatomic, copy) NSString *title;
 // The site line under the title, nil when the browser gave none.
 @property(nonatomic, copy) NSString *detail;
+// The card is for a control, link or image of any application (HoverClickTabHoverReadElement),
+// not for a browser tab: tabRect is that element's frame, title its name and detail its help text
+// or its link's site.
+@property(nonatomic) BOOL element;
 - (void)takeTabFromRead:(HoverClickTabHoverHit *)read;
 @end
 
@@ -2240,6 +2244,151 @@ static void HoverClickTabHoverLearnFromDirectRead(NSMutableDictionary<NSNumber *
     }
 }
 
+// Background hover for every application. An application that is not active gets no mouse-moved
+// event, so none of its own hover feedback appears: no tooltip, no highlight. For the control,
+// link or image the pointer rests on, HoverClick shows the same card as for a browser tab, with the
+// element's name and, under it, its help text (what the application's own tooltip would say) or
+// the site a link leads to. Read-only: the element's value is never read, so no text content and
+// no field content reaches HoverClick.
+static const int HoverClickTabHoverElementMaxParentSteps = 4;
+static const CGFloat HoverClickTabHoverElementMaxWidth = 1000.0;
+static const CGFloat HoverClickTabHoverElementMaxHeight = 240.0;
+
+static NSString *HoverClickTabHoverHostFromURL(NSString *urlString);
+
+// Roles whose name says what a click would do or what is shown. Text, fields, lists, groups and
+// windows are left out: their name is already on screen or they have none.
+static BOOL HoverClickTabHoverIsNamedControlRole(CFTypeRef role) {
+    if (role == NULL || CFGetTypeID(role) != CFStringGetTypeID()) {
+        return NO;
+    }
+    static NSSet<NSString *> *roles;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        roles = [NSSet setWithArray:@[
+            (__bridge NSString *)kAXButtonRole,
+            (__bridge NSString *)kAXPopUpButtonRole,
+            (__bridge NSString *)kAXMenuButtonRole,
+            (__bridge NSString *)kAXCheckBoxRole,
+            (__bridge NSString *)kAXRadioButtonRole,
+            (__bridge NSString *)kAXDisclosureTriangleRole,
+            (__bridge NSString *)kAXImageRole,
+            (__bridge NSString *)kAXSliderRole,
+            (__bridge NSString *)kAXIncrementorRole,
+            (__bridge NSString *)kAXColorWellRole,
+            @"AXLink"
+        ]];
+    });
+    return [roles containsObject:(__bridge NSString *)role];
+}
+
+// Fills hit for the named element under the point: the hit element or one of its nearest
+// ancestors, up to the window or the page. The system-wide hit test answers with what the pointer
+// really reaches; an element of another process than pid marks the answer as covered. A read that
+// hits the messaging timeout ends the walk and marks the answer timed out.
+static void HoverClickTabHoverReadElement(AXUIElementRef systemWide,
+                                          pid_t pid,
+                                          CGPoint point,
+                                          HoverClickTabHoverHit *hit) {
+    static NSArray<NSString *> *names;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        names = @[(__bridge NSString *)kAXRoleAttribute,
+                  (__bridge NSString *)kAXTitleAttribute,
+                  (__bridge NSString *)kAXDescriptionAttribute,
+                  (__bridge NSString *)kAXHelpAttribute,
+                  (__bridge NSString *)kAXURLAttribute,
+                  (__bridge NSString *)kAXPositionAttribute,
+                  (__bridge NSString *)kAXSizeAttribute,
+                  (__bridge NSString *)kAXParentAttribute];
+    });
+    static const CFIndex valueCount = 8;
+
+    AXUIElementRef element = NULL;
+    AXError error = AXUIElementCopyElementAtPosition(systemWide, (float)point.x, (float)point.y, &element);
+    if (error != kAXErrorSuccess || element == NULL) {
+        if (element != NULL) {
+            CFRelease(element);
+        }
+        hit.timedOut = hit.timedOut || (error == kAXErrorCannotComplete);
+        return;
+    }
+    pid_t elementPid = 0;
+    if (AXUIElementGetPid(element, &elementPid) != kAXErrorSuccess || elementPid != pid) {
+        CFRelease(element);
+        hit.covered = YES;
+        return;
+    }
+
+    for (int step = 0; element != NULL; step++) {
+        CFTypeRef values[valueCount];
+        error = HoverClickTabHoverCopyAttributes(element, names, values);
+        if (error == kAXErrorCannotComplete) {
+            hit.timedOut = YES;
+            HoverClickTabHoverReleaseValues(values, valueCount);
+            break;
+        }
+
+        CFTypeRef role = values[0];
+        BOOL isBoundary = error != kAXErrorSuccess || role == NULL ||
+                          HoverClickTabHoverValueEquals(role, kAXWindowRole) ||
+                          HoverClickTabHoverValueEquals(role, kAXApplicationRole) ||
+                          HoverClickTabHoverValueEquals(role, CFSTR("AXWebArea"));
+        if (isBoundary) {
+            HoverClickTabHoverReleaseValues(values, valueCount);
+            break;
+        }
+
+        NSString *help = HoverClickTabHoverNormalizedTitle(HoverClickTabHoverStringValue(values[3]));
+        NSString *label = nil;
+        if (HoverClickTabHoverIsNamedControlRole(role)) {
+            label = HoverClickTabHoverNormalizedTitle(HoverClickTabHoverStringValue(values[1]));
+            if (label == nil) {
+                label = HoverClickTabHoverNormalizedTitle(HoverClickTabHoverStringValue(values[2]));
+            }
+        }
+        NSString *detail = nil;
+        if (label == nil) {
+            // Help text alone is the application's tooltip for this element, whatever its role.
+            label = help;
+        } else if (help != nil && ![help isEqualToString:label]) {
+            detail = help;
+        }
+
+        if (label != nil) {
+            if (detail == nil && values[4] != NULL && CFGetTypeID(values[4]) == CFURLGetTypeID()) {
+                detail = HoverClickTabHoverHostFromURL([(__bridge NSURL *)values[4] absoluteString]);
+            }
+            CGRect rect = CGRectNull;
+            BOOL usable = HoverClickTabHoverRectValue(values[5], values[6], &rect) &&
+                          rect.size.width >= HoverClickTabHoverMinTabSide &&
+                          rect.size.height >= HoverClickTabHoverMinTabSide &&
+                          rect.size.width <= HoverClickTabHoverElementMaxWidth &&
+                          rect.size.height <= HoverClickTabHoverElementMaxHeight &&
+                          CGRectContainsPoint(CGRectInset(rect, -HoverClickTabHoverTabSlack, -HoverClickTabHoverTabSlack), point);
+            HoverClickTabHoverReleaseValues(values, valueCount);
+            if (usable) {
+                hit.outcome = HoverClickTabHoverOutcomeTab;
+                hit.element = YES;
+                hit.title = label;
+                hit.detail = detail;
+                hit.tabRect = rect;
+                hit.vertical = NO;
+            }
+            break;
+        }
+
+        AXUIElementRef parent = step < HoverClickTabHoverElementMaxParentSteps ?
+            HoverClickTabHoverCopyElementValue(values[7]) : NULL;
+        HoverClickTabHoverReleaseValues(values, valueCount);
+        CFRelease(element);
+        element = parent;
+    }
+    if (element != NULL) {
+        CFRelease(element);
+    }
+}
+
 // Runs on the private queue only. windowEntries is owned by that queue.
 static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
                                                            pid_t frontmostPid,
@@ -2262,7 +2411,20 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     hit.pid = pid;
 
     NSString *bundleID = [NSRunningApplication runningApplicationWithProcessIdentifier:pid].bundleIdentifier;
-    if (!HoverClickTabHoverIsSupportedBrowser(bundleID) || [excludedBundleIDs containsObject:bundleID]) {
+    if (bundleID != nil && [excludedBundleIDs containsObject:bundleID]) {
+        return hit;
+    }
+    if (!HoverClickTabHoverIsSupportedBrowser(bundleID)) {
+        // Any other application: the named element under the pointer, no tab strip logic.
+        AXUIElementRef elementSystemWide = AXUIElementCreateSystemWide();
+        if (elementSystemWide == NULL) {
+            return hit;
+        }
+        hit.axAttempted = YES;
+        NSTimeInterval elementStart = HoverClickMonotonicSeconds();
+        HoverClickTabHoverReadElement(elementSystemWide, pid, point, hit);
+        hit.axDuration = HoverClickMonotonicSeconds() - elementStart;
+        CFRelease(elementSystemWide);
         return hit;
     }
 
@@ -2282,9 +2444,8 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     BOOL topBandUsable = entry == nil || !entry.topBandIsPage ||
                          now - entry.topBandCheckedAt >= HoverClickTabHoverProbeIntervalOther;
     BOOL direct = (dy <= HoverClickTabHoverTopBand && topBandUsable) || insideKnownStrip;
-    if (!direct && !(dx <= HoverClickTabHoverProbeBand && HoverClickTabHoverProbeAllowed(entry, now))) {
-        return hit;
-    }
+    // Outside the zones where a tab can be, only the named element under the pointer is read.
+    BOOL tabZone = direct || (dx <= HoverClickTabHoverProbeBand && HoverClickTabHoverProbeAllowed(entry, now));
 
     AXUIElementRef systemWide = AXUIElementCreateSystemWide();
     if (systemWide == NULL) {
@@ -2293,6 +2454,12 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
 
     hit.axAttempted = YES;
     NSTimeInterval axStart = HoverClickMonotonicSeconds();
+    if (!tabZone) {
+        HoverClickTabHoverReadElement(systemWide, pid, point, hit);
+        hit.axDuration = HoverClickMonotonicSeconds() - axStart;
+        CFRelease(systemWide);
+        return hit;
+    }
     HoverClickTabHoverProbeResult probe = HoverClickTabHoverProbeResultTestPoint;
     if (!direct) {
         probe = HoverClickTabHoverProbeWindow(systemWide, pid, point, windowBounds, windowKey, windowList, cardWindowID, ownPid,
@@ -2329,6 +2496,10 @@ static HoverClickTabHoverHit *HoverClickTabHoverRunHitTest(CGPoint point,
     HoverClickTabHoverWindowEntry *ownerEntry = windowEntries[windowKey];
     if (ownerEntry != nil) {
         ownerEntry.pid = pid;
+    }
+    if (hit.outcome != HoverClickTabHoverOutcomeTab && !hit.timedOut && !hit.covered) {
+        // No tab there: a toolbar button, a bookmark or page content of the browser.
+        HoverClickTabHoverReadElement(systemWide, pid, point, hit);
     }
     hit.axDuration = HoverClickMonotonicSeconds() - axStart;
     CFRelease(systemWide);
@@ -2445,9 +2616,9 @@ static CGFloat HoverClickTabHoverCardHeight(NSUInteger titleLineCount, BOOL hasD
 
     if (!NSIsEmptyRect(self.highlightRect)) {
         [highlight setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:self.highlightRect
-                                         xRadius:HoverClickTabHoverCardCornerRadius
-                                         yRadius:HoverClickTabHoverCardCornerRadius] fill];
+        CGFloat radius = MIN(HoverClickTabHoverCardCornerRadius,
+                             MIN(self.highlightRect.size.width, self.highlightRect.size.height) / 2.0);
+        [[NSBezierPath bezierPathWithRoundedRect:self.highlightRect xRadius:radius yRadius:radius] fill];
     }
 
     NSRect card = self.cardRect;
@@ -2820,6 +2991,8 @@ static NSString *HoverClickTabHoverHostForTitle(NSDictionary<NSString *, id> *ho
 @property(nonatomic, readonly) uint64_t cardsShown;
 @property(nonatomic, readonly) uint64_t hitTestsStarted;
 @property(nonatomic, readonly) uint64_t hitTestsFoundTab;
+// Hit tests that found a named control, link or image instead of a browser tab.
+@property(nonatomic, readonly) uint64_t hitTestsFoundElement;
 // Hit tests where the pointer reached another application above the browser window.
 @property(nonatomic, readonly) uint64_t hitTestsCovered;
 // Cards shown with the site line, and the browser's last answer to the request for it (0: fine,
@@ -2985,8 +3158,8 @@ static NSString *HoverClickTabHoverHostForTitle(NSDictionary<NSString *, id> *ho
     return windowNumber > 0 ? windowNumber : 0;
 }
 
-// Energy rule: a card can only appear over a supported browser that is not frontmost, so the
-// timer polls only while such a browser runs. terminatedPid is left out because the workspace may
+// Energy rule: a card can only appear over an application with windows of its own that is not
+// frontmost and not excluded, so the timer polls only while such an application runs. terminatedPid is left out because the workspace may
 // still list an application while its termination notification is delivered.
 - (void)refreshBrowserPresence {
     if (!_running) {
@@ -3005,7 +3178,8 @@ static NSString *HoverClickTabHoverHostForTitle(NSDictionary<NSString *, id> *ho
             continue;
         }
         NSString *bundleID = application.bundleIdentifier;
-        if (HoverClickTabHoverIsSupportedBrowser(bundleID) && ![excludedBundleIDs containsObject:bundleID]) {
+        if (application.activationPolicy == NSApplicationActivationPolicyRegular &&
+            (bundleID == nil || ![excludedBundleIDs containsObject:bundleID])) {
             found = YES;
             break;
         }
@@ -3014,8 +3188,8 @@ static NSString *HoverClickTabHoverHostForTitle(NSDictionary<NSString *, id> *ho
     [self updateTimer];
 }
 
-// The timer runs only while the feature runs, the session is active, the screens are awake and a
-// supported browser runs in the background. A card never outlives the timer.
+// The timer runs only while the feature runs, the session is active, the screens are awake and an
+// application other than the frontmost one runs. A card never outlives the timer.
 - (void)updateTimer {
     BOOL shouldPoll = _running && !_sessionInactive && !_screensAsleep && _backgroundBrowserRunning;
     if (!shouldPoll) {
@@ -3176,7 +3350,7 @@ static NSString *HoverClickTabHoverHostForTitle(NSDictionary<NSString *, id> *ho
         @autoreleasepool {
             hit = HoverClickTabHoverRunHitTest(point, frontmostPid, ownPid, cardWindowID, excludedBundleIDs,
                                                windowEntries);
-            if (hit.outcome == HoverClickTabHoverOutcomeTab) {
+            if (hit.outcome == HoverClickTabHoverOutcomeTab && !hit.element) {
                 hit.detail = [hostLookup hostForPid:hit.pid title:hit.title wait:HoverClickTabHoverHostWait];
             }
         }
@@ -3192,7 +3366,11 @@ static NSString *HoverClickTabHoverHostForTitle(NSDictionary<NSString *, id> *ho
         _slowestAXDuration = hit.axDuration;
     }
     if (hit.outcome == HoverClickTabHoverOutcomeTab) {
-        _hitTestsFoundTab++;
+        if (hit.element) {
+            _hitTestsFoundElement++;
+        } else {
+            _hitTestsFoundTab++;
+        }
     }
     if (hit.covered) {
         _hitTestsCovered++;
@@ -3242,7 +3420,7 @@ static NSString *HoverClickTabHoverHostForTitle(NSDictionary<NSString *, id> *ho
     }
     _siteStatus = status;
     HoverClickTabHoverHit *hit = _cardHit;
-    if (!_running || !_cardVisible || hit == nil || hit.pid != pid) {
+    if (!_running || !_cardVisible || hit == nil || hit.pid != pid || hit.element) {
         return;
     }
     NSString *host = [_hostLookup knownHostForPid:pid title:hit.title];
@@ -3347,8 +3525,14 @@ static NSString *HoverClickTabHoverHostForTitle(NSDictionary<NSString *, id> *ho
         candidates[0] = rightFits ? right : left;
         candidates[1] = rightFits ? left : right;
     } else {
-        candidates[0] = NSMakeRect(NSMinX(tab), NSMinY(tab) - height, width, height);
-        candidates[1] = NSMakeRect(NSMinX(tab), NSMaxY(tab), width, height);
+        // Below the tab or element, else above it. Under an element wider than the card, the card
+        // stays near the pointer instead of at the element's far left edge.
+        CGFloat x = NSMinX(tab);
+        if (hit.element && tab.size.width > width) {
+            x = MIN(MAX(pointer.x - width / 2.0, NSMinX(tab)), NSMaxX(tab) - width);
+        }
+        candidates[0] = NSMakeRect(x, NSMinY(tab) - height, width, height);
+        candidates[1] = NSMakeRect(x, NSMaxY(tab), width, height);
     }
 
     NSRect cardFrame = NSZeroRect;
@@ -3777,7 +3961,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     HoverClickUseNonClosingMenuRow(self.rightClickFocusItem, @"contextualmenu.and.cursorarrow", @"cursorarrow", YES);
     [menu addItem:self.rightClickFocusItem];
 
-    self.backgroundTabHoverItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Background Tab Hover")
+    self.backgroundTabHoverItem = [[NSMenuItem alloc] initWithTitle:HoverClickMenuItemTitle(@"Background Hover")
                                                              action:@selector(toggleBackgroundTabHover:)
                                                       keyEquivalent:@""];
     self.backgroundTabHoverItem.target = self;
@@ -3965,8 +4149,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
         @"Focuses windows on left-click.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Right Click Focus",
         @"Focuses before showing context menus.")];
-    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Background Tab Hover",
-        @"Shows tab titles in browser windows that are not in front.")];
+    [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Background Hover",
+        @"Shows what the pointer rests on in windows that are not in front.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Bypass Key",
         @"Hold the key to bypass HoverClick.")];
     [quickHelpMenu addItem:HoverClickCreateQuickHelpItem(@"Excluded Apps",
@@ -4960,7 +5144,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     [[NSUserDefaults standardUserDefaults] synchronize];
 
     HoverClickLog("HoverClick: background tab hover %s", _backgroundTabHoverEnabled ? "enabled" : "disabled");
-    [self setLastClickResult:_backgroundTabHoverEnabled ? @"Background Tab Hover Enabled" : @"Background Tab Hover Disabled"];
+    [self setLastClickResult:_backgroundTabHoverEnabled ? @"Background Hover Enabled" : @"Background Hover Disabled"];
     [self updateBackgroundTabHoverForReason:@"menu toggle"];
     [self updateMenuTitles];
 }
@@ -5383,8 +5567,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
              "Diagnostics copy/menu note: volatile last handled/focus fields may reflect the status/menu click used to copy diagnostics; stable real/background fields and recent non-menu history ignore HoverClick menu/status UI clicks.\n"
              "Left Click Focus: %@\n"
              "Right Click Focus: %@\n"
-             "Background Tab Hover: %@\n"
-             "Background Tab Hover counters: running=%@ cards shown=%llu hit tests started=%llu hit tests found tab=%llu other app under pointer=%llu cards with site=%llu site status=%d AX timeouts=%llu slowest AX part=%.0fms\n"
+             "Background Hover: %@\n"
+             "Background Hover counters: running=%@ cards shown=%llu hit tests started=%llu hit tests found tab=%llu found other element=%llu other app under pointer=%llu cards with site=%llu site status=%d AX timeouts=%llu slowest AX part=%.0fms\n"
              "Bypass Key: %@\n"
              "Last bypass decision: %@\n"
              "Excluded Apps (built-in compatibility): %@\n"
@@ -5475,6 +5659,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             self.backgroundTabHover.cardsShown,
             self.backgroundTabHover.hitTestsStarted,
             self.backgroundTabHover.hitTestsFoundTab,
+            self.backgroundTabHover.hitTestsFoundElement,
             self.backgroundTabHover.hitTestsCovered,
             self.backgroundTabHover.cardsWithSite,
             (int)self.backgroundTabHover.siteStatus,
@@ -5588,7 +5773,7 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
     self.rightClickFocusItem.state = _rightClickFocusEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.rightClickFocusItem.toolTip = trusted ? HoverClickRightClickFocusHelp : @"Requires Accessibility permission.";
     HoverClickSyncMenuRowView(self.rightClickFocusItem);
-    self.backgroundTabHoverItem.title = HoverClickMenuItemTitle(@"Background Tab Hover");
+    self.backgroundTabHoverItem.title = HoverClickMenuItemTitle(@"Background Hover");
     self.backgroundTabHoverItem.enabled = trusted;
     self.backgroundTabHoverItem.state = _backgroundTabHoverEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     self.backgroundTabHoverItem.toolTip = trusted ? HoverClickBackgroundTabHoverHelp : @"Requires Accessibility permission.";
@@ -5650,8 +5835,8 @@ static CGEventRef HoverClickEventTapCallback(CGEventTapProxy proxy,
             @"Left Click Focus Disabled",
             @"Right Click Focus Enabled",
             @"Right Click Focus Disabled",
-            @"Background Tab Hover Enabled",
-            @"Background Tab Hover Disabled",
+            @"Background Hover Enabled",
+            @"Background Hover Disabled",
             @"Right Click Disabled",
             @"Automatic Update Checks Enabled",
             @"Automatic Update Checks Disabled"

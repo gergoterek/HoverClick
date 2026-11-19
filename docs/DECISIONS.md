@@ -17,6 +17,61 @@ This file is the project's long-term memory. Chats are disposable; this is not.
 
 ---
 
+## 2026-11-19: Background Hover covers every application, not only browser tabs
+
+**Decision:** The toggle is renamed `Background Hover` (same defaults key,
+`backgroundTabHoverEnabled`). When the pointer rests on a named control, link or image of any
+window whose application is not frontmost, HoverClick shows the same click-through card as for a
+browser tab: the element's name (`AXTitle`, else `AXDescription`), under it the element's help
+text (`AXHelp`, what the application's own tooltip would say) or, for a link, the site it leads
+to. An element of any role that carries help text gets a card with that text. The element is lit
+the way a hovered tab is. Browser tabs keep their own path (strip search, site line by Apple
+Event); everywhere else in a browser window the element read applies, page content included.
+
+**Why:** Gergő asked for it on 2026-11-19: the tab card "works well, but only in Chrome", and
+every window of every application should behave the same way (he named Spotify and web pages).
+The cause is the same for every application: a window of an inactive application receives no
+mouse-moved event, so none of its own hover feedback appears.
+
+**What it is not:** the application's own hover (a row highlight, a CSS `:hover` menu, a button
+that only appears under the pointer) cannot be produced from outside without activating the
+application (invariant 5) or posting mouse events into it (invariant 3). The card names what is
+under the pointer; it does not make the application react.
+
+**How it stays inside the invariants:** nothing new. The same 10 Hz position timer, the same
+private queue, the same read-only Accessibility calls with the 0.15 s timeout, the same panel.
+The timer now runs while any regular application other than the frontmost one is running, which
+in practice is always. One window list read and one hit test happen per rest of 0.3 s, as before.
+An element's value is never read, so text content and field content never reach HoverClick.
+Roles that get a card by name: button, pop-up button, menu button, checkbox, radio button,
+disclosure triangle, image, slider, incrementor, colour well, link. Elements wider than 1000 pt
+or taller than 240 pt get none. Excluded Apps switches the feature off per application.
+
+**Known limits, measured 2026-11-19 with read-only probes:**
+
+- Spotify (CEF) answers a hit test anywhere in its window with an empty `AXScrollArea`: its
+  Accessibility tree is off. The application element offers only `AXEnhancedUserInterface` as a
+  settable switch. HoverClick does not set it (that would be a write into another application),
+  so Spotify shows no card. Switching it on is a separate decision.
+- Claude (Electron) and Safari page content answer with named buttons and links; System Settings
+  and Finder answer with native controls, most of them with `AXDescription` and no `AXHelp`.
+- Hit tests into a background Chrome page may switch on Chrome's renderer accessibility, which
+  costs Chrome some speed and memory (inferred from Chromium's behaviour, not measured). The
+  2026-11-16 entry kept Accessibility traffic off page content for that reason; this entry gives
+  that up because page content was asked for. Adding the browser to Excluded Apps restores it.
+
+**Rejected:** setting `AXEnhancedUserInterface` or `AXManualAccessibility` on other applications
+without asking; a card for plain text, text fields and list rows (their text is already on
+screen, and reading values would bring content into HoverClick).
+
+**Evidence:** `scripts/tab-hover-harness.sh` on this source, Chrome really frontmost with Finder
+as the stand-in frontmost application: 38 of 38, of which 3 tabs and 3 elements of the Claude
+window (radio button, button, checkbox) with the card seen in a screenshot. The unchanged source
+as control: 22 of 22 on the tab part. No native application was tested at runtime: their windows
+were covered. `scripts/source-only-check.sh` PASS. Gergő's own hover test: pending.
+
+---
+
 ## 2026-11-17: The tab hover card's site line comes from the browser by Apple Event
 
 **Decision:** The card's second line, the site the tab shows, is read from the browser with two

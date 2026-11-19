@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-11-17
+Last updated: 2026-11-19
 
 Short, current source of truth. Update this file at the end of every work cycle.
 Everything historical lives in `docs/CURRENT_STATE.md` and `docs/DECISIONS.md`.
@@ -62,6 +62,7 @@ Only one branch is worked on at a time. Finish or park the top item before start
 | 1 | `fix/single-window-focus` | **18 commits on the branch, nothing uncommitted** (the menu bar utility clause is `eae5588`, see below; the build chain and the release pipeline are `92c2678` and `9353eb9`). `93ae113` and `c700de2` verified at runtime. `65c130f` (conditional activation plus a bounded wait) measured on 2026-09-14 and again on 2026-09-20 (22 Chrome attempts, 22 delayed YES). `fd5035d`, `ec56fc9`, `936d137` (2026-09-20 stability audit, see below) **not verified at runtime**. Not merged to `main`. |
 | 1a | `worktree-codebase-audit` | In-place cleanup after the 2026-10-25 audit, on top of `afc97b3`, with `fix/single-window-focus` merged in (`d47e853`). Static checks PASS, **runtime test pending**. Reached `fix/single-window-focus` on 2026-11-17 with Background Tab Hover; the click test below now runs on the project root's build. |
 | 1b | `worktree-bg-tab-hover` | Background Tab Hover, on top of `worktree-codebase-audit` (`3dac94d`), fast-forwarded into `fix/single-window-focus` on 2026-11-17. Two runtime tests on 2026-11-17 showed no card; both causes are fixed (the strip search, then other applications' overlays). Static checks PASS and `scripts/tab-hover-harness.sh` passes 32 of 32 with the card seen on screen; **Gergő's own hover test pending**. See "Background Tab Hover" below. |
+| 1c | `worktree-all-app-hover` | Background Hover for every application (2026-11-19), on top of `fix/single-window-focus` and fast-forwarded into it. Static checks PASS, `scripts/tab-hover-harness.sh` 38 of 38 (tabs and three controls of the Claude window). **Gergő's own hover test pending; the `v1.3.0` release waits for it.** See "Background Hover for every application" below. |
 | 2 | `feature/menu-help-tooltips` | Not started. Replace the `Guide` submenu with hover tooltips. **Blocked on a decision — see below.** |
 
 ### Queued: Guide submenu → tooltips
@@ -76,6 +77,38 @@ global monitor, or a floating window — all forbidden by `CLAUDE.md`.
 
 Read `docs/DECISIONS.md`, entry "In-menu tooltips were tried twice and reverted twice",
 before planning this. The first step is a decision, not an implementation.
+
+---
+
+## Background Hover for every application, 2026-11-19: harness passes, Gergő's test pending
+
+**Asked:** the tab card works, but only in Chrome; every window of every application should
+behave the same way, and this should ship as `v1.3.0`.
+
+**Change:** the toggle is now `Background Hover`. Outside a browser's tab zones, and in every
+other application, the named control, link or image under a resting pointer gets the card (name,
+then help text or the link's site). What it cannot do, the limits (Spotify shows nothing, Chrome
+page reads) and the evidence: `docs/DECISIONS.md`, entry 2026-11-19.
+
+**Runtime test** (Gergő, on the build in the project root):
+
+1. Chrome frontmost, typing in it. Rest the pointer on a sidebar chat, an icon button or a link
+   of the Claude window on the other monitor. Expected: a card with its name, the element lit;
+   typing continues in Chrome.
+2. The same over System Settings' sidebar, a Finder toolbar button and a link of a Safari page.
+3. Rest on plain text or an empty area: no card. Click: the card disappears, the click behaves
+   as before.
+4. Any other application frontmost, a background Chrome page: links and buttons show a card, tabs
+   show the tab card as before.
+5. Spotify: no card (known limit). Decide whether HoverClick may switch on Spotify-type
+   applications' Accessibility tree.
+6. If cards in one application are a nuisance: add it to Excluded Apps, no card there.
+
+**Release `v1.3.0`:** `docs/release-notes/1.3.0.md` names the feature. Not run yet:
+`scripts/release.sh prepare --version 1.3.0 --build 45` (also replaces `SUPublicEDKey`), the push
+and `scripts/release.sh publish`. They wait for the test above, because the release also carries
+the click changes of `fix/single-window-focus` and the audit cleanup, whose click tests below are
+still open.
 
 ---
 

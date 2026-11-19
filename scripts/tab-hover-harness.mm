@@ -232,6 +232,94 @@ int main(int argc, const char **argv) {
             Expect(![[hover valueForKey:@"cardVisible"] boolValue], @"card hidden after the pointer moved onto the page");
             windowIndex++;
         }
+        // ---- any other application: the named element under the pointer ----
+        // Skipped for an older HoverClick.mm (--source) that has no element read.
+        if ([HoverClickTabHoverHit instancesRespondToSelector:NSSelectorFromString(@"element")]) {
+            printf("\n== named elements of other applications ==\n");
+            NSArray *list = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
+            NSMutableDictionary<NSNumber *, NSNumber *> *perApp = [NSMutableDictionary dictionary];
+            NSMutableDictionary *entries = [NSMutableDictionary dictionary];
+            int elementCards = 0, sampled = 0;
+            for (NSDictionary *w in list) {
+                if ([w[(id)kCGWindowLayer] integerValue] != 0 || elementCards >= 9) continue;
+                pid_t wpid = [w[(id)kCGWindowOwnerPID] intValue];
+                NSRunningApplication *owner = [NSRunningApplication runningApplicationWithProcessIdentifier:wpid];
+                if (wpid == gFakeFront || wpid == getpid() || HoverClickTabHoverIsSupportedBrowser(owner.bundleIdentifier)) continue;
+                CGRect b; if (!CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)w[(id)kCGWindowBounds], &b) || b.size.width < 200 || b.size.height < 150) continue;
+                NSMutableArray<NSValue *> *seen = [NSMutableArray array];
+                for (CGFloat y = CGRectGetMinY(b) + 20; y < CGRectGetMaxY(b) && perApp[@(wpid)].intValue < 3; y += 44) {
+                    for (CGFloat x = CGRectGetMinX(b) + 24; x < CGRectGetMaxX(b) && perApp[@(wpid)].intValue < 3 && sampled < 1500; x += 70) {
+                        CGPoint c = CGPointMake(x, y);
+                        sampled++;
+                        HoverClickTabHoverHit *want = HoverClickTabHoverRunHitTest(c, gFakeFront, getpid(), kCGNullWindowID, [NSSet set], entries);
+                        // want.pid is the owner of the topmost window there: a window lower in the list is covered.
+                        if (want.pid != wpid || want.outcome != HoverClickTabHoverOutcomeTab || ![[want valueForKey:@"element"] boolValue]) continue;
+                        NSValue *rectValue = [NSValue valueWithRect:NSRectFromCGRect(want.tabRect)];
+                        if ([seen containsObject:rectValue]) continue;
+                        [seen addObject:rectValue];
+                        perApp[@(wpid)] = @(perApp[@(wpid)].intValue + 1);
+                        elementCards++;
+
+                        printf("  point=(%.0f,%.0f) shown-by-help=%d\n", c.x, c.y, want.detail.length > 0);
+                        printf("  %s element frame=%s\n", owner.bundleIdentifier.UTF8String, NSStringFromRect(NSRectFromCGRect(want.tabRect)).UTF8String);
+                        gFakeMouse = NSMakePoint(-5000, -5000);
+                        Spin(0.9);
+                        Expect(![[hover valueForKey:@"cardVisible"] boolValue], @"no card while the pointer is elsewhere");
+                        gFakeMouse = CocoaFromQuartz(c);
+                        Spin(1.2);
+                        BOOL visible = [[hover valueForKey:@"cardVisible"] boolValue];
+                        NSPanel *panel = [hover valueForKey:@"panel"];
+                        CGRect cardTab = NSRectToCGRect([[hover valueForKey:@"cardTabRect"] rectValue]);
+                        NSString *shown = [[hover valueForKey:@"cardView"] valueForKey:@"title"] ?: @"";
+                        // Independent read, right after the card went up (live windows change): the element with
+                        // the card's frame, up from the hit element.
+                        NSString *independent = nil; NSString *role = nil;
+                        AXUIElementRef h = NULL; AXUIElementCopyElementAtPosition(sys, (float)c.x, (float)c.y, &h);
+                        for (int step = 0; h != NULL && step < 6; step++) {
+                            CGRect f;
+                            if (HFrame(h, &f) && CGRectEqualToRect(f, cardTab)) {
+                                role = HStr(h, kAXRoleAttribute);
+                                NSString *named = HStr(h, kAXTitleAttribute).length > 0 ? HStr(h, kAXTitleAttribute) : HStr(h, kAXDescriptionAttribute);
+                                BOOL control = [@[@"AXButton", @"AXPopUpButton", @"AXMenuButton", @"AXCheckBox", @"AXRadioButton", @"AXDisclosureTriangle",
+                                                  @"AXImage", @"AXSlider", @"AXIncrementor", @"AXColorWell", @"AXLink"] containsObject:role ?: @""];
+                                independent = (control && named.length > 0) ? named : HStr(h, kAXHelpAttribute);
+                                break;
+                            }
+                            AXUIElementRef p = HParent(h); CFRelease(h); h = p;
+                        }
+                        if (h) CFRelease(h);
+
+                        printf("    role=%s\n", role.UTF8String ?: "?");
+                        Expect(visible && panel.isVisible, @"card visible over the element");
+                        Expect(visible && CGRectContainsPoint(CGRectInset(cardTab, -2.0, -2.0), c), @"card belongs to an element under the pointer");
+                        Expect(visible && shown.length > 0 && [shown isEqualToString:HoverClickTabHoverNormalizedTitle(independent)],
+                               [NSString stringWithFormat:@"card text equals the element's own name (length %lu)", (unsigned long)shown.length]);
+                        if (visible) {
+                            NSRect pf = [[hover valueForKey:@"cardFrame"] rectValue];
+                            NSRect elementCocoa = HoverClickTabHoverCocoaRectFromQuartz(cardTab, NSMaxY(NSScreen.screens.firstObject.frame));
+                            BOOL onAScreen = NO; for (NSScreen *s in NSScreen.screens) if (NSContainsRect(s.frame, pf)) onAScreen = YES;
+                            Expect(onAScreen && !NSIntersectsRect(pf, elementCocoa), @"card is fully on a screen and does not cover the element");
+                            if (shotDir && perApp[@(wpid)].intValue == 1) {
+                                Spin(0.25);
+                                CGFloat primaryMaxY = NSMaxY(NSScreen.screens.firstObject.frame);
+                                NSRect both = NSInsetRect(NSUnionRect(pf, elementCocoa), -30, -30);
+                                NSTask *task = [[NSTask alloc] init];
+                                task.executableURL = [NSURL fileURLWithPath:@"/usr/sbin/screencapture"];
+                                task.arguments = @[@"-x", @"-R", [NSString stringWithFormat:@"%.0f,%.0f,%.0f,%.0f", NSMinX(both), primaryMaxY - NSMaxY(both), both.size.width, both.size.height],
+                                                   [shotDir stringByAppendingFormat:@"/element-%d.png", elementCards]];
+                                [task launchAndReturnError:nil]; [task waitUntilExit];
+                            }
+                        }
+                    }
+                }
+            }
+            gFakeMouse = NSMakePoint(-5000, -5000);
+            Spin(0.9);
+            Expect(![[hover valueForKey:@"cardVisible"] boolValue], @"card hidden after the pointer left the last element");
+            printf("  points sampled=%d, elements tested=%d in %lu applications\n", sampled, elementCards, (unsigned long)perApp.count);
+            if (elementCards == 0) printf("  no background window of another application shows a named element the pointer can reach: nothing tested here\n");
+        }
+
         printf("\ncounters: cards shown=%llu hit tests started=%llu found tab=%llu covered=%llu AX timeouts=%llu slowest AX part=%.0f ms\n",
                hover.cardsShown, hover.hitTestsStarted, hover.hitTestsFoundTab,
                // Read by name so that an older HoverClick.mm (--source) still compiles as a control.

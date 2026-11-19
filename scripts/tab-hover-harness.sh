@@ -3,6 +3,8 @@
 # scripts/tab-hover-harness.mm around the feature's own code, cut from HoverClick.mm, and runs it.
 # A supported browser must be running with at least three tabs the pointer can reach; the terminal
 # needs the Accessibility permission. A card appears on screen for a few seconds.
+# After the tabs it rests on named controls of other applications' background windows, where the
+# pointer can reach any, and checks the card there too.
 #
 # Usage: scripts/tab-hover-harness.sh [--shots <directory>] [--source <HoverClick.mm>]
 #   --shots   save a screenshot of the first card of each window (needs Screen Recording)

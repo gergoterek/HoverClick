@@ -28,7 +28,7 @@ If the app still shows **Accessibility: Required**, quit and relaunch the signed
 
 - Keep **Left Click Focus** checked for normal Windows-like click-focus behavior.
 - Enable **Right Click Focus** if you want right-clicks on background windows to focus the target window first.
-- Keep **Background Tab Hover** checked to see a tab's title when the pointer rests on a tab of a browser window that is not in front (Chrome, Chromium, Edge, Brave, Vivaldi, Opera). The title appears in a small card next to the tab, with the site's address under it; nothing is focused, so you can keep typing in the app you are in. The first time, macOS asks whether HoverClick may ask the browser for that address; if you choose Don't Allow, the card shows the title alone. For a window with vertical tabs, HoverClick learns where the tab column is by checking the window's left edge at the pointer's height. Installed web apps and browsers in **Excluded Apps** get no card.
+- Keep **Background Hover** checked to see what the pointer rests on in a window that is not in front. A window of an app that is not active shows no hover feedback of its own, so HoverClick shows a small card instead: for a browser tab (Chrome, Chromium, Edge, Brave, Vivaldi, Opera) the tab's title with the site's address under it, for a button, link or image of any other app its name, with its help text or the link's site under it. Nothing is focused, so you can keep typing in the app you are in. The first time, macOS asks whether HoverClick may ask the browser for a tab's address; if you choose Don't Allow, the card shows the title alone. For a window with vertical tabs, HoverClick learns where the tab column is by checking the window's left edge at the pointer's height. Apps in **Excluded Apps** get no card, and apps that expose no names to Accessibility while in the background (Spotify, for one) show none either.
 - Enable **Launch at Login** (in **Permissions**) to start HoverClick automatically.
 - Enable **Auto Check Updates** only if you want Sparkle to check periodically. HoverClick does not silently install updates.
 - Use **Diagnostics** > **Copy Summary** when reporting a problem.
@@ -37,7 +37,7 @@ If the app still shows **Accessibility: Required**, quit and relaunch the signed
 
 HoverClick runs as a status-bar item with no Dock icon. The menu is organized into sections:
 
-**HoverClick:** Left Click Focus · Right Click Focus · Background Tab Hover · Bypass Key · Excluded Apps
+**HoverClick:** Left Click Focus · Right Click Focus · Background Hover · Bypass Key · Excluded Apps
 
 **Access > Permissions:** Accessibility status · Launch at Login · Refresh Status · Accessibility Settings
 
@@ -62,9 +62,9 @@ HoverClick runs as a status-bar item with no Dock icon. The menu is organized in
 
 ## Privacy and Safety
 
-HoverClick runs locally and uses macOS Accessibility APIs to focus the window under a click and, with Background Tab Hover on, to read the title of the browser tab under a resting pointer. It does not upload data, record screen contents, synthesize clicks, move the cursor, or focus windows from mouse movement.
+HoverClick runs locally and uses macOS Accessibility APIs to focus the window under a click and, with Background Hover on, to read the name of the tab, button, link or image under a resting pointer. It does not upload data, record screen contents, synthesize clicks, move the cursor, or focus windows from mouse movement.
 
-Background Tab Hover reads the pointer position on a timer, ten times a second, and only while a supported browser is running that is not the frontmost app. It reads the tab title under the pointer through Accessibility in the browser's own tab and toolbar area. If another app's window covers the browser there, that one look answers from that app and no card appears. To find a vertical tab column it looks at the window's top band and leftmost column; these looks reach into the page only for a window that shows no tab strip at those points (a popup, a full-screen window), at most once every 30 seconds. It shows the title in a small card that clicks pass through and never focuses, raises or activates a window. The title is neither stored nor logged. For the site line under the title HoverClick asks the browser itself for the titles and addresses of its open tabs (a read-only Apple Event, which macOS lets you allow or refuse per browser), keeps them in memory for at most 30 seconds to find the hovered tab's site, and shows only the host name. Addresses are never stored, logged or sent anywhere.
+Background Hover reads the pointer position on a timer, ten times a second, while an app other than the frontmost one is running. When the pointer rests for a third of a second over a window that is not in front, it reads through Accessibility the name, help text and link address of the control under the pointer, never its value, so text and field contents are not read. In a supported browser it reads the tab title in the browser's own tab area; to find a vertical tab column it looks at the window's top band and leftmost column. If another app's window covers the window there, that one look answers from that app and no card appears. It shows the name in a small card that clicks pass through and never focuses, raises or activates a window. Names are neither stored nor logged. For the site line under a tab's title HoverClick asks the browser itself for the titles and addresses of its open tabs (a read-only Apple Event, which macOS lets you allow or refuse per browser), keeps them in memory for at most 30 seconds to find the hovered tab's site, and shows only the host name. Addresses are never stored, logged or sent anywhere.
 
 Some apps may reject Accessibility focus requests. HoverClick still passes the original click through unchanged in those cases.
 

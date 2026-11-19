@@ -42,8 +42,8 @@ not a style issue.
    `CGWarpMouseCursorPosition`, `CGAssociateMouseAndMouseCursorPosition`.
 4. **No cursor movement.** Ever.
 5. **No AutoRaise behavior.** Hovering must never focus anything. Focus only follows a click.
-   The one hover-driven feature, Background Tab Hover (`docs/DECISIONS.md`, 2026-11-16), only
-   reads: a pointer-position timer, read-only Accessibility on a background queue, a read-only
+   The one hover-driven feature, Background Hover (`docs/DECISIONS.md`, 2026-11-16 and
+   2026-11-19), only reads: a pointer-position timer, read-only Accessibility on a background queue, a read-only
    Apple Event to the browser for the card's site line and a click-through card. It never focuses, raises, activates or posts anything.
 6. **No event replay or delayed click delivery.**
 
@@ -58,7 +58,7 @@ scripts/source-only-check.sh      # static gate: whitespace, safety suite, shell
 scripts/build-app.sh              # compile + codesign into HoverClick.app
 scripts/verify-app.sh             # codesign verification
 scripts/run-app.sh                # launch the signed app
-scripts/tab-hover-harness.sh      # runtime check of Background Tab Hover on live browser tabs
+scripts/tab-hover-harness.sh      # runtime check of Background Hover on live tabs and other apps' controls
 scripts/setup-signing.sh          # one-time: signing certificate + Sparkle key (asks for the login password)
 scripts/release.sh                # build | prepare | publish, see docs/RELEASE.md
 ```
